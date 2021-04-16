@@ -48,31 +48,6 @@ impl Logger for FilesystemLogger {
 			.unwrap();
 	}
 }
-pub(crate) fn persist_channel_peer(path: &Path, peer_info: &str) -> std::io::Result<()> {
-	let mut file = fs::OpenOptions::new().create(true).append(true).open(path)?;
-	file.write_all(format!("{}\n", peer_info).as_bytes())
-}
-
-pub(crate) fn read_channel_peer_data(
-	path: &Path,
-) -> Result<HashMap<PublicKey, SocketAddr>, std::io::Error> {
-	let mut peer_data = HashMap::new();
-	if !Path::new(&path).exists() {
-		return Ok(HashMap::new());
-	}
-	let file = File::open(path)?;
-	let reader = BufReader::new(file);
-	for line in reader.lines() {
-		match cli::parse_peer_info(line.unwrap()) {
-			Ok((pubkey, socket_addr)) => {
-				peer_data.insert(pubkey, socket_addr);
-			}
-			Err(e) => return Err(e),
-		}
-	}
-	Ok(peer_data)
-}
-
 pub(crate) fn read_channelmonitors(
 	path: String, keys_manager: Arc<DynKeysInterface>,
 ) -> Result<HashMap<OutPoint, (BlockHash, ChannelMonitor<DynSigner>)>, std::io::Error> {

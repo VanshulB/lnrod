@@ -17,7 +17,6 @@ use lightning::routing::router;
 use lightning::util::config::UserConfig;
 use rand;
 use rand::Rng;
-use std::env;
 use std::io;
 use std::io::{BufRead, Write};
 use std::net::{SocketAddr, TcpStream};
@@ -29,73 +28,14 @@ use std::time::Duration;
 use tokio::runtime::Handle;
 use tokio::sync::mpsc;
 
-pub(crate) struct LdkUserInfo {
-	pub(crate) bitcoind_rpc_username: String,
-	pub(crate) bitcoind_rpc_password: String,
-	pub(crate) bitcoind_rpc_port: u16,
-	pub(crate) bitcoind_rpc_host: String,
-	pub(crate) ldk_storage_dir_path: String,
-	pub(crate) ldk_peer_listening_port: u16,
-	pub(crate) network: Network,
-}
-
-pub(crate) fn parse_startup_args() -> Result<LdkUserInfo, ()> {
-	if env::args().len() < 4 {
-		println!("ldk-tutorial-node requires 3 arguments: `cargo run <bitcoind-rpc-username>:<bitcoind-rpc-password>@<bitcoind-rpc-host>:<bitcoind-rpc-port> ldk_storage_directory_path [<ldk-incoming-peer-listening-port>] [bitcoin-network]`");
-		return Err(());
-	}
-	let bitcoind_rpc_info = env::args().skip(1).next().unwrap();
-	let bitcoind_rpc_info_parts: Vec<&str> = bitcoind_rpc_info.split("@").collect();
-	if bitcoind_rpc_info_parts.len() != 2 {
-		println!("ERROR: bad bitcoind RPC URL provided");
-		return Err(());
-	}
-	let rpc_user_and_password: Vec<&str> = bitcoind_rpc_info_parts[0].split(":").collect();
-	if rpc_user_and_password.len() != 2 {
-		println!("ERROR: bad bitcoind RPC username/password combo provided");
-		return Err(());
-	}
-	let bitcoind_rpc_username = rpc_user_and_password[0].to_string();
-	let bitcoind_rpc_password = rpc_user_and_password[1].to_string();
-	let bitcoind_rpc_path: Vec<&str> = bitcoind_rpc_info_parts[1].split(":").collect();
-	if bitcoind_rpc_path.len() != 2 {
-		println!("ERROR: bad bitcoind RPC path provided");
-		return Err(());
-	}
-	let bitcoind_rpc_host = bitcoind_rpc_path[0].to_string();
-	let bitcoind_rpc_port = bitcoind_rpc_path[1].parse::<u16>().unwrap();
-
-	let ldk_storage_dir_path = env::args().skip(2).next().unwrap();
-
-	let mut ldk_peer_port_set = true;
-	let ldk_peer_listening_port: u16 = match env::args().skip(3).next().map(|p| p.parse()) {
-		Some(Ok(p)) => p,
-		Some(Err(e)) => panic!(e),
-		None => {
-			ldk_peer_port_set = false;
-			9735
-		}
-	};
-
-	let arg_idx = match ldk_peer_port_set {
-		true => 4,
-		false => 3,
-	};
-	let network: Network = match env::args().skip(arg_idx).next().as_ref().map(String::as_str) {
-		Some("testnet") => Network::Testnet,
-		Some("regtest") => Network::Regtest,
-		Some(_) => panic!("Unsupported network provided. Options are: `regtest`, `testnet`"),
-		None => Network::Testnet,
-	};
-	Ok(LdkUserInfo {
-		bitcoind_rpc_username,
-		bitcoind_rpc_password,
-		bitcoind_rpc_host,
-		bitcoind_rpc_port,
-		ldk_storage_dir_path,
-		ldk_peer_listening_port,
-		network,
-	})
+pub struct LdkUserInfo {
+	pub bitcoind_rpc_username: String,
+	pub bitcoind_rpc_password: String,
+	pub bitcoind_rpc_port: u16,
+	pub bitcoind_rpc_host: String,
+	pub ldk_storage_dir_path: String,
+	pub ldk_peer_listening_port: u16,
+	pub network: Network,
 }
 
 pub(crate) fn poll_for_user_input(

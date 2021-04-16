@@ -1,7 +1,10 @@
 [package]
-name = "ldk-tutorial-node"
+name = "ldk-node"
 version = "0.1.0"
-authors = ["Valentine Wallace <vwallace@protonmail.com>"]
+authors = [
+    "Dev Random",
+    "Valentine Wallace <vwallace@protonmail.com>"
+]
 license = "MIT OR Apache-2.0"
 edition = "2018"
 
@@ -23,3 +26,20 @@ time = "0.2"
 rand = "0.4"
 serde_json = { version = "1.0" }
 tokio = { version = "1.0", features = [ "io-util", "macros", "rt", "rt-multi-thread", "sync", "net", "time" ] }
+prost = "0.7"
+tonic = "0.4"
+clap = "3.0.0-beta.2"
+url = "2.2"
+serde = { version = "1.0.105", features = ["derive"] }
+
+
+[build-dependencies]
+tonic-build = "0.4"
+
+[[bin]]
+name = "server"
+path = "src/main_server.rs"
+
+[[bin]]
+name = "cli"
+path = "src/main_cli.rs"
