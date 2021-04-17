@@ -80,6 +80,53 @@ fn peer_subcommand(cli: &CLI, matches: &ArgMatches) -> Result<(), Box<dyn std::e
     Ok(())
 }
 
+fn make_invoice_subapp() -> App<'static> {
+    App::new("invoice")
+        .about("control invoices")
+        .subcommand(App::new("new").about("Create invoice")
+            .arg(Arg::new("value").about("value in millisats").required(true))
+        )
+}
+
+fn invoice_subcommand(cli: &CLI, matches: &ArgMatches) -> Result<(), Box<dyn std::error::Error>> {
+    match matches.subcommand() {
+        Some(("new", submatches)) => {
+            let value_msat_str: String = submatches.value_of_t("value")?;
+            let value_msat = value_msat_str.parse()?;
+            cli.invoice_new(value_msat)?
+        },
+        Some((name, _)) => panic!("unimplemented command {}", name),
+        None => {
+            println!("missing sub-command");
+            make_invoice_subapp().print_help()?
+        }
+    };
+    Ok(())
+}
+
+fn make_payment_subapp() -> App<'static> {
+    App::new("payment")
+        .about("control payments")
+        .subcommand(App::new("send").about("Pay invoice")
+            .arg(Arg::new("invoice").about("serialized invoice").required(true))
+        )
+}
+
+fn payment_subcommand(cli: &CLI, matches: &ArgMatches) -> Result<(), Box<dyn std::error::Error>> {
+    match matches.subcommand() {
+        Some(("send", submatches)) => {
+            let invoice: String = submatches.value_of_t("invoice")?;
+            cli.payment_send(invoice)?
+        },
+        Some((name, _)) => panic!("unimplemented command {}", name),
+        None => {
+            println!("missing sub-command");
+            make_payment_subapp().print_help()?
+        }
+    };
+    Ok(())
+}
+
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut app = App::new("client")
         .about("a CLI utility which communicates with a running Lightning Signer server via gRPC")
@@ -95,6 +142,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .subcommand(make_node_subapp())
         .subcommand(make_channel_subapp())
         .subcommand(make_peer_subapp())
+        .subcommand(make_invoice_subapp())
+        .subcommand(make_payment_subapp())
         ;
     let matches = app.clone().get_matches();
     let cli = CLI::new(matches.value_of("rpc").unwrap().to_string());
@@ -104,6 +153,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         Some(("node", submatches)) => node_subcommand(&cli, submatches)?,
         Some(("channel", submatches)) => channel_subcommand(&cli, submatches)?,
         Some(("peer", submatches)) => peer_subcommand(&cli, submatches)?,
+        Some(("invoice", submatches)) => invoice_subcommand(&cli, submatches)?,
+        Some(("payment", submatches)) => payment_subcommand(&cli, submatches)?,
         Some((name, _)) => panic!("unimplemented command {}", name),
     }
     Ok(())

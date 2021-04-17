@@ -16,6 +16,10 @@ service Admin {
       returns (PeerConnectReply);
   rpc PeerList(PeerListRequest)
       returns (PeerListReply);
+  rpc InvoiceNew(InvoiceNewRequest)
+      returns (InvoiceNewReply);
+  rpc PaymentSend(PaymentSendRequest)
+      returns (PaymentSendReply);
 }
 
 message PingRequest {
@@ -74,4 +78,19 @@ message Peer {
 
 message PeerListReply {
   repeated Peer peers = 1;
+}
+
+message InvoiceNewRequest {
+  uint64 value_msat = 1;
+}
+
+message InvoiceNewReply {
+  string invoice = 1;
+}
+
+message PaymentSendRequest {
+  string invoice = 1;
+}
+
+message PaymentSendReply {
 }

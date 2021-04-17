@@ -1,16 +1,11 @@
-use crate::cli;
 use bitcoin::hashes::hex::FromHex;
-use bitcoin::secp256k1::key::PublicKey;
 use bitcoin::{BlockHash, Txid};
 use lightning::chain::channelmonitor::ChannelMonitor;
 use lightning::chain::transaction::OutPoint;
 use lightning::util::logger::{Logger, Record};
 use std::collections::HashMap;
 use std::fs;
-use std::fs::File;
-// use std::io::{BufRead, BufReader, Cursor, Write};
-use std::io::{BufRead, BufReader, Cursor, Write};
-use std::net::SocketAddr;
+use std::io::{Cursor, Write};
 use std::path::Path;
 use std::sync::Arc;
 use time::OffsetDateTime;

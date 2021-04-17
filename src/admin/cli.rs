@@ -3,7 +3,7 @@ use tonic::{Request, transport};
 
 use super::admin_api::{ChannelNewRequest, Void, PingRequest};
 use super::admin_api::admin_client::AdminClient;
-use crate::admin::admin_api::{PeerConnectRequest, PeerListRequest};
+use crate::admin::admin_api::{PeerConnectRequest, PeerListRequest, InvoiceNewRequest, PaymentSendRequest};
 use serde::Serialize;
 
 pub struct CLI {
@@ -85,6 +85,24 @@ impl CLI {
         let mut client = self.connect().await?;
         let request = Request::new(PeerListRequest {});
         let response = client.peer_list(request).await?.into_inner();
+        CLI::dump_response(&response);
+        Ok(())
+    }
+
+    #[tokio::main]
+    pub async fn invoice_new(&self, value_msat: u64) -> Result<(), Box<dyn std::error::Error>> {
+        let mut client = self.connect().await?;
+        let request = Request::new(InvoiceNewRequest { value_msat });
+        let response = client.invoice_new(request).await?.into_inner();
+        CLI::dump_response(&response);
+        Ok(())
+    }
+
+    #[tokio::main]
+    pub async fn payment_send(&self, invoice: String) -> Result<(), Box<dyn std::error::Error>> {
+        let mut client = self.connect().await?;
+        let request = Request::new(PaymentSendRequest { invoice });
+        let response = client.payment_send(request).await?.into_inner();
         CLI::dump_response(&response);
         Ok(())
     }

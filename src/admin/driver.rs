@@ -1,14 +1,18 @@
+use std::net::{IpAddr, Ipv6Addr, SocketAddr};
+
+use bitcoin::secp256k1::{PublicKey, Secp256k1};
+use lightning::chain::keysinterface::KeysInterface;
+use lightning::util::config::UserConfig;
 use tonic::{Request, Response, Status, transport::Server};
 
-use super::admin_api::{PingReply, PingRequest, Void, NodeInfoReply, ChannelListReply};
-use super::admin_api::admin_server::{Admin, AdminServer};
+use crate::admin::admin_api::{Channel, ChannelNewReply, ChannelNewRequest, InvoiceNewReply, InvoiceNewRequest, PaymentSendReply, PaymentSendRequest, Peer, PeerConnectReply, PeerConnectRequest, PeerListReply, PeerListRequest};
 use crate::cli::LdkUserInfo;
-use crate::node::{build_node, Node, connect_peer_if_necessary};
-use lightning::chain::keysinterface::KeysInterface;
-use bitcoin::secp256k1::{PublicKey, Secp256k1};
-use std::net::{SocketAddr, IpAddr, Ipv6Addr};
-use crate::admin::admin_api::{Channel, PeerConnectRequest, PeerConnectReply, PeerListRequest, PeerListReply, ChannelNewRequest, ChannelNewReply, Peer};
-use lightning::util::config::UserConfig;
+use crate::node::{build_node, connect_peer_if_necessary, Node};
+
+use super::admin_api::{ChannelListReply, NodeInfoReply, PingReply, PingRequest, Void};
+use super::admin_api::admin_server::{Admin, AdminServer};
+use lightning_invoice::Invoice;
+use std::str::FromStr;
 
 struct AdminHandler {
     node: Node
@@ -112,6 +116,24 @@ impl Admin for AdminHandler {
         let reply = PeerListReply {
             peers
         };
+        Ok(Response::new(reply))
+    }
+
+    async fn invoice_new(&self, request: Request<InvoiceNewRequest>) -> Result<Response<InvoiceNewReply>, Status> {
+        let req = request.into_inner();
+        let invoice = self.node.get_invoice(req.value_msat).map_err(|e| Status::invalid_argument(e))?;
+        let reply = InvoiceNewReply {
+            invoice: invoice.to_string()
+        };
+        Ok(Response::new(reply))
+    }
+
+    async fn payment_send(&self, request: Request<PaymentSendRequest>) -> Result<Response<PaymentSendReply>, Status> {
+        let req = request.into_inner();
+        let invoice = Invoice::from_str(req.invoice.as_str())
+            .map_err(|_| Status::invalid_argument("invalid invoice"))?;
+        self.node.send_payment(invoice).map_err(|e| Status::invalid_argument(e))?;
+        let reply = PaymentSendReply {};
         Ok(Response::new(reply))
     }
 }

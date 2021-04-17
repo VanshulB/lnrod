@@ -53,9 +53,9 @@ pub(crate) enum HTLCStatus {
 	Failed,
 }
 
-pub(crate) struct SatoshiAmount(Option<u64>);
+pub(crate) struct MilliSatoshiAmount(Option<u64>);
 
-impl fmt::Display for SatoshiAmount {
+impl fmt::Display for MilliSatoshiAmount {
 	fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
 		match self.0 {
 			Some(amt) => write!(f, "{}", amt),
@@ -66,7 +66,7 @@ impl fmt::Display for SatoshiAmount {
 
 pub(crate) type PaymentInfoStorage = Arc<
 	Mutex<
-		HashMap<PaymentHash, (Option<PaymentPreimage>, HTLCDirection, HTLCStatus, SatoshiAmount)>,
+		HashMap<PaymentHash, (Option<PaymentPreimage>, HTLCDirection, HTLCStatus, MilliSatoshiAmount)>,
 	>,
 >;
 
@@ -167,7 +167,7 @@ fn handle_ldk_events(
 						loop_channel_manager.fail_htlc_backwards(&payment_hash, &payment_secret);
 						payments.insert(
 							payment_hash,
-							(None, HTLCDirection::Inbound, HTLCStatus::Failed, SatoshiAmount(None)),
+							(None, HTLCDirection::Inbound, HTLCStatus::Failed, MilliSatoshiAmount(None)),
 						);
 					}
 				}
