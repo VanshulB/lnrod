@@ -145,17 +145,25 @@ impl BroadcasterInterface for BitcoindClient {
 		match Handle::try_current() {
 			Ok(_) => {
 				tokio::task::block_in_place(|| {
-					runtime
+					let result = runtime
 						.block_on(
 							rpc.call_method::<RawTx>("sendrawtransaction", &vec![tx_serialized]),
-						)
-						.unwrap();
+						);
+					if result.is_err() {
+						// This may be just that it was already accepted to the blockchain,
+						// but the RPC client swallows the details so we can't tell.
+						println!("failed to broadcast a transaction")
+					}
 				});
 			}
 			_ => {
-				runtime
-					.block_on(rpc.call_method::<RawTx>("sendrawtransaction", &vec![tx_serialized]))
-					.unwrap();
+				let result = runtime
+					.block_on(rpc.call_method::<RawTx>("sendrawtransaction", &vec![tx_serialized]));
+				if result.is_err() {
+					// This may be just that it was already accepted to the blockchain,
+					// but the RPC client swallows the details so we can't tell.
+					println!("failed to broadcast a transaction")
+				}
 			}
 		}
 	}
