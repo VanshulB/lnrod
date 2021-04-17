@@ -76,7 +76,7 @@ impl Admin for AdminHandler {
             node_id,
             peer_addr,
             self.node.peer_manager.clone(),
-            self.node.event_ntfns.0.clone(),
+            self.node.event_ntfn_sender.clone(),
         ).await.map_err(|_| Status::aborted("could not connect to peer"))?;
 
         println!("connected");
@@ -106,7 +106,7 @@ impl Admin for AdminHandler {
             node_id,
             peer_addr,
             self.node.peer_manager.clone(),
-            self.node.event_ntfns.0.clone(),
+            self.node.event_ntfn_sender.clone(),
         ).await.map_err(|_| Status::aborted("could not connect to peer"))?;
 
         println!("connected");

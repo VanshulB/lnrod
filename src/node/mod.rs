@@ -29,7 +29,7 @@ use lightning_persister::FilesystemPersister;
 use rand::{Rng, thread_rng};
 use tokio::runtime::Runtime;
 use tokio::sync::mpsc;
-use tokio::sync::mpsc::{Receiver, Sender};
+use tokio::sync::mpsc::Sender;
 
 use crate::{ArcChainMonitor, ChannelManager, disk, handle_ldk_events, HTLCDirection, HTLCStatus, MilliSatoshiAmount, PaymentInfoStorage, PeerManager};
 use crate::bitcoind_client::BitcoindClient;
@@ -55,7 +55,7 @@ pub(crate) struct Node {
     pub(crate) router: Arc<NetGraphMsgHandler<Arc<dyn chain::Access>, Arc<FilesystemLogger>>>,
     pub(crate) payment_info: PaymentInfoStorage,
     pub(crate) keys_manager: Arc<DynKeysInterface>,
-    pub(crate) event_ntfns: (Sender<()>, Receiver<()>),
+    pub(crate) event_ntfn_sender: Sender<()>,
     pub(crate) ldk_data_dir: String,
     pub(crate) logger: Arc<FilesystemLogger>,
     pub(crate) network: Network,
@@ -248,10 +248,18 @@ fn build1(keys_manager: Arc<DynKeysInterface>, args: NodeBuildArgs, ldk_data_dir
 
     // We poll for events in handle_ldk_events(..) rather than waiting for them over the
     // mpsc::channel, so we can leave the event receiver as unused.
-    let (event_ntfn_sender, event_ntfn_receiver) = mpsc::channel(2);
+    let (event_ntfn_sender, mut event_ntfn_receiver) = mpsc::channel(2);
     let peer_manager_connection_handler = peer_manager.clone();
     let listening_port = args.peer_listening_port;
     let event_ntfn_sender1 = event_ntfn_sender.clone();
+    runtime.spawn( async move {
+       loop {
+           let item = event_ntfn_receiver.recv().await;
+           if item.is_none() {
+               break;
+           }
+       }
+    });
     runtime.spawn(async move {
         let listener = std::net::TcpListener::bind(format!("0.0.0.0:{}", listening_port)).unwrap();
         loop {
@@ -332,7 +340,7 @@ fn build1(keys_manager: Arc<DynKeysInterface>, args: NodeBuildArgs, ldk_data_dir
         router,
         payment_info,
         keys_manager,
-        event_ntfns: (event_ntfn_sender, event_ntfn_receiver),
+        event_ntfn_sender,
         ldk_data_dir,
         logger,
         network: args.network,
