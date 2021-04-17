@@ -26,7 +26,8 @@ fn make_channel_subapp() -> App<'static> {
         .subcommand(App::new("new").about("New channel")
             .arg(Arg::new("nodeid").about("node ID in hex").required(true))
             .arg(Arg::new("address").about("host:port").required(true))
-            .arg(Arg::new("value").about("value in satoshi").required(true))
+            .arg(Arg::new("value").about("value in satoshi").required(true)
+                .validator(|s| s.parse::<u64>()))
             .arg(Arg::new("public").short('b').long("public").about("announce the channel"))
         )
 }
@@ -84,7 +85,11 @@ fn make_invoice_subapp() -> App<'static> {
     App::new("invoice")
         .about("control invoices")
         .subcommand(App::new("new").about("Create invoice")
-            .arg(Arg::new("value").about("value in millisats").required(true))
+            .arg(Arg::new("value")
+                .about("value in millisats")
+                .required(true)
+                .validator(|s| s.parse::<u64>())
+            )
         )
 }
 

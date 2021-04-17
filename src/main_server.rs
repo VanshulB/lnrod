@@ -13,6 +13,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .short('l')
                 .long("lnport")
                 .default_value("9901")
+                .validator(|s| s.parse::<u16>())
                 .takes_value(true)
         )
         .arg(
@@ -21,6 +22,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .short('p')
                 .long("rpcport")
                 .default_value("8801")
+                .validator(|s| s.parse::<u16>())
                 .takes_value(true)
         )
         .arg(
