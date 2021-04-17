@@ -13,5 +13,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .field_attribute("Payment.status", SERDE_SERIALIZE_PAYMENT_STATUS)
         .out_dir("src/admin")
         .compile(&["src/admin/admin.proto"], &["src/admin"])?;
+
     Ok(())
 }

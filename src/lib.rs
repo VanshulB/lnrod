@@ -29,7 +29,6 @@ use crate::disk::FilesystemLogger;
 use crate::keys::{DynKeysInterface, DynSigner, SpendableKeysInterface};
 
 mod bitcoind_client;
-pub mod cli;
 mod convert;
 mod disk;
 mod hex_utils;

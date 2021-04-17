@@ -3,7 +3,7 @@ use tonic::{Request, transport};
 
 use super::admin_api::{ChannelNewRequest, Void, PingRequest};
 use super::admin_api::admin_client::AdminClient;
-use crate::admin::admin_api::{PeerConnectRequest, PeerListRequest, InvoiceNewRequest, PaymentSendRequest};
+use crate::admin::admin_api::{PeerConnectRequest, PeerListRequest, InvoiceNewRequest, PaymentSendRequest, ChannelCloseRequest};
 use serde::Serialize;
 
 pub struct CLI {
@@ -64,6 +64,18 @@ impl CLI {
             is_public
         });
         let response = client.channel_new(request).await?.into_inner();
+        CLI::dump_response(&response);
+        Ok(())
+    }
+
+    #[tokio::main]
+    pub async fn channel_close(&self, channel_id: Vec<u8>, is_force: bool) -> Result<(), Box<dyn std::error::Error>> {
+        let mut client = self.connect().await?;
+        let request = Request::new(ChannelCloseRequest {
+            channel_id,
+            is_force
+        });
+        let response = client.channel_close(request).await?.into_inner();
         CLI::dump_response(&response);
         Ok(())
     }

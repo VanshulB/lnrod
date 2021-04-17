@@ -6,6 +6,8 @@ service Admin {
   // Trivial call to test connectivity
   rpc Ping(PingRequest)
       returns (PingReply);
+  rpc ChannelClose(ChannelCloseRequest)
+      returns (Void);
   rpc NodeInfo(Void)
       returns(NodeInfoReply);
   rpc ChannelList(Void)
@@ -33,6 +35,11 @@ message PingReply {
 }
 
 message Void {
+}
+
+message ChannelCloseRequest {
+  bytes channel_id = 1;
+  bool is_force = 2;
 }
 
 message NodeInfoReply {

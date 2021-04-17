@@ -1,8 +1,8 @@
 use ldk_node::admin;
-use ldk_node::cli::LdkUserInfo;
 use clap::{App, Arg};
 use bitcoin::Network;
 use url::Url;
+use ldk_node::node::NodeBuildArgs;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let app = App::new("server")
@@ -49,13 +49,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         if matches.is_present("regtest") { Network::Regtest }
         else { Network::Testnet };
     let datadir = matches.value_of("datadir").unwrap().to_string();
-    let args = LdkUserInfo {
+    let args = NodeBuildArgs {
         bitcoind_rpc_username: bitcoin_url.username().to_string(),
         bitcoind_rpc_password: bitcoin_url.password().expect("password").to_string(),
-        bitcoind_rpc_port: bitcoin_url.port().expect("port"),
         bitcoind_rpc_host: bitcoin_url.host_str().expect("host").to_string(),
-        ldk_storage_dir_path: datadir.clone(),
-        ldk_peer_listening_port: matches.value_of("lnport").unwrap().parse().unwrap(),
+        bitcoind_rpc_port: bitcoin_url.port().expect("port"),
+        storage_dir_path: datadir.clone(),
+        peer_listening_port: matches.value_of("lnport").unwrap().parse().unwrap(),
         network,
     };
 

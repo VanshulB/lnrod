@@ -1,19 +1,23 @@
 use std::net::{IpAddr, Ipv6Addr, SocketAddr};
+use std::str::FromStr;
 
 use bitcoin::secp256k1::{PublicKey, Secp256k1};
 use lightning::chain::keysinterface::KeysInterface;
 use lightning::util::config::UserConfig;
+use lightning_invoice::Invoice;
 use tonic::{Request, Response, Status, transport::Server};
 
-use crate::admin::admin_api::{Channel, ChannelNewReply, ChannelNewRequest, InvoiceNewReply, InvoiceNewRequest, PaymentSendReply, PaymentSendRequest, Peer, PeerConnectReply, PeerConnectRequest, PeerListReply, PeerListRequest, PaymentListReply, Payment};
-use crate::cli::LdkUserInfo;
-use crate::node::{build_node, connect_peer_if_necessary, Node};
+use crate::admin::admin_api::{
+    ChannelCloseRequest,
+    Channel, ChannelNewReply, ChannelNewRequest, InvoiceNewReply, InvoiceNewRequest,
+    Payment, PaymentListReply, PaymentSendReply, PaymentSendRequest, Peer,
+    PeerConnectReply, PeerConnectRequest, PeerListReply, PeerListRequest};
+use crate::HTLCDirection;
+use crate::node::{build_node, connect_peer_if_necessary, Node, NodeBuildArgs};
 
 use super::admin_api::{ChannelListReply, NodeInfoReply, PingReply, PingRequest, Void};
 use super::admin_api::admin_server::{Admin, AdminServer};
-use lightning_invoice::Invoice;
-use std::str::FromStr;
-use crate::HTLCDirection;
+use std::convert::TryInto;
 
 struct AdminHandler {
     node: Node
@@ -154,14 +158,26 @@ impl Admin for AdminHandler {
         };
         Ok(Response::new(reply))
     }
+
+    async fn channel_close(&self, request: Request<ChannelCloseRequest>) -> Result<Response<Void>, Status> {
+        let req = request.into_inner();
+        let channel_id = req.channel_id.as_slice().try_into()
+            .map_err(|_| Status::invalid_argument("channel ID must be 32 bytes"))?;
+        if req.is_force {
+            self.node.channel_manager.force_close_channel(channel_id)
+        } else {
+            self.node.channel_manager.close_channel(channel_id)
+        }.map_err(|e| Status::aborted(format!("{:?}", e)))?;
+        Ok(Response::new(Void {}))
+    }
 }
 
-pub fn start(rpc_port: u16, args: LdkUserInfo) -> Result<(), Box<dyn std::error::Error>> {
+pub fn start(rpc_port: u16, args: NodeBuildArgs) -> Result<(), Box<dyn std::error::Error>> {
     let node = build_node(args.clone());
     let node_id = PublicKey::from_secret_key(&Secp256k1::new(), &node.keys_manager.get_node_secret());
 
-    println!("p2p {} 127.0.0.1:{}", node_id, args.ldk_peer_listening_port);
-    println!("admin port {}, datadir {}", rpc_port, args.ldk_storage_dir_path);
+    println!("p2p {} 127.0.0.1:{}", node_id, args.peer_listening_port);
+    println!("admin port {}, datadir {}", rpc_port, args.storage_dir_path);
     let addr = SocketAddr::new(IpAddr::V6(Ipv6Addr::LOCALHOST), rpc_port);
     let runtime = node.runtime.clone();
     let handler = AdminHandler::new(node);

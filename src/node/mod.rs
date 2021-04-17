@@ -7,16 +7,19 @@ use std::time::{Duration, SystemTime};
 
 use bitcoin::{BlockHash, Network};
 use bitcoin::blockdata::constants::genesis_block;
-use bitcoin::secp256k1::{PublicKey, Secp256k1};
+use bitcoin::hashes::Hash;
 use bitcoin::hashes::sha256::Hash as Sha256Hash;
+use bitcoin::secp256k1::{PublicKey, Secp256k1};
 use lightning::chain;
 use lightning::chain::chainmonitor::ChainMonitor;
 use lightning::chain::keysinterface::KeysInterface;
 use lightning::chain::Watch;
 use lightning::ln::channelmanager::{ChainParameters, ChannelManagerReadArgs, PaymentHash, PaymentPreimage, PaymentSecret};
 use lightning::ln::channelmanager;
+use lightning::ln::features::InvoiceFeatures;
 use lightning::ln::peer_handler::MessageHandler;
 use lightning::routing::network_graph::NetGraphMsgHandler;
+use lightning::routing::router;
 use lightning::util::config::UserConfig;
 use lightning::util::ser::{ReadableArgs, Writer};
 use lightning_background_processor::BackgroundProcessor;
@@ -30,13 +33,20 @@ use tokio::sync::mpsc::{Receiver, Sender};
 
 use crate::{ArcChainMonitor, ChannelManager, disk, handle_ldk_events, HTLCDirection, HTLCStatus, MilliSatoshiAmount, PaymentInfoStorage, PeerManager};
 use crate::bitcoind_client::BitcoindClient;
-use crate::cli::LdkUserInfo;
 use crate::default_signer::InMemorySignerFactory;
 use crate::disk::FilesystemLogger;
 use crate::keys::{DynKeysInterface, KeysManager};
-use bitcoin::hashes::Hash;
-use lightning::ln::features::InvoiceFeatures;
-use lightning::routing::router;
+
+#[derive(Clone)]
+pub struct NodeBuildArgs {
+    pub bitcoind_rpc_username: String,
+    pub bitcoind_rpc_password: String,
+    pub bitcoind_rpc_host: String,
+    pub bitcoind_rpc_port: u16,
+    pub storage_dir_path: String,
+    pub peer_listening_port: u16,
+    pub network: Network,
+}
 
 #[allow(dead_code)]
 pub(crate) struct Node {
@@ -52,9 +62,9 @@ pub(crate) struct Node {
     pub(crate) runtime: Arc<Runtime>,
 }
 
-pub(crate) fn build_node(args: LdkUserInfo) -> Node {
+pub(crate) fn build_node(args: NodeBuildArgs) -> Node {
     // Initialize the LDK data directory if necessary.
-    let ldk_data_dir = format!("{}/.ldk", args.ldk_storage_dir_path);
+    let ldk_data_dir = format!("{}/.ldk", args.storage_dir_path);
     fs::create_dir_all(ldk_data_dir.clone()).unwrap();
 
     // Step 6: Initialize the KeysManager
@@ -83,7 +93,7 @@ pub(crate) fn build_node(args: LdkUserInfo) -> Node {
     build1(keys_manager, args, ldk_data_dir)
 }
 
-fn build1(keys_manager: Arc<DynKeysInterface>, args: LdkUserInfo, ldk_data_dir: String) -> Node {
+fn build1(keys_manager: Arc<DynKeysInterface>, args: NodeBuildArgs, ldk_data_dir: String) -> Node {
     // Initialize our bitcoind client.
     let bitcoind_client = match BitcoindClient::new(
         args.bitcoind_rpc_host.clone(),
@@ -240,7 +250,7 @@ fn build1(keys_manager: Arc<DynKeysInterface>, args: LdkUserInfo, ldk_data_dir: 
     // mpsc::channel, so we can leave the event receiver as unused.
     let (event_ntfn_sender, event_ntfn_receiver) = mpsc::channel(2);
     let peer_manager_connection_handler = peer_manager.clone();
-    let listening_port = args.ldk_peer_listening_port;
+    let listening_port = args.peer_listening_port;
     let event_ntfn_sender1 = event_ntfn_sender.clone();
     runtime.spawn(async move {
         let listener = std::net::TcpListener::bind(format!("0.0.0.0:{}", listening_port)).unwrap();

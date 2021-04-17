@@ -24,11 +24,15 @@ fn make_channel_subapp() -> App<'static> {
         .about("control channels")
         .subcommand(App::new("list").about("List channels"))
         .subcommand(App::new("new").about("New channel")
-            .arg(Arg::new("nodeid").about("node ID in hex").required(true))
+            .arg(Arg::new("nodeid").about("node ID in hex").required(true).validator(|s| hex::decode(s)))
             .arg(Arg::new("address").about("host:port").required(true))
             .arg(Arg::new("value").about("value in satoshi").required(true)
                 .validator(|s| s.parse::<u64>()))
             .arg(Arg::new("public").short('b').long("public").about("announce the channel"))
+        )
+        .subcommand(App::new("close").about("Close or force-close a channel")
+            .arg(Arg::new("channelid").about("channel ID in hex").required(true).validator(|s|hex::decode(s)))
+            .arg(Arg::new("force").short('f').long("force").about("force-close"))
         )
 }
 
@@ -44,6 +48,11 @@ fn channel_subcommand(cli: &CLI, matches: &ArgMatches) -> Result<(), Box<dyn std
             let is_public = submatches.is_present("public");
             cli.channel_new(node_id, address, value_sat, is_public)?
         },
+        Some(("close", submatches)) => {
+            let channel_id_hex: String = submatches.value_of_t("channelid")?;
+            let channel_id = hex::decode(channel_id_hex).expect("hex");
+            cli.channel_close(channel_id, submatches.is_present("force"))?
+        }
         Some((name, _)) => panic!("unimplemented command {}", name),
         None => {
             println!("missing sub-command");
