@@ -7,7 +7,7 @@ use crate::node::{build_node, Node, connect_peer_if_necessary};
 use lightning::chain::keysinterface::KeysInterface;
 use bitcoin::secp256k1::{PublicKey, Secp256k1};
 use std::net::{SocketAddr, IpAddr, Ipv6Addr};
-use crate::admin::admin_api::{Channel, ChannelNewRequest, ChannelNewReply};
+use crate::admin::admin_api::{Channel, PeerConnectRequest, PeerConnectReply, PeerListRequest, PeerListReply, ChannelNewRequest, ChannelNewReply, Peer};
 use lightning::util::config::UserConfig;
 
 struct AdminHandler {
@@ -87,11 +87,42 @@ impl Admin for AdminHandler {
         let reply = ChannelNewReply {};
         Ok(Response::new(reply))
     }
+
+    async fn peer_connect(&self, request: Request<PeerConnectRequest>) -> Result<Response<PeerConnectReply>, Status> {
+        let req = request.into_inner();
+        let peer_addr = req.address.parse().map_err(|_| Status::invalid_argument("address parse"))?;
+        let node_id = PublicKey::from_slice(req.node_id.as_slice())
+            .map_err(|_| Status::invalid_argument("failed to parse node_id"))?;
+        connect_peer_if_necessary(
+            node_id,
+            peer_addr,
+            self.node.peer_manager.clone(),
+            self.node.event_ntfns.0.clone(),
+        ).await.map_err(|_| Status::aborted("could not connect to peer"))?;
+
+        println!("connected");
+        let reply = PeerConnectReply {};
+        Ok(Response::new(reply))
+    }
+
+    async fn peer_list(&self, request: Request<PeerListRequest>) -> Result<Response<PeerListReply>, Status> {
+        let _req = request.into_inner();
+        let peers = self.node.peer_manager.get_peer_node_ids()
+            .iter().map(|pkey| Peer { node_id: pkey.serialize().to_vec() }).collect();
+        let reply = PeerListReply {
+            peers
+        };
+        Ok(Response::new(reply))
+    }
 }
 
-pub fn start(port: u16, args: LdkUserInfo) -> Result<(), Box<dyn std::error::Error>> {
-    let node = build_node(args);
-    let addr = SocketAddr::new(IpAddr::V6(Ipv6Addr::LOCALHOST), port);
+pub fn start(rpc_port: u16, args: LdkUserInfo) -> Result<(), Box<dyn std::error::Error>> {
+    let node = build_node(args.clone());
+    let node_id = PublicKey::from_secret_key(&Secp256k1::new(), &node.keys_manager.get_node_secret());
+
+    println!("p2p {} 127.0.0.1:{}", node_id, args.ldk_peer_listening_port);
+    println!("admin port {}, datadir {}", rpc_port, args.ldk_storage_dir_path);
+    let addr = SocketAddr::new(IpAddr::V6(Ipv6Addr::LOCALHOST), rpc_port);
     let runtime = node.runtime.clone();
     let handler = AdminHandler::new(node);
     runtime.block_on(do_serve(addr, handler));

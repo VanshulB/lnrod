@@ -4,14 +4,18 @@ package admin_api;
 
 service Admin {
   // Trivial call to test connectivity
-  rpc Ping (PingRequest)
+  rpc Ping(PingRequest)
       returns (PingReply);
-  rpc NodeInfo (Void)
-      returns (NodeInfoReply);
-  rpc ChannelList (Void)
+  rpc NodeInfo(Void)
+      returns(NodeInfoReply);
+  rpc ChannelList(Void)
       returns (ChannelListReply);
-  rpc ChannelNew (ChannelNewRequest)
+  rpc ChannelNew(ChannelNewRequest)
       returns (ChannelNewReply);
+  rpc PeerConnect(PeerConnectRequest)
+      returns (PeerConnectReply);
+  rpc PeerList(PeerListRequest)
+      returns (PeerListReply);
 }
 
 message PingRequest {
@@ -51,4 +55,23 @@ message ChannelNewRequest {
 }
 
 message ChannelNewReply {
+}
+
+message PeerConnectRequest {
+  bytes node_id = 1;
+  string address = 2;
+}
+
+message PeerConnectReply {
+}
+
+message PeerListRequest {
+}
+
+message Peer {
+  bytes node_id = 1;
+}
+
+message PeerListReply {
+  repeated Peer peers = 1;
 }

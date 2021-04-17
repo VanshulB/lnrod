@@ -3,6 +3,8 @@ use tonic::{Request, transport};
 
 use super::admin_api::{ChannelNewRequest, Void, PingRequest};
 use super::admin_api::admin_client::AdminClient;
+use crate::admin::admin_api::{PeerConnectRequest, PeerListRequest};
+use serde::Serialize;
 
 pub struct CLI {
     connect: String,
@@ -13,6 +15,10 @@ impl CLI {
         CLI { connect }
     }
 
+    fn dump_response<R: Serialize>(response: &R) {
+        println!("{}", to_string_pretty(&response).unwrap());
+    }
+
     #[tokio::main]
     pub async fn ping(&self) -> Result<(), Box<dyn std::error::Error>> {
         let mut client = self.connect().await?;
@@ -20,9 +26,9 @@ impl CLI {
             message: "hello".into(),
         });
 
-        let response = client.ping(ping_request).await?;
+        let response = client.ping(ping_request).await?.into_inner();
 
-        println!("ping response={:?}", response);
+        CLI::dump_response(&response);
         Ok(())
     }
 
@@ -44,21 +50,42 @@ impl CLI {
 
         let response = client.channel_list(void_request).await?.into_inner();
 
-        println!("{}", to_string_pretty(&response).unwrap());
+        CLI::dump_response(&response);
         Ok(())
     }
 
     #[tokio::main]
-    pub async fn channel_new(&self, node_id: Vec<u8>, address: &str, value_sat: u64, is_public: bool) -> Result<(), Box<dyn std::error::Error>> {
+    pub async fn channel_new(&self, node_id: Vec<u8>, address: String, value_sat: u64, is_public: bool) -> Result<(), Box<dyn std::error::Error>> {
         let mut client = self.connect().await?;
         let request = Request::new(ChannelNewRequest {
             node_id,
-            address: address.to_string(),
+            address,
             value_sat,
             is_public
         });
         let response = client.channel_new(request).await?.into_inner();
-        println!("{:?}", response);
+        CLI::dump_response(&response);
+        Ok(())
+    }
+
+    #[tokio::main]
+    pub async fn peer_connect(&self, node_id: Vec<u8>, address: String) -> Result<(), Box<dyn std::error::Error>> {
+        let mut client = self.connect().await?;
+        let request = Request::new(PeerConnectRequest {
+            node_id,
+            address
+        });
+        let response = client.peer_connect(request).await?.into_inner();
+        CLI::dump_response(&response);
+        Ok(())
+    }
+
+    #[tokio::main]
+    pub async fn peer_list(&self) -> Result<(), Box<dyn std::error::Error>> {
+        let mut client = self.connect().await?;
+        let request = Request::new(PeerListRequest {});
+        let response = client.peer_list(request).await?.into_inner();
+        CLI::dump_response(&response);
         Ok(())
     }
 

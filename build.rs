@@ -7,6 +7,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .type_attribute(".", "#[derive(serde::Serialize)]")
         .field_attribute("peer_node_id", SERDE_SERIALIZE_HEX)
         .field_attribute("channel_id", SERDE_SERIALIZE_HEX)
+        .field_attribute("node_id", SERDE_SERIALIZE_HEX)
         .out_dir("src/admin")
         .compile(&["src/admin/admin.proto"], &["src/admin"])?;
     Ok(())

@@ -28,7 +28,6 @@ use lightning_background_processor::BackgroundProcessor;
 use std::collections::HashMap;
 use tokio::sync::mpsc::{Sender, Receiver};
 use crate::cli::LdkUserInfo;
-use bitcoin::secp256k1::Secp256k1;
 use std::net::{SocketAddr, TcpStream};
 use tokio::runtime::Runtime;
 
@@ -290,9 +289,6 @@ fn build1(keys_manager: Arc<DynKeysInterface>, args: LdkUserInfo, ldk_data_dir: 
         }
     });
 
-    let node_pubkey = PublicKey::from_secret_key(&Secp256k1::new(), &keys_manager.get_node_secret());
-    println!("my pubkey {}", node_pubkey);
-
     // Step 15: Initialize LDK Event Handling
     let peer_manager_event_listener = peer_manager.clone();
     let channel_manager_event_listener = channel_manager.clone();
@@ -351,11 +347,11 @@ pub(crate) async fn connect_peer_if_necessary(
                 if peer_connected {
                     break;
                 }
-                println!("waiting for setup");
+                println!("waiting for peer connection setup");
                 thread::sleep(Duration::new(1, 0));
             }
             if !peer_connected {
-                println!("failed");
+                println!("timed out setting up peer connection");
                 return Err(())
             }
         }

@@ -28,6 +28,7 @@ use std::time::Duration;
 use tokio::runtime::Handle;
 use tokio::sync::mpsc;
 
+#[derive(Clone)]
 pub struct LdkUserInfo {
 	pub bitcoind_rpc_username: String,
 	pub bitcoind_rpc_password: String,
@@ -55,77 +56,6 @@ pub(crate) fn poll_for_user_input(
 		if let Some(word) = words.next() {
 			match word {
 				"help" => help(),
-				"openchannel" => {
-					let peer_pubkey_and_ip_addr = words.next();
-					let channel_value_sat = words.next();
-					if peer_pubkey_and_ip_addr.is_none() || channel_value_sat.is_none() {
-						println!("ERROR: openchannel has 2 required arguments: `openchannel pubkey@host:port channel_amt_satoshis` [--public]");
-						print!("> ");
-						io::stdout().flush().unwrap();
-						continue;
-					}
-					let peer_pubkey_and_ip_addr = peer_pubkey_and_ip_addr.unwrap();
-					let (pubkey, peer_addr) =
-						match parse_peer_info(peer_pubkey_and_ip_addr.to_string()) {
-							Ok(info) => info,
-							Err(e) => {
-								println!("{:?}", e.into_inner().unwrap());
-								print!("> ");
-								io::stdout().flush().unwrap();
-								continue;
-							}
-						};
-
-					let chan_amt_sat: Result<u64, _> = channel_value_sat.unwrap().parse();
-					if chan_amt_sat.is_err() {
-						println!("ERROR: channel amount must be a number");
-						print!("> ");
-						io::stdout().flush().unwrap();
-						continue;
-					}
-
-					if connect_peer_if_necessary(
-						pubkey,
-						peer_addr,
-						peer_manager.clone(),
-						event_notifier.clone(),
-						runtime_handle.clone(),
-					)
-					.is_err()
-					{
-						print!("> ");
-						io::stdout().flush().unwrap();
-						continue;
-					};
-
-					// let private_channel = match words.next().as_ref().map(String::as_str) {
-					let announce_channel = match words.next() {
-						Some("--public") | Some("--public=true") | Some("--public true") => true,
-						Some("--public=false") | Some("--public false") => false,
-						Some(_) => {
-							println!("ERROR: invalid `--public` command format");
-							print!("> ");
-							io::stdout().flush().unwrap();
-							continue;
-						}
-						None => false,
-					};
-
-					if open_channel(
-						pubkey,
-						chan_amt_sat.unwrap(),
-						announce_channel,
-						channel_manager.clone(),
-					)
-					.is_ok()
-					{
-						let peer_data_path = format!("{}/channel_peer_data", ldk_data_dir.clone());
-						let _ = disk::persist_channel_peer(
-							Path::new(&peer_data_path),
-							peer_pubkey_and_ip_addr,
-						);
-					}
-				}
 				"sendpayment" => {
 					let invoice_str = words.next();
 					if invoice_str.is_none() {
@@ -275,7 +205,6 @@ pub(crate) fn poll_for_user_input(
 						println!("SUCCESS: connected to peer {}", pubkey);
 					}
 				}
-				"listchannels" => list_channels(channel_manager.clone()),
 				"listpayments" => list_payments(payment_storage.clone()),
 				"closechannel" => {
 					let channel_id_str = words.next();
@@ -332,32 +261,6 @@ fn help() {
 	println!("listpayments");
 	println!("closechannel <channel_id>");
 	println!("forceclosechannel <channel_id>");
-}
-
-fn list_channels(channel_manager: Arc<ChannelManager>) {
-	print!("[");
-	for chan_info in channel_manager.list_channels() {
-		println!("");
-		println!("\t{{");
-		println!("\t\tchannel_id: {},", hex_utils::hex_str(&chan_info.channel_id[..]));
-		println!(
-			"\t\tpeer_pubkey: {},",
-			hex_utils::hex_str(&chan_info.remote_network_id.serialize())
-		);
-		let mut pending_channel = false;
-		match chan_info.short_channel_id {
-			Some(id) => println!("\t\tshort_channel_id: {},", id),
-			None => {
-				pending_channel = true;
-			}
-		}
-		println!("\t\tpending_open: {},", pending_channel);
-		println!("\t\tchannel_value_satoshis: {},", chan_info.channel_value_satoshis);
-		println!("\t\tchannel_can_send_payments: {},", chan_info.is_live);
-		println!("\t\toutbound_capacity_msat: {}", chan_info.outbound_capacity_msat);
-		println!("\t}},");
-	}
-	println!("]");
 }
 
 fn list_payments(payment_storage: PaymentInfoStorage) {
@@ -418,28 +321,6 @@ pub(crate) fn connect_peer_if_necessary(
 		}
 	}
 	Ok(())
-}
-
-fn open_channel(
-	peer_pubkey: PublicKey, channel_amt_sat: u64, announce_channel: bool,
-	channel_manager: Arc<ChannelManager>,
-) -> Result<(), ()> {
-	let mut config = UserConfig::default();
-	if announce_channel {
-		config.channel_options.announced_channel = true;
-	}
-	// lnd's max to_self_delay is 2016, so we want to be compatible.
-	config.peer_channel_config_limits.their_to_self_delay = 2016;
-	match channel_manager.create_channel(peer_pubkey, channel_amt_sat, 0, 0, None) {
-		Ok(_) => {
-			println!("EVENT: initiated channel with peer {}. ", peer_pubkey);
-			return Ok(());
-		}
-		Err(e) => {
-			println!("ERROR: failed to open channel: {:?}", e);
-			return Err(());
-		}
-	}
 }
 
 fn send_payment(

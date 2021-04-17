@@ -58,7 +58,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
 
     let rpc_port = matches.value_of("rpcport").unwrap();
-    println!("admin port {}, p2p port {}, datadir {}", rpc_port, args.ldk_peer_listening_port, datadir);
 
     admin::driver::start(rpc_port.parse().expect("port number"), args).expect("gRPC driver start");
     Ok(())
