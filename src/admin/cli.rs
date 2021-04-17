@@ -107,6 +107,15 @@ impl CLI {
         Ok(())
     }
 
+    #[tokio::main]
+    pub async fn payment_list(&self) -> Result<(), Box<dyn std::error::Error>> {
+        let mut client = self.connect().await?;
+        let request = Request::new(Void {});
+        let response = client.payment_list(request).await?.into_inner();
+        CLI::dump_response(&response);
+        Ok(())
+    }
+
     async fn connect(&self) -> Result<AdminClient<transport::Channel>, Box<dyn std::error::Error>> {
         Ok(AdminClient::connect(self.connect.clone()).await?)
     }

@@ -115,6 +115,7 @@ fn make_payment_subapp() -> App<'static> {
         .subcommand(App::new("send").about("Pay invoice")
             .arg(Arg::new("invoice").about("serialized invoice").required(true))
         )
+        .subcommand(App::new("list").about("List incoming and outgoing payments"))
 }
 
 fn payment_subcommand(cli: &CLI, matches: &ArgMatches) -> Result<(), Box<dyn std::error::Error>> {
@@ -123,6 +124,7 @@ fn payment_subcommand(cli: &CLI, matches: &ArgMatches) -> Result<(), Box<dyn std
             let invoice: String = submatches.value_of_t("invoice")?;
             cli.payment_send(invoice)?
         },
+        Some(("list", _)) => cli.payment_list()?,
         Some((name, _)) => panic!("unimplemented command {}", name),
         None => {
             println!("missing sub-command");

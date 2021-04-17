@@ -57,7 +57,6 @@ pub(crate) fn poll_for_user_input(
 		let mut words = line.split_whitespace();
 		if let Some(word) = words.next() {
 			match word {
-				"listpayments" => list_payments(payment_storage.clone()),
 				"closechannel" => {
 					let channel_id_str = words.next();
 					if channel_id_str.is_none() {
@@ -102,33 +101,6 @@ pub(crate) fn poll_for_user_input(
 		print!("> ");
 		io::stdout().flush().unwrap();
 	}
-}
-
-fn list_payments(payment_storage: PaymentInfoStorage) {
-	let payments = payment_storage.lock().unwrap();
-	print!("[");
-	for (payment_hash, payment_info) in payments.deref() {
-		let direction_str = match payment_info.1 {
-			HTLCDirection::Inbound => "inbound",
-			HTLCDirection::Outbound => "outbound",
-		};
-		println!("");
-		println!("\t{{");
-		println!("\t\tamount_satoshis: {},", payment_info.3);
-		println!("\t\tpayment_hash: {},", hex_utils::hex_str(&payment_hash.0));
-		println!("\t\thtlc_direction: {},", direction_str);
-		println!(
-			"\t\thtlc_status: {},",
-			match payment_info.2 {
-				HTLCStatus::Pending => "pending",
-				HTLCStatus::Succeeded => "succeeded",
-				HTLCStatus::Failed => "failed",
-			}
-		);
-
-		println!("\t}},");
-	}
-	println!("]");
 }
 
 fn close_channel(channel_id: [u8; 32], channel_manager: Arc<ChannelManager>) {

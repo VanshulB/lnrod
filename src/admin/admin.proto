@@ -20,6 +20,8 @@ service Admin {
       returns (InvoiceNewReply);
   rpc PaymentSend(PaymentSendRequest)
       returns (PaymentSendReply);
+  rpc PaymentList(Void)
+      returns (PaymentListReply);
 }
 
 message PingRequest {
@@ -93,4 +95,20 @@ message PaymentSendRequest {
 }
 
 message PaymentSendReply {
+}
+
+message Payment {
+  enum PaymentStatus {
+    Pending = 0;
+    Succeeded = 1;
+    Failed = 2;
+  }
+  uint64 value_msat = 1;
+  bytes payment_hash = 2;
+  bool is_outbound = 3;
+  PaymentStatus status = 4;
+}
+
+message PaymentListReply {
+  repeated Payment payments = 1;
 }

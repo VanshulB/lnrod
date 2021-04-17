@@ -47,10 +47,11 @@ pub(crate) enum HTLCDirection {
 	Outbound,
 }
 
+#[derive(Clone)]
 pub(crate) enum HTLCStatus {
-	Pending,
-	Succeeded,
-	Failed,
+	Pending = 0,
+	Succeeded = 1,
+	Failed = 2,
 }
 
 pub(crate) struct MilliSatoshiAmount(Option<u64>);

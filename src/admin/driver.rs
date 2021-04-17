@@ -5,7 +5,7 @@ use lightning::chain::keysinterface::KeysInterface;
 use lightning::util::config::UserConfig;
 use tonic::{Request, Response, Status, transport::Server};
 
-use crate::admin::admin_api::{Channel, ChannelNewReply, ChannelNewRequest, InvoiceNewReply, InvoiceNewRequest, PaymentSendReply, PaymentSendRequest, Peer, PeerConnectReply, PeerConnectRequest, PeerListReply, PeerListRequest};
+use crate::admin::admin_api::{Channel, ChannelNewReply, ChannelNewRequest, InvoiceNewReply, InvoiceNewRequest, PaymentSendReply, PaymentSendRequest, Peer, PeerConnectReply, PeerConnectRequest, PeerListReply, PeerListRequest, PaymentListReply, Payment};
 use crate::cli::LdkUserInfo;
 use crate::node::{build_node, connect_peer_if_necessary, Node};
 
@@ -13,6 +13,7 @@ use super::admin_api::{ChannelListReply, NodeInfoReply, PingReply, PingRequest, 
 use super::admin_api::admin_server::{Admin, AdminServer};
 use lightning_invoice::Invoice;
 use std::str::FromStr;
+use crate::HTLCDirection;
 
 struct AdminHandler {
     node: Node
@@ -134,6 +135,23 @@ impl Admin for AdminHandler {
             .map_err(|_| Status::invalid_argument("invalid invoice"))?;
         self.node.send_payment(invoice).map_err(|e| Status::invalid_argument(e))?;
         let reply = PaymentSendReply {};
+        Ok(Response::new(reply))
+    }
+
+    async fn payment_list(&self, request: Request<Void>) -> Result<Response<PaymentListReply>, Status> {
+        let _req = request.into_inner();
+        let payments = self.node.payment_info
+            .lock().unwrap().iter()
+            .map(|(payment_hash, (_, direction, status, value_msat))|
+            Payment {
+                value_msat: value_msat.0.unwrap(),
+                payment_hash: payment_hash.0.to_vec(),
+                is_outbound: *direction == HTLCDirection::Outbound,
+                status: status.clone() as i32
+            }).collect();
+        let reply = PaymentListReply {
+            payments
+        };
         Ok(Response::new(reply))
     }
 }
