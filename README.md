@@ -30,7 +30,7 @@ lnrod --regtest
 lnrod --datadir ./data2 --rpcport 8802 --lnport 9902 --regtest
 
 # get the second node ID
-node2=`lnrcli -c http://[::1]:8802 node info`
+node2=`lnrcli -c http://127.0.0.1:8802 node info`
 
 # connect the first node to the second
 lnrcli peer connect $node2 127.0.0.1:9902
@@ -44,11 +44,30 @@ bitcoin-cli --regtest generatetoaddress 6 $a_mine
 lnrcli channel list
 
 # create invoice and pay it
-invoice=`lnrcli -c http://[::1]:8802 invoice new 1000 | jq -r .invoice`
+invoice=`lnrcli -c http://127.0.0.1:8802 invoice new 1000 | jq -r .invoice`
 lnrcli payment send $invoice
 
 # see new channel balance
 lnrcli channel list
+```
+
+## Integration test
+
+If you have `bitcoind` in your path, and a recent Rust toolchain:
+
+```
+virtualenv venv
+source venv/bin/activate
+pip3 install -r requirements.txt
+cargo build
+./tests/integration-test.py
+```
+
+or in CI or if you don't want to install deps:
+
+```
+docker build -t latest .
+docker run latest
 ```
 
 ## License

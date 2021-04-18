@@ -1,4 +1,4 @@
-#!/bin/env python3
+#!/usr/bin/env python3
 import atexit
 import logging
 import os
@@ -110,7 +110,7 @@ def run():
 
     print('Starting alice and bob')
     alice_stdout_log = open(TEST_DIR + '/node1.log', 'w')
-    alice_proc = Popen(['target/debug/server',
+    alice_proc = Popen(['target/debug/lnrod',
                         '--regtest',
                         '--datadir', TEST_DIR + '/data1',
                         '--rpcport', '8801', '--lnport', ALICE_LNPORT],
@@ -118,7 +118,7 @@ def run():
     processes.append(alice_proc)
 
     bob_stdout_log = open(TEST_DIR + '/node2.log', 'w')
-    bob_proc = Popen(['target/debug/server',
+    bob_proc = Popen(['target/debug/lnrod',
                       '--regtest',
                       '--datadir', TEST_DIR + '/data2',
                       '--rpcport', '8802', '--lnport', BOB_LNPORT],
