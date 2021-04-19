@@ -6,7 +6,7 @@ use lnrod::admin;
 use lnrod::node::NodeBuildArgs;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let app = App::new("server")
+    let app = App::new("lnrod")
         .about("LDK node")
         .arg(
             Arg::new("lnport")

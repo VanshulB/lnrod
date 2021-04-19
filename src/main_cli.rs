@@ -153,7 +153,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             Arg::new("rpc")
                 .short('c')
                 .long("rpc")
-                .default_value("http://[::1]:8801")
+                .default_value("http://127.0.0.1:8801")
                 .about("Connect to an RPC address")
                 .takes_value(true)
         )

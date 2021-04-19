@@ -1,0 +1,49 @@
+stages:
+  - build
+  - test
+
+variables:
+  PIP_CACHE_DIR: "$CI_PROJECT_DIR/.cache/pip"
+  CARGO_HOME: "$CI_PROJECT_DIR/.cache/cargo"
+
+cache:
+  paths:
+    - .cache
+    - bin
+
+before_script:
+  - mkdir -p bin
+  - if [ ! -e bin/bitcoind ]; then
+    wget --no-verbose https://bitcoin.org/bin/bitcoin-core-0.21.0/bitcoin-0.21.0-x86_64-linux-gnu.tar.gz &&
+    echo da7766775e3f9c98d7a9145429f2be8297c2672fe5b118fd3dc2411fb48e0032  bitcoin-0.21.0-x86_64-linux-gnu.tar.gz | sha256sum -c &&
+    tar xzf bitcoin-0.21.0-x86_64-linux-gnu.tar.gz &&
+    mv bitcoin-0.21.0/bin/bitcoind bin/ &&
+    rm -rf bitcoin-0.21.0 ;
+    fi
+
+compile:
+  stage: build
+  image: rust:1.49.0
+  script:
+    - cargo build
+    - cargo test
+# use these if you want to quickly iterate over the integration test (disable the build steps above and see integration job)
+#    - cp target/debug/lnrod .cache/
+#    - cp target/debug/lnrcli .cache/
+  artifacts:
+    paths:
+      - target/debug/lnrod
+      - target/debug/lnrcli
+
+integration:
+  stage: test
+  image: python:latest
+  timeout: 5m
+  script:
+# use this if you want to quickly iterate over the integration test (see compile job)
+#    - mkdir -p target/debug && cp .cache/lnrod .cache/lnrcli target/debug/
+    - pip3 install -r requirements.txt
+    - ./scripts/compile-proto
+    - PATH=$PATH:`pwd`/bin ./tests/integration-test.py
+    - cat /tmp/lnrod-test/node1.log
+    - cat /tmp/lnrod-test/node2.log

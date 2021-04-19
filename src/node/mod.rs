@@ -1,7 +1,7 @@
 use std::{fs, thread};
 use std::collections::HashMap;
 use std::fs::File;
-use std::net::{SocketAddr, TcpStream};
+use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, SystemTime};
 
@@ -36,6 +36,7 @@ use crate::bitcoind_client::BitcoindClient;
 use crate::default_signer::InMemorySignerFactory;
 use crate::disk::FilesystemLogger;
 use crate::keys::{DynKeysInterface, KeysManager};
+use crate::net::{setup_inbound, setup_outbound};
 
 #[derive(Clone)]
 pub struct NodeBuildArgs {
@@ -94,12 +95,14 @@ pub(crate) fn build_node(args: NodeBuildArgs) -> Node {
 }
 
 fn build1(keys_manager: Arc<DynKeysInterface>, args: NodeBuildArgs, ldk_data_dir: String) -> Node {
+    let runtime = Arc::new(Runtime::new().unwrap());
     // Initialize our bitcoind client.
     let bitcoind_client = match BitcoindClient::new(
         args.bitcoind_rpc_host.clone(),
         args.bitcoind_rpc_port,
         args.bitcoind_rpc_username.clone(),
         args.bitcoind_rpc_password.clone(),
+        &runtime
     ) {
         Ok(client) => Arc::new(client),
         Err(e) => {
@@ -142,7 +145,6 @@ fn build1(keys_manager: Arc<DynKeysInterface>, args: NodeBuildArgs, ldk_data_dir
 
     // Step 9: Initialize the ChannelManager
     let user_config = UserConfig::default();
-    let runtime = Runtime::new().unwrap();
 
     let mut restarting_node = true;
     let (channel_manager_blockhash, mut channel_manager) = {
@@ -260,12 +262,13 @@ fn build1(keys_manager: Arc<DynKeysInterface>, args: NodeBuildArgs, ldk_data_dir
            }
        }
     });
+
     runtime.spawn(async move {
-        let listener = std::net::TcpListener::bind(format!("0.0.0.0:{}", listening_port)).unwrap();
+        let listener = tokio::net::TcpListener::bind(format!("0.0.0.0:{}", listening_port)).await.unwrap();
         loop {
-            let tcp_stream = listener.accept().unwrap().0;
+            let tcp_stream = listener.accept().await.unwrap().0;
             println!("accepted");
-            lightning_net_tokio::setup_inbound(
+            setup_inbound(
                 peer_manager_connection_handler.clone(),
                 event_ntfn_sender1.clone(),
                 tcp_stream,
@@ -289,13 +292,12 @@ fn build1(keys_manager: Arc<DynKeysInterface>, args: NodeBuildArgs, ldk_data_dir
             SpvClient::new(chain_tip.unwrap(), chain_poller, &mut cache, &chain_listener);
         loop {
             spv_client.poll_best_tip().await.unwrap();
-            thread::sleep(Duration::new(1, 0));
+            tokio::time::sleep(Duration::new(1, 0)).await;
         }
     });
 
     // Step 17 & 18: Initialize ChannelManager persistence & Once Per Minute: ChannelManager's
     // timer_chan_freshness_every_min() and PeerManager's timer_tick_occurred
-    let handle = runtime.handle();
     let data_dir = ldk_data_dir.clone();
     let persist_channel_manager_callback =
         move |node: &ChannelManager| FilesystemPersister::persist_manager(data_dir.clone(), &*node);
@@ -307,10 +309,10 @@ fn build1(keys_manager: Arc<DynKeysInterface>, args: NodeBuildArgs, ldk_data_dir
     );
 
     let peer_manager_processor = peer_manager.clone();
-    handle.spawn(async move {
+    runtime.spawn(async move {
         loop {
             peer_manager_processor.timer_tick_occurred();
-            thread::sleep(Duration::new(60, 0));
+            tokio::time::sleep(Duration::new(60, 0)).await;
         }
     });
 
@@ -344,7 +346,7 @@ fn build1(keys_manager: Arc<DynKeysInterface>, args: NodeBuildArgs, ldk_data_dir
         ldk_data_dir,
         logger,
         network: args.network,
-        runtime: Arc::new(runtime),
+        runtime,
     }
 }
 
@@ -357,11 +359,11 @@ pub(crate) async fn connect_peer_if_necessary(
             return Ok(());
         }
     }
-    match TcpStream::connect_timeout(&peer_addr, Duration::from_secs(10)) {
+    match tokio::net::TcpStream::connect(&peer_addr).await {
         Ok(stream) => {
             let peer_mgr = peer_manager.clone();
             let event_ntfns = event_notifier.clone();
-            tokio::spawn(lightning_net_tokio::setup_outbound(peer_mgr, event_ntfns, pubkey, stream));
+            tokio::spawn(setup_outbound(peer_mgr, event_ntfns, pubkey, stream));
             let mut peer_connected = false;
             for _ in 0..5 {
                 for node_pubkey in peer_manager.get_peer_node_ids() {
@@ -373,7 +375,7 @@ pub(crate) async fn connect_peer_if_necessary(
                     break;
                 }
                 println!("waiting for peer connection setup");
-                thread::sleep(Duration::new(1, 0));
+                tokio::time::sleep(Duration::new(1, 0)).await;
             }
             if !peer_connected {
                 println!("timed out setting up peer connection");

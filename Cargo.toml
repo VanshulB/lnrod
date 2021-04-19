@@ -20,7 +20,6 @@ hex = "0.3"
 lightning = { git = "https://github.com/rust-bitcoin/rust-lightning", rev = "95779285575d3139482a73a943234c7dd82eb956" }
 lightning-block-sync = { git = "https://github.com/rust-bitcoin/rust-lightning", features = ["rpc-client"], rev = "95779285575d3139482a73a943234c7dd82eb956" }
 lightning-invoice = { git = "https://github.com/rust-bitcoin/rust-lightning-invoice", rev = "aa3a57b9dca5205fa25fa333a2db165d7e77b3b0" }
-lightning-net-tokio = { git = "https://github.com/rust-bitcoin/rust-lightning", rev = "95779285575d3139482a73a943234c7dd82eb956" }
 lightning-persister = { git = "https://github.com/rust-bitcoin/rust-lightning", rev = "95779285575d3139482a73a943234c7dd82eb956" }
 time = "0.2"
 rand = "0.4"
