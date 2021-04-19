@@ -55,12 +55,12 @@ impl CLI {
     }
 
     #[tokio::main]
-    pub async fn channel_new(&self, node_id: Vec<u8>, address: String, value_sat: u64, is_public: bool) -> Result<(), Box<dyn std::error::Error>> {
+    pub async fn channel_new(&self, node_id: Vec<u8>, value_sat: u64, push_msat: u64, is_public: bool) -> Result<(), Box<dyn std::error::Error>> {
         let mut client = self.connect().await?;
         let request = Request::new(ChannelNewRequest {
             node_id,
-            address,
             value_sat,
+            push_msat,
             is_public
         });
         let response = client.channel_new(request).await?.into_inner();

@@ -1,5 +1,6 @@
 use clap::{App, Arg, ArgMatches};
-use ldk_node::admin::cli::CLI;
+
+use lnrod::admin::cli::CLI;
 
 fn make_node_subapp() -> App<'static> {
     App::new("node")
@@ -25,8 +26,9 @@ fn make_channel_subapp() -> App<'static> {
         .subcommand(App::new("list").about("List channels"))
         .subcommand(App::new("new").about("New channel")
             .arg(Arg::new("nodeid").about("node ID in hex").required(true).validator(|s| hex::decode(s)))
-            .arg(Arg::new("address").about("host:port").required(true))
             .arg(Arg::new("value").about("value in satoshi").required(true)
+                .validator(|s| s.parse::<u64>()))
+            .arg(Arg::new("push").long("push").about("push in milli-satoshi")
                 .validator(|s| s.parse::<u64>()))
             .arg(Arg::new("public").short('b').long("public").about("announce the channel"))
         )
@@ -42,11 +44,12 @@ fn channel_subcommand(cli: &CLI, matches: &ArgMatches) -> Result<(), Box<dyn std
         Some(("new", submatches)) => {
             let node_id_hex: String = submatches.value_of_t("nodeid")?;
             let node_id = hex::decode(node_id_hex).expect("hex");
-            let address: String = submatches.value_of_t("address")?;
             let value_sat_str: String = submatches.value_of_t("value")?;
             let value_sat= value_sat_str.parse()?;
+            let push_msat_str: String = submatches.value_of_t("push")?;
+            let push_msat = push_msat_str.parse()?;
             let is_public = submatches.is_present("public");
-            cli.channel_new(node_id, address, value_sat, is_public)?
+            cli.channel_new(node_id, value_sat, push_msat, is_public)?
         },
         Some(("close", submatches)) => {
             let channel_id_hex: String = submatches.value_of_t("channelid")?;

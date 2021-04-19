@@ -1,5 +1,5 @@
 [package]
-name = "ldk-node"
+name = "lnrod"
 version = "0.1.0"
 authors = [
     "Dev Random",
@@ -37,9 +37,9 @@ serde = { version = "1.0.105", features = ["derive"] }
 tonic-build = "0.4"
 
 [[bin]]
-name = "server"
+name = "lnrod"
 path = "src/main_server.rs"
 
 [[bin]]
-name = "cli"
+name = "lnrcli"
 path = "src/main_cli.rs"

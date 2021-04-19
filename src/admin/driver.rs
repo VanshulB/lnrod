@@ -1,3 +1,4 @@
+use std::convert::TryInto;
 use std::net::{IpAddr, Ipv6Addr, SocketAddr};
 use std::str::FromStr;
 
@@ -8,16 +9,14 @@ use lightning_invoice::Invoice;
 use tonic::{Request, Response, Status, transport::Server};
 
 use crate::admin::admin_api::{
-    ChannelCloseRequest,
-    Channel, ChannelNewReply, ChannelNewRequest, InvoiceNewReply, InvoiceNewRequest,
-    Payment, PaymentListReply, PaymentSendReply, PaymentSendRequest, Peer,
-    PeerConnectReply, PeerConnectRequest, PeerListReply, PeerListRequest};
+    Channel, ChannelCloseRequest, ChannelNewReply, ChannelNewRequest,
+    InvoiceNewReply, InvoiceNewRequest, Payment, PaymentListReply, PaymentSendReply, PaymentSendRequest,
+    Peer, PeerConnectReply, PeerConnectRequest, PeerListReply, PeerListRequest};
 use crate::HTLCDirection;
 use crate::node::{build_node, connect_peer_if_necessary, Node, NodeBuildArgs};
 
 use super::admin_api::{ChannelListReply, NodeInfoReply, PingReply, PingRequest, Void};
 use super::admin_api::admin_server::{Admin, AdminServer};
-use std::convert::TryInto;
 
 struct AdminHandler {
     node: Node
@@ -69,24 +68,16 @@ impl Admin for AdminHandler {
 
     async fn channel_new(&self, request: Request<ChannelNewRequest>) -> Result<Response<ChannelNewReply>, Status> {
         let req = request.into_inner();
-        let peer_addr = req.address.parse().map_err(|_| Status::invalid_argument("address parse"))?;
         let node_id = PublicKey::from_slice(req.node_id.as_slice())
             .map_err(|_| Status::invalid_argument("failed to parse node_id"))?;
-        connect_peer_if_necessary(
-            node_id,
-            peer_addr,
-            self.node.peer_manager.clone(),
-            self.node.event_ntfn_sender.clone(),
-        ).await.map_err(|_| Status::aborted("could not connect to peer"))?;
 
-        println!("connected");
         let mut config = UserConfig::default();
         if req.is_public {
             config.channel_options.announced_channel = true;
         }
         // lnd's max to_self_delay is 2016, so we want to be compatible.
         config.peer_channel_config_limits.their_to_self_delay = 2016;
-        self.node.channel_manager.create_channel(node_id, req.value_sat, 0, 0, None)
+        self.node.channel_manager.create_channel(node_id, req.value_sat, req.push_msat, 0, Some(config))
             .map_err(|e| {
                 let msg = format!("failed to create channel {:?}", e);
                 Status::aborted(msg)

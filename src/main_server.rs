@@ -1,8 +1,9 @@
-use ldk_node::admin;
-use clap::{App, Arg};
 use bitcoin::Network;
+use clap::{App, Arg};
 use url::Url;
-use ldk_node::node::NodeBuildArgs;
+
+use lnrod::admin;
+use lnrod::node::NodeBuildArgs;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let app = App::new("server")

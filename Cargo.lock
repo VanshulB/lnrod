@@ -475,33 +475,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e2abad23fbc42b3700f2f279844dc832adb2b2eb069b2df918f455c4e18cc646"
 
 [[package]]
-name = "ldk-node"
-version = "0.1.0"
-dependencies = [
- "base64",
- "bech32 0.7.2",
- "bitcoin",
- "bitcoin-bech32",
- "clap",
- "hex",
- "lightning",
- "lightning-background-processor",
- "lightning-block-sync",
- "lightning-invoice",
- "lightning-net-tokio",
- "lightning-persister",
- "prost",
- "rand 0.4.6",
- "serde",
- "serde_json",
- "time",
- "tokio",
- "tonic",
- "tonic-build",
- "url",
-]
-
-[[package]]
 name = "libc"
 version = "0.2.86"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -568,6 +541,33 @@ dependencies = [
  "libc",
  "lightning",
  "winapi",
+]
+
+[[package]]
+name = "lnrod"
+version = "0.1.0"
+dependencies = [
+ "base64",
+ "bech32 0.7.2",
+ "bitcoin",
+ "bitcoin-bech32",
+ "clap",
+ "hex",
+ "lightning",
+ "lightning-background-processor",
+ "lightning-block-sync",
+ "lightning-invoice",
+ "lightning-net-tokio",
+ "lightning-persister",
+ "prost",
+ "rand 0.4.6",
+ "serde",
+ "serde_json",
+ "time",
+ "tokio",
+ "tonic",
+ "tonic-build",
+ "url",
 ]
 
 [[package]]
