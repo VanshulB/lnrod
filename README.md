@@ -60,10 +60,11 @@ virtualenv venv
 source venv/bin/activate
 pip3 install -r requirements.txt
 cargo build
+./scripts/compile-proto
 ./tests/integration-test.py
 ```
 
-or in CI or if you don't want to install deps:
+or in CI or if you don't want to install `bitcoind` and Python deps:
 
 ```
 docker build -t latest .

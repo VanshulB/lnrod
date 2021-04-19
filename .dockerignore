@@ -1,5 +1,7 @@
 venv
-target
+target/*/deps
+target/*/build
+target/*/incremental
 **/__pycache__
 **/*.swp
 

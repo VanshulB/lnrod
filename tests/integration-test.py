@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env -S python3 -u
 import atexit
 import logging
 import os
@@ -68,13 +68,8 @@ def node(url):
     return stub
 
 
-@retry(stop_max_attempt_number=50, wait_fixed=100)
-def retryable(f):
-    f()
-
-
 def wait_until(func):
-    timeout = 50000
+    timeout = 50
     exc = None
     while timeout > 0:
         try:
@@ -125,9 +120,9 @@ def run():
                      stdout=bob_stdout_log, stderr=subprocess.STDOUT)
     processes.append(bob_proc)
 
+    print('Connect to alice and bob')
     alice = node('localhost:8801')
     bob = node('localhost:8802')
-    alice.Ping(PingRequest(message="hello"))
 
     print('Generate initial blocks')
     btc.mine(110)

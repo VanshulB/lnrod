@@ -1,11 +1,9 @@
 # Integration test
 
-FROM rust:1.49.0
+FROM python:latest
+#FROM python@sha256:07c51c65ab9c1a156a1fb51eff3ec04feff7b85b2acb7d6cc65148b218d67402
 
 WORKDIR /usr/src/app
-
-RUN apt update
-RUN apt -y install python3-pip
 
 COPY requirements.txt .
 RUN pip3 install -r requirements.txt
@@ -16,13 +14,13 @@ RUN tar xzf bitcoin-0.21.0-x86_64-linux-gnu.tar.gz && \
   mv bitcoin-0.21.0/bin/bitcoind /usr/local/bin && \
   rm -rf bitcoin-0.21.0
 
-# create a layer with crates.io index
-COPY misc/Cargo.toml-simple Cargo.toml
-RUN mkdir src
-COPY misc/main.rs src/
-RUN cargo build
 
-COPY . .
-RUN cargo build
+COPY scripts scripts
+
+COPY target/debug/lnrod target/debug/
+COPY src/admin/admin.proto src/admin/
+COPY tests tests
+
+RUN ./scripts/compile-proto
 
 ENTRYPOINT ["./tests/integration-test.py"]
