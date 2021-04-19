@@ -9,7 +9,7 @@ use lightning_block_sync::rpc::RpcClient;
 use serde_json;
 use std::collections::HashMap;
 use std::str::FromStr;
-use std::sync::Mutex;
+use std::sync::{Mutex, Arc};
 use tokio::runtime::{Handle, Runtime};
 
 pub struct BitcoindClient {
@@ -18,12 +18,13 @@ pub struct BitcoindClient {
 	port: u16,
 	rpc_user: String,
 	rpc_password: String,
-	runtime: Mutex<Runtime>,
+	runtime: Arc<Runtime>,
 }
 
 impl BitcoindClient {
 	pub fn new(
 		host: String, port: u16, rpc_user: String, rpc_password: String,
+		runtime: &Arc<Runtime>
 	) -> std::io::Result<Self> {
 		let http_endpoint = HttpEndpoint::for_host(host.clone()).with_port(port);
 		let rpc_credentials =
@@ -35,7 +36,7 @@ impl BitcoindClient {
 			port,
 			rpc_user,
 			rpc_password,
-			runtime: Mutex::new(Runtime::new().unwrap()),
+			runtime: Arc::clone(runtime),
 		};
 		Ok(client)
 	}
@@ -48,11 +49,10 @@ impl BitcoindClient {
 	}
 
 	pub fn create_raw_transaction(&self, outputs: Vec<HashMap<String, f64>>) -> RawTx {
-		let runtime = self.runtime.lock().unwrap();
 		let mut rpc = self.bitcoind_rpc_client.lock().unwrap();
 
 		let outputs_json = serde_json::json!(outputs);
-		runtime
+		self.runtime
 			.block_on(rpc.call_method::<RawTx>(
 				"createrawtransaction",
 				&vec![serde_json::json!([]), outputs_json],
@@ -61,44 +61,39 @@ impl BitcoindClient {
 	}
 
 	pub fn fund_raw_transaction(&self, raw_tx: RawTx) -> FundedTx {
-		let runtime = self.runtime.lock().unwrap();
 		let mut rpc = self.bitcoind_rpc_client.lock().unwrap();
 
 		let raw_tx_json = serde_json::json!(raw_tx.0);
-		runtime.block_on(rpc.call_method("fundrawtransaction", &[raw_tx_json])).unwrap()
+		self.runtime.block_on(rpc.call_method("fundrawtransaction", &[raw_tx_json])).unwrap()
 	}
 
 	pub fn sign_raw_transaction_with_wallet(&self, tx_hex: String) -> SignedTx {
-		let runtime = self.runtime.lock().unwrap();
 		let mut rpc = self.bitcoind_rpc_client.lock().unwrap();
 
 		let tx_hex_json = serde_json::json!(tx_hex);
-		runtime
+		self.runtime
 			.block_on(rpc.call_method("signrawtransactionwithwallet", &vec![tx_hex_json]))
 			.unwrap()
 	}
 
 	pub fn get_new_address(&self) -> Address {
-		let runtime = self.runtime.lock().unwrap();
 		let mut rpc = self.bitcoind_rpc_client.lock().unwrap();
 
 		let addr_args = vec![serde_json::json!("LDK output address")];
 		let addr =
-			runtime.block_on(rpc.call_method::<NewAddress>("getnewaddress", &addr_args)).unwrap();
+			self.runtime.block_on(rpc.call_method::<NewAddress>("getnewaddress", &addr_args)).unwrap();
 		Address::from_str(addr.0.as_str()).unwrap()
 	}
 
 	pub fn get_blockchain_info(&self) -> BlockchainInfo {
-		let runtime = self.runtime.lock().unwrap();
 		let mut rpc = self.bitcoind_rpc_client.lock().unwrap();
 
-		runtime.block_on(rpc.call_method::<BlockchainInfo>("getblockchaininfo", &vec![])).unwrap()
+		self.runtime.block_on(rpc.call_method::<BlockchainInfo>("getblockchaininfo", &vec![])).unwrap()
 	}
 }
 
 impl FeeEstimator for BitcoindClient {
 	fn get_est_sat_per_1000_weight(&self, confirmation_target: ConfirmationTarget) -> u32 {
-		let runtime = self.runtime.lock().unwrap();
 		let mut rpc = self.bitcoind_rpc_client.lock().unwrap();
 
 		let (conf_target, estimate_mode, default) = match confirmation_target {
@@ -113,14 +108,14 @@ impl FeeEstimator for BitcoindClient {
 		let estimate_mode_json = serde_json::json!(estimate_mode);
 		let resp = match Handle::try_current() {
 			Ok(_) => tokio::task::block_in_place(|| {
-				runtime
+				self.runtime
 					.block_on(rpc.call_method::<FeeResponse>(
 						"estimatesmartfee",
 						&vec![conf_target_json, estimate_mode_json],
 					))
 					.unwrap()
 			}),
-			_ => runtime
+			_ => self.runtime
 				.block_on(rpc.call_method::<FeeResponse>(
 					"estimatesmartfee",
 					&vec![conf_target_json, estimate_mode_json],
@@ -137,7 +132,6 @@ impl FeeEstimator for BitcoindClient {
 impl BroadcasterInterface for BitcoindClient {
 	fn broadcast_transaction(&self, tx: &Transaction) {
 		let mut rpc = self.bitcoind_rpc_client.lock().unwrap();
-		let runtime = self.runtime.lock().unwrap();
 
 		let tx_serialized = serde_json::json!(encode::serialize_hex(tx));
 		// This function may be called from a tokio runtime, or not. So we need to check before
@@ -145,7 +139,7 @@ impl BroadcasterInterface for BitcoindClient {
 		match Handle::try_current() {
 			Ok(_) => {
 				tokio::task::block_in_place(|| {
-					let result = runtime
+					let result = self.runtime
 						.block_on(
 							rpc.call_method::<RawTx>("sendrawtransaction", &vec![tx_serialized]),
 						);
@@ -157,7 +151,7 @@ impl BroadcasterInterface for BitcoindClient {
 				});
 			}
 			_ => {
-				let result = runtime
+				let result = self.runtime
 					.block_on(rpc.call_method::<RawTx>("sendrawtransaction", &vec![tx_serialized]));
 				if result.is_err() {
 					// This may be just that it was already accepted to the blockchain,

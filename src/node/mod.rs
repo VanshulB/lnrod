@@ -94,12 +94,14 @@ pub(crate) fn build_node(args: NodeBuildArgs) -> Node {
 }
 
 fn build1(keys_manager: Arc<DynKeysInterface>, args: NodeBuildArgs, ldk_data_dir: String) -> Node {
+    let runtime = Arc::new(Runtime::new().unwrap());
     // Initialize our bitcoind client.
     let bitcoind_client = match BitcoindClient::new(
         args.bitcoind_rpc_host.clone(),
         args.bitcoind_rpc_port,
         args.bitcoind_rpc_username.clone(),
         args.bitcoind_rpc_password.clone(),
+        &runtime
     ) {
         Ok(client) => Arc::new(client),
         Err(e) => {
@@ -142,7 +144,6 @@ fn build1(keys_manager: Arc<DynKeysInterface>, args: NodeBuildArgs, ldk_data_dir
 
     // Step 9: Initialize the ChannelManager
     let user_config = UserConfig::default();
-    let runtime = Runtime::new().unwrap();
 
     let mut restarting_node = true;
     let (channel_manager_blockhash, mut channel_manager) = {
@@ -344,7 +345,7 @@ fn build1(keys_manager: Arc<DynKeysInterface>, args: NodeBuildArgs, ldk_data_dir
         ldk_data_dir,
         logger,
         network: args.network,
-        runtime: Arc::new(runtime),
+        runtime,
     }
 }
 
