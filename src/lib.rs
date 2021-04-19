@@ -20,13 +20,13 @@ use lightning::ln::channelmanager::ChannelManager as RLChannelManager;
 use lightning::ln::peer_handler::PeerManager as RLPeerManager;
 use lightning::routing::network_graph::NetGraphMsgHandler;
 use lightning::util::events::{Event, EventsProvider};
-use lightning_net_tokio::SocketDescriptor;
 use lightning_persister::FilesystemPersister;
 use rand::{Rng, thread_rng};
 
 use crate::bitcoind_client::BitcoindClient;
 use crate::disk::FilesystemLogger;
 use crate::keys::{DynKeysInterface, DynSigner, SpendableKeysInterface};
+use crate::net::SocketDescriptor;
 
 mod bitcoind_client;
 mod convert;
@@ -39,6 +39,7 @@ mod default_signer;
 pub mod admin;
 pub mod node;
 pub mod util;
+pub mod net;
 
 #[derive(PartialEq)]
 pub(crate) enum HTLCDirection {

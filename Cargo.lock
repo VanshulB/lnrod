@@ -523,16 +523,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "lightning-net-tokio"
-version = "0.0.13"
-source = "git+https://github.com/rust-bitcoin/rust-lightning?rev=95779285575d3139482a73a943234c7dd82eb956#95779285575d3139482a73a943234c7dd82eb956"
-dependencies = [
- "bitcoin",
- "lightning",
- "tokio",
-]
-
-[[package]]
 name = "lightning-persister"
 version = "0.0.13"
 source = "git+https://github.com/rust-bitcoin/rust-lightning?rev=95779285575d3139482a73a943234c7dd82eb956#95779285575d3139482a73a943234c7dd82eb956"
@@ -557,7 +547,6 @@ dependencies = [
  "lightning-background-processor",
  "lightning-block-sync",
  "lightning-invoice",
- "lightning-net-tokio",
  "lightning-persister",
  "prost",
  "rand 0.4.6",
