@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::io::Write;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
-use std::{fmt, io, thread};
+use std::{fmt, io};
 
 use bitcoin::consensus::encode;
 use bitcoin::hashes::sha256::Hash as Sha256;
@@ -98,14 +98,13 @@ pub(crate) type ChannelManager = RLChannelManager<
 	Arc<FilesystemLogger>,
 >;
 
-fn handle_ldk_events(
-	peer_manager: Arc<PeerManager>, channel_manager: Arc<ChannelManager>,
+async fn handle_ldk_events(
+	channel_manager: Arc<ChannelManager>,
 	chain_monitor: Arc<ArcChainMonitor>, bitcoind_client: Arc<BitcoindClient>,
 	keys_manager: Arc<DynKeysInterface>, payment_storage: PaymentInfoStorage, network: Network,
 ) {
 	let mut pending_txs: HashMap<OutPoint, Transaction> = HashMap::new();
 	loop {
-		peer_manager.process_events();
 		let loop_channel_manager = channel_manager.clone();
 		let mut events = channel_manager.get_and_clear_pending_events();
 		events.append(&mut chain_monitor.get_and_clear_pending_events());
@@ -132,16 +131,16 @@ fn handle_ldk_events(
 					.to_address();
 					let mut outputs = vec![HashMap::with_capacity(1)];
 					outputs[0].insert(addr, channel_value_satoshis as f64 / 100_000_000.0);
-					let raw_tx = bitcoind_client.create_raw_transaction(outputs);
+					let raw_tx = bitcoind_client.create_raw_transaction(outputs).await;
 
 					// Have your wallet put the inputs into the transaction such that the output is
 					// satisfied.
-					let funded_tx = bitcoind_client.fund_raw_transaction(raw_tx);
+					let funded_tx = bitcoind_client.fund_raw_transaction(raw_tx).await;
 					let change_output_position = funded_tx.changepos;
 					assert!(change_output_position == 0 || change_output_position == 1);
 
 					// Sign the final funding transaction and broadcast it.
-					let signed_tx = bitcoind_client.sign_raw_transaction_with_wallet(funded_tx.hex);
+					let signed_tx = bitcoind_client.sign_raw_transaction_with_wallet(funded_tx.hex).await;
 					assert_eq!(signed_tx.complete, true);
 					let final_tx: Transaction =
 						encode::deserialize(&hex_utils::to_vec(&signed_tx.hex).unwrap()).unwrap();
@@ -234,17 +233,17 @@ fn handle_ldk_events(
 				}
 				Event::PendingHTLCsForwardable { time_forwardable } => {
 					let forwarding_channel_manager = loop_channel_manager.clone();
-					thread::spawn(move || {
-						let min = time_forwardable.as_secs();
+					tokio::spawn(async move {
+						let min = time_forwardable.as_millis() as u64;
 						if min > 0 {
-							let seconds_to_sleep = thread_rng().gen_range(min, min * 5);
-							thread::sleep(Duration::new(seconds_to_sleep, 0));
+							let millis_to_sleep = thread_rng().gen_range(min, min * 5) as u64;
+							tokio::time::sleep(Duration::from_millis(millis_to_sleep)).await;
 						}
 						forwarding_channel_manager.process_pending_htlc_forwards();
 					});
 				}
 				Event::SpendableOutputs { outputs } => {
-					let destination_address = bitcoind_client.get_new_address();
+					let destination_address = bitcoind_client.get_new_address().await;
 					let output_descriptors = &outputs.iter().map(|a| a).collect::<Vec<_>>();
 					let tx_feerate =
 						bitcoind_client.get_est_sat_per_1000_weight(ConfirmationTarget::Normal);
@@ -263,7 +262,7 @@ fn handle_ldk_events(
 				}
 			}
 		}
-		thread::sleep(Duration::new(1, 0));
+		tokio::time::sleep(Duration::new(1, 0)).await;
 	}
 }
 

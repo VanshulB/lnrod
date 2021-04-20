@@ -222,10 +222,10 @@ impl Connection {
 /// not need to poll the provided future in order to make progress.
 ///
 /// See the module-level documentation for how to handle the event_notify mpsc::Sender.
-pub fn setup_inbound<CMH, RMH, L>(
+pub async fn setup_inbound<CMH, RMH, L>(
 	peer_manager: Arc<peer_handler::PeerManager<SocketDescriptor, Arc<CMH>, Arc<RMH>, Arc<L>>>,
 	event_notify: mpsc::Sender<()>, stream: TcpStream,
-) -> impl std::future::Future<Output = ()>
+)
 where
 	CMH: ChannelMessageHandler + 'static,
 	RMH: RoutingMessageHandler + 'static,
@@ -235,23 +235,18 @@ where
 	#[cfg(debug_assertions)]
 	let last_us = Arc::clone(&us);
 
-	let handle_opt =
-		if let Ok(_) = peer_manager.new_inbound_connection(SocketDescriptor::new(us.clone())) {
-			Some(tokio::spawn(Connection::schedule_read(
-				peer_manager,
-				us,
-				reader,
-				read_receiver,
-				write_receiver,
-			)))
-		} else {
-			// Note that we will skip socket_disconnected here, in accordance with the PeerManager
-			// requirements.
-			None
-		};
-
-	async move {
-		if let Some(handle) = handle_opt {
+	if let Ok(_) = peer_manager.new_inbound_connection(SocketDescriptor::new(us.clone())) {
+		let handle = tokio::spawn(Connection::schedule_read(
+			peer_manager,
+			us,
+			reader,
+			read_receiver,
+			write_receiver,
+		));
+		// Assert that the connection thread wasn't canceled during its lifetime
+		// TODO: is this really needed?
+		// We spawn here because this will wait until the connection is closed
+		tokio::spawn(async move {
 			if let Err(e) = handle.await {
 				assert!(e.is_cancelled());
 			} else {
@@ -262,8 +257,9 @@ where
 				// some work after shutdown()) and an error would be a major memory leak.
 				#[cfg(debug_assertions)]
 				assert!(Arc::try_unwrap(last_us).is_ok());
-			}
-		}
+			}});
+	} else {
+		println!("ERROR: peer_manager rejected connection");
 	}
 }
 
@@ -728,7 +724,7 @@ mod tests {
 
 		let (sender, _receiver) = mpsc::channel(2);
 		let fut_a = super::setup_outbound(Arc::clone(&a_manager), sender.clone(), b_pub, conn_a);
-		let fut_b = super::setup_inbound(b_manager, sender, conn_b);
+		super::setup_inbound(b_manager, sender, conn_b).await;
 
 		tokio::time::timeout(Duration::from_secs(10), a_connected.recv()).await.unwrap();
 		tokio::time::timeout(Duration::from_secs(1), b_connected.recv()).await.unwrap();
@@ -747,7 +743,6 @@ mod tests {
 		assert!(b_handler.disconnected_flag.load(Ordering::SeqCst));
 
 		fut_a.await;
-		fut_b.await;
 	}
 
 	#[tokio::test(flavor = "multi_thread")]

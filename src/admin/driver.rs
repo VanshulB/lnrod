@@ -192,21 +192,17 @@ impl Admin for AdminHandler {
 	}
 }
 
-pub fn start(rpc_port: u16, args: NodeBuildArgs) -> Result<(), Box<dyn std::error::Error>> {
-	let node = build_node(args.clone());
+#[tokio::main]
+pub async fn start(rpc_port: u16, args: NodeBuildArgs) -> Result<(), Box<dyn std::error::Error>> {
+	let node = build_node(args.clone()).await;
 	let node_id =
 		PublicKey::from_secret_key(&Secp256k1::new(), &node.keys_manager.get_node_secret());
 
 	println!("p2p {} 127.0.0.1:{}", node_id, args.peer_listening_port);
 	println!("admin port {}, datadir {}", rpc_port, args.storage_dir_path);
 	let addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), rpc_port);
-	let runtime = node.runtime.clone();
 	let handler = AdminHandler::new(node);
-	runtime.block_on(do_serve(addr, handler));
-	Ok(())
-}
-
-async fn do_serve(addr: SocketAddr, handler: AdminHandler) {
 	println!("starting server");
 	Server::builder().add_service(AdminServer::new(handler)).serve(addr).await.unwrap();
+	Ok(())
 }
