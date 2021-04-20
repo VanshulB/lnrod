@@ -70,7 +70,7 @@ pub(crate) struct Node {
 
 pub(crate) fn build_node(args: NodeBuildArgs) -> Node {
 	// Initialize the LDK data directory if necessary.
-	let ldk_data_dir = format!("{}/.ldk", args.storage_dir_path);
+	let ldk_data_dir = args.storage_dir_path.clone();
 	fs::create_dir_all(ldk_data_dir.clone()).unwrap();
 
 	// Step 6: Initialize the KeysManager

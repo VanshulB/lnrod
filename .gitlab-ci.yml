@@ -45,5 +45,7 @@ integration:
     - pip3 install -r requirements.txt
     - ./scripts/compile-proto
     - PATH=$PATH:`pwd`/bin ./tests/integration-test.py
-    - cat /tmp/lnrod-test/node1.log
-    - cat /tmp/lnrod-test/node2.log
+  artifacts:
+    when: always
+    paths:
+      - test-output

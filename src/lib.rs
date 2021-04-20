@@ -158,20 +158,25 @@ fn handle_ldk_events(
 				Event::PaymentReceived { payment_hash, payment_secret, amt: amt_msat } => {
 					let mut payments = payment_storage.lock().unwrap();
 					if let Some((Some(preimage), _, _, _)) = payments.get(&payment_hash) {
-						assert!(loop_channel_manager.claim_funds(
+						let success = loop_channel_manager.claim_funds(
 							preimage.clone(),
 							&payment_secret,
 							amt_msat
-						));
-						println!(
-							"\nEVENT: received payment from payment_hash {} of {} satoshis",
-							hex_utils::hex_str(&payment_hash.0),
-							amt_msat / 1000
 						);
-						print!("> ");
-						io::stdout().flush().unwrap();
-						let (_, _, ref mut status, _) = payments.get_mut(&payment_hash).unwrap();
-						*status = HTLCStatus::Succeeded;
+
+						if success {
+							println!(
+								"\nEVENT: received payment from payment_hash {} of {} satoshis",
+								hex_utils::hex_str(&payment_hash.0),
+								amt_msat / 1000
+							);
+							io::stdout().flush().unwrap();
+							let (_, _, ref mut status, _) = payments.get_mut(&payment_hash).unwrap();
+							*status = HTLCStatus::Succeeded;
+						} else {
+							println!("\nEVENT: failed to claim payment with {} msat, preimage {}", amt_msat, hex::encode(preimage.0));
+							payment_secret.map(|s| println!("secret {}", hex::encode(s.0)));
+						}
 					} else {
 						println!("\nERROR: we received a payment but didn't know the preimage");
 						print!("> ");
@@ -260,4 +265,11 @@ fn handle_ldk_events(
 		}
 		thread::sleep(Duration::new(1, 0));
 	}
+}
+
+#[test]
+fn test_preimage() {
+	let preimage = hex::decode("0cd4d8d6e1df07bcc93921518dfcb9381537a239bfda7555a2948da6fcc966b0").unwrap();
+	let payment_hash = PaymentHash(Sha256::hash(&preimage).into_inner());
+	assert_eq!(hex::encode(payment_hash.0), "babe12b1f7ce7c610daadf397272dbbfafed71f02765109181bbc0f624dbd721");
 }
