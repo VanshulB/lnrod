@@ -3,7 +3,7 @@ use std::fs::File;
 use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, SystemTime};
-use std::{fs, thread};
+use std::fs;
 
 use bitcoin::blockdata::constants::genesis_block;
 use bitcoin::hashes::sha256::Hash as Sha256Hash;
@@ -29,7 +29,6 @@ use lightning_block_sync::{init, poll, SpvClient, UnboundedCache};
 use lightning_invoice::Invoice;
 use lightning_persister::FilesystemPersister;
 use rand::{thread_rng, Rng};
-use tokio::runtime::Runtime;
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::Sender;
 
@@ -64,11 +63,10 @@ pub(crate) struct Node {
 	pub(crate) event_ntfn_sender: Sender<()>,
 	pub(crate) ldk_data_dir: String,
 	pub(crate) logger: Arc<FilesystemLogger>,
-	pub(crate) network: Network,
-	pub(crate) runtime: Arc<Runtime>,
+	pub(crate) network: Network
 }
 
-pub(crate) fn build_node(args: NodeBuildArgs) -> Node {
+pub(crate) async fn build_node(args: NodeBuildArgs) -> Node {
 	// Initialize the LDK data directory if necessary.
 	let ldk_data_dir = args.storage_dir_path.clone();
 	fs::create_dir_all(ldk_data_dir.clone()).unwrap();
@@ -97,25 +95,23 @@ pub(crate) fn build_node(args: NodeBuildArgs) -> Node {
 		Box::new(KeysManager::new(&keys_seed, cur.as_secs(), cur.subsec_nanos(), factory));
 	let keys_manager = Arc::new(DynKeysInterface::new(manager));
 
-	build1(keys_manager, args, ldk_data_dir)
+	build_with_signer(keys_manager, args, ldk_data_dir).await
 }
 
-fn build1(keys_manager: Arc<DynKeysInterface>, args: NodeBuildArgs, ldk_data_dir: String) -> Node {
-	let runtime = Arc::new(Runtime::new().unwrap());
+async fn build_with_signer(keys_manager: Arc<DynKeysInterface>, args: NodeBuildArgs, ldk_data_dir: String) -> Node {
 	// Initialize our bitcoind client.
 	let bitcoind_client = match BitcoindClient::new(
 		args.bitcoind_rpc_host.clone(),
 		args.bitcoind_rpc_port,
 		args.bitcoind_rpc_username.clone(),
 		args.bitcoind_rpc_password.clone(),
-		&runtime,
 	) {
 		Ok(client) => Arc::new(client),
 		Err(e) => {
 			panic!("Failed to connect to bitcoind client: {}", e);
 		}
 	};
-	let mut bitcoind_rpc_client = bitcoind_client.get_new_rpc_client().unwrap();
+	let mut bitcoind_rpc_client = bitcoind_client.get_new_rpc_client().await.unwrap();
 
 	// ## Setup
 	// Step 1: Initialize the FeeEstimator
@@ -172,7 +168,7 @@ fn build1(keys_manager: Arc<DynKeysInterface>, args: NodeBuildArgs, ldk_data_dir
 		} else {
 			// We're starting a fresh node.
 			restarting_node = false;
-			let getinfo_resp = bitcoind_client.get_blockchain_info();
+			let getinfo_resp = bitcoind_client.get_blockchain_info().await;
 			let chain_params = ChainParameters {
 				network: args.network,
 				latest_hash: getinfo_resp.latest_blockhash,
@@ -215,16 +211,12 @@ fn build1(keys_manager: Arc<DynKeysInterface>, args: NodeBuildArgs, ldk_data_dir
 				&mut monitor_listener_info.1 as &mut dyn chain::Listen,
 			));
 		}
-		chain_tip = Some(
-			runtime
-				.block_on(init::synchronize_listeners(
-					&mut bitcoind_rpc_client,
-					args.network,
-					&mut cache,
-					chain_listeners,
-				))
-				.unwrap(),
-		);
+		chain_tip = Some(init::synchronize_listeners(
+			&mut bitcoind_rpc_client,
+			args.network,
+			&mut cache,
+			chain_listeners,
+		).await.unwrap());
 	}
 
 	// Step 11: Give ChannelMonitors to ChainMonitor
@@ -262,7 +254,7 @@ fn build1(keys_manager: Arc<DynKeysInterface>, args: NodeBuildArgs, ldk_data_dir
 	let peer_manager_connection_handler = peer_manager.clone();
 	let listening_port = args.peer_listening_port;
 	let event_ntfn_sender1 = event_ntfn_sender.clone();
-	runtime.spawn(async move {
+	tokio::spawn(async move {
 		loop {
 			let item = event_ntfn_receiver.recv().await;
 			if item.is_none() {
@@ -271,7 +263,7 @@ fn build1(keys_manager: Arc<DynKeysInterface>, args: NodeBuildArgs, ldk_data_dir
 		}
 	});
 
-	runtime.spawn(async move {
+	tokio::spawn(async move {
 		let listener =
 			tokio::net::TcpListener::bind(format!("0.0.0.0:{}", listening_port)).await.unwrap();
 		loop {
@@ -281,22 +273,19 @@ fn build1(keys_manager: Arc<DynKeysInterface>, args: NodeBuildArgs, ldk_data_dir
 				peer_manager_connection_handler.clone(),
 				event_ntfn_sender1.clone(),
 				tcp_stream,
-			)
-			.await;
+			).await;
 			println!("setup");
 		}
 	});
 
 	// Step 17: Connect and Disconnect Blocks
 	if chain_tip.is_none() {
-		chain_tip = Some(
-			runtime.block_on(init::validate_best_block_header(&mut bitcoind_rpc_client)).unwrap(),
-		);
+		chain_tip = Some(init::validate_best_block_header(&mut bitcoind_rpc_client).await.unwrap());
 	}
 	let channel_manager_listener = channel_manager.clone();
 	let chain_monitor_listener = chain_monitor.clone();
 	let network = args.network;
-	runtime.spawn(async move {
+	tokio::spawn(async move {
 		let chain_poller = poll::ChainPoller::new(&mut bitcoind_rpc_client, network);
 		let chain_listener = (chain_monitor_listener, channel_manager_listener);
 		let mut spv_client =
@@ -320,7 +309,7 @@ fn build1(keys_manager: Arc<DynKeysInterface>, args: NodeBuildArgs, ldk_data_dir
 	);
 
 	let peer_manager_processor = peer_manager.clone();
-	runtime.spawn(async move {
+	tokio::spawn(async move {
 		loop {
 			peer_manager_processor.timer_tick_occurred();
 			tokio::time::sleep(Duration::new(60, 0)).await;
@@ -328,24 +317,22 @@ fn build1(keys_manager: Arc<DynKeysInterface>, args: NodeBuildArgs, ldk_data_dir
 	});
 
 	// Step 15: Initialize LDK Event Handling
-	let peer_manager_event_listener = peer_manager.clone();
 	let channel_manager_event_listener = channel_manager.clone();
 	let chain_monitor_event_listener = chain_monitor.clone();
 	let keys_manager_listener = keys_manager.clone();
 	let payment_info: PaymentInfoStorage = Arc::new(Mutex::new(HashMap::new()));
 	let payment_info_for_events = payment_info.clone();
 	let network = args.network;
-	thread::spawn(move || {
+	tokio::spawn(
 		handle_ldk_events(
-			peer_manager_event_listener,
 			channel_manager_event_listener,
 			chain_monitor_event_listener,
 			bitcoind_client.clone(),
 			keys_manager_listener,
 			payment_info_for_events,
 			network,
-		);
-	});
+		)
+	);
 
 	Node {
 		peer_manager,
@@ -356,8 +343,7 @@ fn build1(keys_manager: Arc<DynKeysInterface>, args: NodeBuildArgs, ldk_data_dir
 		event_ntfn_sender,
 		ldk_data_dir,
 		logger,
-		network: args.network,
-		runtime,
+		network: args.network
 	}
 }
 
