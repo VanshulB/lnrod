@@ -1,16 +1,16 @@
+use crate::keys::{DynKeysInterface, DynSigner};
 use bitcoin::hashes::hex::FromHex;
 use bitcoin::{BlockHash, Txid};
 use lightning::chain::channelmonitor::ChannelMonitor;
 use lightning::chain::transaction::OutPoint;
 use lightning::util::logger::{Logger, Record};
+use lightning::util::ser::ReadableArgs;
 use std::collections::HashMap;
 use std::fs;
 use std::io::{Cursor, Write};
 use std::path::Path;
 use std::sync::Arc;
 use time::OffsetDateTime;
-use crate::keys::{DynKeysInterface, DynSigner};
-use lightning::util::ser::ReadableArgs;
 
 pub(crate) struct FilesystemLogger {
 	data_dir: String,
@@ -79,11 +79,10 @@ pub(crate) fn read_channelmonitors(
 
 		let contents = fs::read(&file.path())?;
 
-		if let Ok((blockhash, channel_monitor)) =
-			<(BlockHash, ChannelMonitor<DynSigner>)>::read(
-				&mut Cursor::new(&contents),
-				&*keys_manager,
-			) {
+		if let Ok((blockhash, channel_monitor)) = <(BlockHash, ChannelMonitor<DynSigner>)>::read(
+			&mut Cursor::new(&contents),
+			&*keys_manager,
+		) {
 			outpoint_to_channelmonitor.insert(
 				OutPoint { txid: txid.unwrap(), index: index.unwrap() },
 				(blockhash, channel_monitor),

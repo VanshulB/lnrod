@@ -9,7 +9,7 @@ use lightning_block_sync::rpc::RpcClient;
 use serde_json;
 use std::collections::HashMap;
 use std::str::FromStr;
-use std::sync::{Mutex, Arc};
+use std::sync::{Arc, Mutex};
 use tokio::runtime::{Handle, Runtime};
 
 pub struct BitcoindClient {
@@ -23,8 +23,7 @@ pub struct BitcoindClient {
 
 impl BitcoindClient {
 	pub fn new(
-		host: String, port: u16, rpc_user: String, rpc_password: String,
-		runtime: &Arc<Runtime>
+		host: String, port: u16, rpc_user: String, rpc_password: String, runtime: &Arc<Runtime>,
 	) -> std::io::Result<Self> {
 		let http_endpoint = HttpEndpoint::for_host(host.clone()).with_port(port);
 		let rpc_credentials =
@@ -80,15 +79,19 @@ impl BitcoindClient {
 		let mut rpc = self.bitcoind_rpc_client.lock().unwrap();
 
 		let addr_args = vec![serde_json::json!("LDK output address")];
-		let addr =
-			self.runtime.block_on(rpc.call_method::<NewAddress>("getnewaddress", &addr_args)).unwrap();
+		let addr = self
+			.runtime
+			.block_on(rpc.call_method::<NewAddress>("getnewaddress", &addr_args))
+			.unwrap();
 		Address::from_str(addr.0.as_str()).unwrap()
 	}
 
 	pub fn get_blockchain_info(&self) -> BlockchainInfo {
 		let mut rpc = self.bitcoind_rpc_client.lock().unwrap();
 
-		self.runtime.block_on(rpc.call_method::<BlockchainInfo>("getblockchaininfo", &vec![])).unwrap()
+		self.runtime
+			.block_on(rpc.call_method::<BlockchainInfo>("getblockchaininfo", &vec![]))
+			.unwrap()
 	}
 }
 
@@ -115,7 +118,8 @@ impl FeeEstimator for BitcoindClient {
 					))
 					.unwrap()
 			}),
-			_ => self.runtime
+			_ => self
+				.runtime
 				.block_on(rpc.call_method::<FeeResponse>(
 					"estimatesmartfee",
 					&vec![conf_target_json, estimate_mode_json],
@@ -139,10 +143,9 @@ impl BroadcasterInterface for BitcoindClient {
 		match Handle::try_current() {
 			Ok(_) => {
 				tokio::task::block_in_place(|| {
-					let result = self.runtime
-						.block_on(
-							rpc.call_method::<RawTx>("sendrawtransaction", &vec![tx_serialized]),
-						);
+					let result = self.runtime.block_on(
+						rpc.call_method::<RawTx>("sendrawtransaction", &vec![tx_serialized]),
+					);
 					if result.is_err() {
 						// This may be just that it was already accepted to the blockchain,
 						// but the RPC client swallows the details so we can't tell.
@@ -151,7 +154,8 @@ impl BroadcasterInterface for BitcoindClient {
 				});
 			}
 			_ => {
-				let result = self.runtime
+				let result = self
+					.runtime
 					.block_on(rpc.call_method::<RawTx>("sendrawtransaction", &vec![tx_serialized]));
 				if result.is_err() {
 					// This may be just that it was already accepted to the blockchain,

@@ -1,45 +1,45 @@
-use std::{fmt, io, thread};
 use std::collections::HashMap;
 use std::io::Write;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
+use std::{fmt, io, thread};
 
-use bitcoin::{Network, Transaction};
 use bitcoin::consensus::encode;
-use bitcoin::hashes::Hash;
 use bitcoin::hashes::sha256::Hash as Sha256;
+use bitcoin::hashes::Hash;
 use bitcoin::secp256k1::Secp256k1;
+use bitcoin::{Network, Transaction};
 use bitcoin_bech32::WitnessProgram;
 use lightning::chain;
 use lightning::chain::chaininterface::{BroadcasterInterface, ConfirmationTarget, FeeEstimator};
 use lightning::chain::chainmonitor::ChainMonitor;
-use lightning::chain::Filter;
 use lightning::chain::transaction::OutPoint;
-use lightning::ln::channelmanager::{PaymentHash, PaymentPreimage};
+use lightning::chain::Filter;
 use lightning::ln::channelmanager::ChannelManager as RLChannelManager;
+use lightning::ln::channelmanager::{PaymentHash, PaymentPreimage};
 use lightning::ln::peer_handler::PeerManager as RLPeerManager;
 use lightning::routing::network_graph::NetGraphMsgHandler;
 use lightning::util::events::{Event, EventsProvider};
 use lightning_persister::FilesystemPersister;
-use rand::{Rng, thread_rng};
+use rand::{thread_rng, Rng};
 
 use crate::bitcoind_client::BitcoindClient;
 use crate::disk::FilesystemLogger;
 use crate::keys::{DynKeysInterface, DynSigner, SpendableKeysInterface};
 use crate::net::SocketDescriptor;
 
+pub mod admin;
 mod bitcoind_client;
+mod byte_utils;
 mod convert;
+mod default_signer;
 mod disk;
 mod hex_utils;
 mod keys;
-mod byte_utils;
-mod transaction_utils;
-mod default_signer;
-pub mod admin;
-pub mod node;
-pub mod util;
 pub mod net;
+pub mod node;
+mod transaction_utils;
+pub mod util;
 
 #[derive(PartialEq)]
 pub(crate) enum HTLCDirection {
@@ -67,7 +67,10 @@ impl fmt::Display for MilliSatoshiAmount {
 
 pub(crate) type PaymentInfoStorage = Arc<
 	Mutex<
-		HashMap<PaymentHash, (Option<PaymentPreimage>, HTLCDirection, HTLCStatus, MilliSatoshiAmount)>,
+		HashMap<
+			PaymentHash,
+			(Option<PaymentPreimage>, HTLCDirection, HTLCStatus, MilliSatoshiAmount),
+		>,
 	>,
 >;
 
@@ -80,13 +83,20 @@ type ArcChainMonitor = ChainMonitor<
 	Arc<FilesystemPersister>,
 >;
 
-pub(crate) type PeerManager = SimpleArcPeerManager<SocketDescriptor, dyn chain::Access, FilesystemLogger>;
+pub(crate) type PeerManager =
+	SimpleArcPeerManager<SocketDescriptor, dyn chain::Access, FilesystemLogger>;
 
-pub(crate) type SimpleArcPeerManager<SD, C, L> = RLPeerManager<SD, Arc<ChannelManager>, Arc<NetGraphMsgHandler<Arc<C>, Arc<L>>>, Arc<L>>;
+pub(crate) type SimpleArcPeerManager<SD, C, L> =
+	RLPeerManager<SD, Arc<ChannelManager>, Arc<NetGraphMsgHandler<Arc<C>, Arc<L>>>, Arc<L>>;
 
-
-pub(crate) type ChannelManager =
-	RLChannelManager<DynSigner, Arc<ArcChainMonitor>, Arc<BitcoindClient>, Arc<DynKeysInterface>, Arc<BitcoindClient>, Arc<FilesystemLogger>>;
+pub(crate) type ChannelManager = RLChannelManager<
+	DynSigner,
+	Arc<ArcChainMonitor>,
+	Arc<BitcoindClient>,
+	Arc<DynKeysInterface>,
+	Arc<BitcoindClient>,
+	Arc<FilesystemLogger>,
+>;
 
 fn handle_ldk_events(
 	peer_manager: Arc<PeerManager>, channel_manager: Arc<ChannelManager>,
@@ -141,7 +151,8 @@ fn handle_ldk_events(
 					};
 					// Give the funding transaction back to LDK for opening the channel.
 					loop_channel_manager
-						.funding_transaction_generated(&temporary_channel_id, final_tx.clone()).unwrap();
+						.funding_transaction_generated(&temporary_channel_id, final_tx.clone())
+						.unwrap();
 					pending_txs.insert(outpoint, final_tx);
 				}
 				Event::PaymentReceived { payment_hash, payment_secret, amt: amt_msat } => {
@@ -168,7 +179,12 @@ fn handle_ldk_events(
 						loop_channel_manager.fail_htlc_backwards(&payment_hash, &payment_secret);
 						payments.insert(
 							payment_hash,
-							(None, HTLCDirection::Inbound, HTLCStatus::Failed, MilliSatoshiAmount(None)),
+							(
+								None,
+								HTLCDirection::Inbound,
+								HTLCStatus::Failed,
+								MilliSatoshiAmount(None),
+							),
 						);
 					}
 				}
