@@ -68,7 +68,7 @@ fn channel_subcommand(cli: &CLI, matches: &ArgMatches) -> Result<(), Box<dyn std
 			let node_id = hex::decode(node_id_hex).expect("hex");
 			let value_sat_str: String = submatches.value_of_t("value")?;
 			let value_sat = value_sat_str.parse()?;
-			let push_msat_str: String = submatches.value_of_t("push")?;
+			let push_msat_str: String = submatches.value_of("push").unwrap_or("0").to_string();
 			let push_msat = push_msat_str.parse()?;
 			let is_public = submatches.is_present("public");
 			cli.channel_new(node_id, value_sat, push_msat, is_public)?

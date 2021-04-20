@@ -2,6 +2,7 @@ venv
 target/*/deps
 target/*/build
 target/*/incremental
+target/*/*.rlib
 **/__pycache__
 **/*.swp
 
