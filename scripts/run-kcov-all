@@ -1,0 +1,9 @@
+#!/bin/sh
+
+export CARGO_TARGET_DIR=target/kcov
+
+cargo kcov \
+  --verbose \
+  -- \
+  --verify \
+  --exclude-pattern=$HOME/.cargo,$HOME/.rustup,/usr/include,/usr/src/debug
