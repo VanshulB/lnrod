@@ -20,7 +20,7 @@ fallbackfee=0.0000001
 
 # Start bitcoind in regtest mode, advance 101 blocks
 bitcoind -regtest -daemon
-a_mine=`bitcoin-cli -regtest getnewaddress`
+a_mine=`bitcoin-cli -regtest -rpcwallet=default getnewaddress`
 bitcoin-cli -regtest generatetoaddress 101 $a_mine
 
 alias lnrod=target/debug/lnrod
@@ -30,10 +30,11 @@ lnrod --regtest
 lnrod --datadir ./data2 --rpcport 8802 --lnport 9902 --regtest
 
 # get the second node ID
-node2=`lnrcli -c http://127.0.0.1:8802 node info`
+node2=`lnrcli -c http://127.0.0.1:8802 node info` && echo $node2
 
 # connect the first node to the second
 lnrcli peer connect $node2 127.0.0.1:9902
+
 # create channel
 lnrcli channel new $node2 1000000
 
@@ -70,6 +71,33 @@ or in CI or if you don't want to install `bitcoind` and Python deps:
 docker build -t latest .
 docker run latest
 ```
+
+### Using [kcov](https://github.com/SimonKagstrom/kcov) for Code Coverage
+
+Dependencies:
+
+    sudo dnf install -y elfutils-devel
+    sudo dnf install -y curl-devel
+    sudo dnf install -y binutils-devel
+
+Build v38 of kcov from git@github.com:SimonKagstrom/kcov.git .
+
+More dependencies:
+
+    cargo install cargo-kcov
+    cargo install cargo-coverage-annotations
+
+Run coverage:
+
+    ./scripts/run-kcov-all
+        
+View Coverage Report:
+
+    [target/kcov/cov/index.html](target/kcov/cov/index.html)
+
+Check coverage annotations in source files:
+
+    cargo coverage-annotations
 
 ## License
 
