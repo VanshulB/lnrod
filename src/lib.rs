@@ -129,8 +129,8 @@ async fn handle_ldk_events(
 					)
 					.expect("Lightning funding tx should always be to a SegWit output")
 					.to_address();
-					let mut outputs = vec![HashMap::with_capacity(1)];
-					outputs[0].insert(addr, channel_value_satoshis as f64 / 100_000_000.0);
+					let mut outputs = HashMap::with_capacity(1);
+					outputs.insert(addr, channel_value_satoshis);
 					let raw_tx = bitcoind_client.create_raw_transaction(outputs).await;
 
 					// Have your wallet put the inputs into the transaction such that the output is

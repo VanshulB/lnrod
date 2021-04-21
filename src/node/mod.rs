@@ -100,24 +100,19 @@ pub(crate) async fn build_node(args: NodeBuildArgs) -> Node {
 
 async fn build_with_signer(keys_manager: Arc<DynKeysInterface>, args: NodeBuildArgs, ldk_data_dir: String) -> Node {
 	// Initialize our bitcoind client.
-	let bitcoind_client = match BitcoindClient::new(
+	let mut bitcoind_client = BitcoindClient::new(
 		args.bitcoind_rpc_host.clone(),
 		args.bitcoind_rpc_port,
 		args.bitcoind_rpc_username.clone(),
-		args.bitcoind_rpc_password.clone(),
-	) {
-		Ok(client) => Arc::new(client),
-		Err(e) => {
-			panic!("Failed to connect to bitcoind client: {}", e);
-		}
-	};
-	let mut bitcoind_rpc_client = bitcoind_client.get_new_rpc_client().await.unwrap();
+		args.bitcoind_rpc_password.clone()).await
+		.unwrap_or_else(|e| panic!("Failed to connect to bitcoind client: {}", e));
 
+	let bitcoind_client_arc = Arc::new(bitcoind_client.clone());
 	// ## Setup
 	// Step 1: Initialize the FeeEstimator
 
 	// BitcoindClient implements the FeeEstimator trait, so it'll act as our fee estimator.
-	let fee_estimator = bitcoind_client.clone();
+	let fee_estimator = Arc::clone(&bitcoind_client_arc);
 
 	// Step 2: Initialize the Logger
 	let logger = Arc::new(FilesystemLogger::new(ldk_data_dir.clone()));
@@ -126,7 +121,7 @@ async fn build_with_signer(keys_manager: Arc<DynKeysInterface>, args: NodeBuildA
 
 	// BitcoindClient implements the BroadcasterInterface trait, so it'll act as our transaction
 	// broadcaster.
-	let broadcaster = bitcoind_client.clone();
+	let broadcaster = Arc::clone(&bitcoind_client_arc);
 
 	// Step 4: Initialize Persist
 	let persister = Arc::new(FilesystemPersister::new(ldk_data_dir.clone()));
@@ -212,7 +207,7 @@ async fn build_with_signer(keys_manager: Arc<DynKeysInterface>, args: NodeBuildA
 			));
 		}
 		chain_tip = Some(init::synchronize_listeners(
-			&mut bitcoind_rpc_client,
+			 &mut bitcoind_client,
 			args.network,
 			&mut cache,
 			chain_listeners,
@@ -280,13 +275,13 @@ async fn build_with_signer(keys_manager: Arc<DynKeysInterface>, args: NodeBuildA
 
 	// Step 17: Connect and Disconnect Blocks
 	if chain_tip.is_none() {
-		chain_tip = Some(init::validate_best_block_header(&mut bitcoind_rpc_client).await.unwrap());
+		chain_tip = Some(init::validate_best_block_header(&mut bitcoind_client).await.unwrap());
 	}
 	let channel_manager_listener = channel_manager.clone();
 	let chain_monitor_listener = chain_monitor.clone();
 	let network = args.network;
 	tokio::spawn(async move {
-		let chain_poller = poll::ChainPoller::new(&mut bitcoind_rpc_client, network);
+		let chain_poller = poll::ChainPoller::new(&mut bitcoind_client, network);
 		let chain_listener = (chain_monitor_listener, channel_manager_listener);
 		let mut spv_client =
 			SpvClient::new(chain_tip.unwrap(), chain_poller, &mut cache, &chain_listener);
@@ -327,7 +322,7 @@ async fn build_with_signer(keys_manager: Arc<DynKeysInterface>, args: NodeBuildA
 		handle_ldk_events(
 			channel_manager_event_listener,
 			chain_monitor_event_listener,
-			bitcoind_client.clone(),
+			bitcoind_client_arc,
 			keys_manager_listener,
 			payment_info_for_events,
 			network,
@@ -457,7 +452,7 @@ impl Node {
 		let amt_msat = amt_pico_btc.unwrap() / 10;
 
 		let payee_pubkey = invoice.recover_payee_pub_key();
-		let final_cltv = *invoice.min_final_cltv_expiry().unwrap_or(&10) as u32;
+		let final_cltv = *invoice.min_final_cltv_expiry().unwrap_or(&20) as u32;
 
 		let mut payment_hash = PaymentHash([0; 32]);
 		payment_hash.0.copy_from_slice(&invoice.payment_hash().as_ref()[0..32]);

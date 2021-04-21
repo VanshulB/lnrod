@@ -21,6 +21,7 @@ lightning = { git = "https://github.com/rust-bitcoin/rust-lightning", rev = "957
 lightning-block-sync = { git = "https://github.com/rust-bitcoin/rust-lightning", features = ["rpc-client"], rev = "95779285575d3139482a73a943234c7dd82eb956" }
 lightning-invoice = { git = "https://github.com/rust-bitcoin/rust-lightning-invoice", rev = "aa3a57b9dca5205fa25fa333a2db165d7e77b3b0" }
 lightning-persister = { git = "https://github.com/rust-bitcoin/rust-lightning", rev = "95779285575d3139482a73a943234c7dd82eb956" }
+
 time = "0.2"
 rand = "0.4"
 serde_json = { version = "1.0" }
@@ -29,6 +30,8 @@ prost = "0.7"
 tonic = "0.4"
 clap = "3.0.0-beta.2"
 url = "2.2"
+
+jsonrpc-async = "2.0.1"
 serde = { version = "1.0.105", features = ["derive"] }
 
 
