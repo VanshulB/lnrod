@@ -99,9 +99,9 @@ pub(crate) type ChannelManager = RLChannelManager<
 >;
 
 async fn handle_ldk_events(
-	channel_manager: Arc<ChannelManager>,
-	chain_monitor: Arc<ArcChainMonitor>, bitcoind_client: Arc<BitcoindClient>,
-	keys_manager: Arc<DynKeysInterface>, payment_storage: PaymentInfoStorage, network: Network,
+	channel_manager: Arc<ChannelManager>, chain_monitor: Arc<ArcChainMonitor>,
+	bitcoind_client: Arc<BitcoindClient>, keys_manager: Arc<DynKeysInterface>,
+	payment_storage: PaymentInfoStorage, network: Network,
 ) {
 	let mut pending_txs: HashMap<OutPoint, Transaction> = HashMap::new();
 	loop {
@@ -140,7 +140,8 @@ async fn handle_ldk_events(
 					assert!(change_output_position == 0 || change_output_position == 1);
 
 					// Sign the final funding transaction and broadcast it.
-					let signed_tx = bitcoind_client.sign_raw_transaction_with_wallet(funded_tx.hex).await;
+					let signed_tx =
+						bitcoind_client.sign_raw_transaction_with_wallet(funded_tx.hex).await;
 					assert_eq!(signed_tx.complete, true);
 					let final_tx: Transaction =
 						encode::deserialize(&hex_utils::to_vec(&signed_tx.hex).unwrap()).unwrap();
@@ -160,7 +161,7 @@ async fn handle_ldk_events(
 						let success = loop_channel_manager.claim_funds(
 							preimage.clone(),
 							&payment_secret,
-							amt_msat
+							amt_msat,
 						);
 
 						if success {
@@ -170,10 +171,15 @@ async fn handle_ldk_events(
 								amt_msat / 1000
 							);
 							io::stdout().flush().unwrap();
-							let (_, _, ref mut status, _) = payments.get_mut(&payment_hash).unwrap();
+							let (_, _, ref mut status, _) =
+								payments.get_mut(&payment_hash).unwrap();
 							*status = HTLCStatus::Succeeded;
 						} else {
-							println!("\nEVENT: failed to claim payment with {} msat, preimage {}", amt_msat, hex::encode(preimage.0));
+							println!(
+								"\nEVENT: failed to claim payment with {} msat, preimage {}",
+								amt_msat,
+								hex::encode(preimage.0)
+							);
 							payment_secret.map(|s| println!("secret {}", hex::encode(s.0)));
 						}
 					} else {
@@ -268,7 +274,11 @@ async fn handle_ldk_events(
 
 #[test]
 fn test_preimage() {
-	let preimage = hex::decode("0cd4d8d6e1df07bcc93921518dfcb9381537a239bfda7555a2948da6fcc966b0").unwrap();
+	let preimage =
+		hex::decode("0cd4d8d6e1df07bcc93921518dfcb9381537a239bfda7555a2948da6fcc966b0").unwrap();
 	let payment_hash = PaymentHash(Sha256::hash(&preimage).into_inner());
-	assert_eq!(hex::encode(payment_hash.0), "babe12b1f7ce7c610daadf397272dbbfafed71f02765109181bbc0f624dbd721");
+	assert_eq!(
+		hex::encode(payment_hash.0),
+		"babe12b1f7ce7c610daadf397272dbbfafed71f02765109181bbc0f624dbd721"
+	);
 }

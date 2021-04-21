@@ -1,9 +1,9 @@
 use std::collections::HashMap;
+use std::fs;
 use std::fs::File;
 use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, SystemTime};
-use std::fs;
 
 use bitcoin::blockdata::constants::genesis_block;
 use bitcoin::hashes::sha256::Hash as Sha256Hash;
@@ -63,7 +63,7 @@ pub(crate) struct Node {
 	pub(crate) event_ntfn_sender: Sender<()>,
 	pub(crate) ldk_data_dir: String,
 	pub(crate) logger: Arc<FilesystemLogger>,
-	pub(crate) network: Network
+	pub(crate) network: Network,
 }
 
 pub(crate) async fn build_node(args: NodeBuildArgs) -> Node {
@@ -98,14 +98,18 @@ pub(crate) async fn build_node(args: NodeBuildArgs) -> Node {
 	build_with_signer(keys_manager, args, ldk_data_dir).await
 }
 
-async fn build_with_signer(keys_manager: Arc<DynKeysInterface>, args: NodeBuildArgs, ldk_data_dir: String) -> Node {
+async fn build_with_signer(
+	keys_manager: Arc<DynKeysInterface>, args: NodeBuildArgs, ldk_data_dir: String,
+) -> Node {
 	// Initialize our bitcoind client.
 	let mut bitcoind_client = BitcoindClient::new(
 		args.bitcoind_rpc_host.clone(),
 		args.bitcoind_rpc_port,
 		args.bitcoind_rpc_username.clone(),
-		args.bitcoind_rpc_password.clone()).await
-		.unwrap_or_else(|e| panic!("Failed to connect to bitcoind client: {}", e));
+		args.bitcoind_rpc_password.clone(),
+	)
+	.await
+	.unwrap_or_else(|e| panic!("Failed to connect to bitcoind client: {}", e));
 
 	let bitcoind_client_arc = Arc::new(bitcoind_client.clone());
 	// ## Setup
@@ -206,12 +210,16 @@ async fn build_with_signer(keys_manager: Arc<DynKeysInterface>, args: NodeBuildA
 				&mut monitor_listener_info.1 as &mut dyn chain::Listen,
 			));
 		}
-		chain_tip = Some(init::synchronize_listeners(
-			 &mut bitcoind_client,
-			args.network,
-			&mut cache,
-			chain_listeners,
-		).await.unwrap());
+		chain_tip = Some(
+			init::synchronize_listeners(
+				&mut bitcoind_client,
+				args.network,
+				&mut cache,
+				chain_listeners,
+			)
+			.await
+			.unwrap(),
+		);
 	}
 
 	// Step 11: Give ChannelMonitors to ChainMonitor
@@ -268,7 +276,8 @@ async fn build_with_signer(keys_manager: Arc<DynKeysInterface>, args: NodeBuildA
 				peer_manager_connection_handler.clone(),
 				event_ntfn_sender1.clone(),
 				tcp_stream,
-			).await;
+			)
+			.await;
 			println!("setup");
 		}
 	});
@@ -318,16 +327,14 @@ async fn build_with_signer(keys_manager: Arc<DynKeysInterface>, args: NodeBuildA
 	let payment_info: PaymentInfoStorage = Arc::new(Mutex::new(HashMap::new()));
 	let payment_info_for_events = payment_info.clone();
 	let network = args.network;
-	tokio::spawn(
-		handle_ldk_events(
-			channel_manager_event_listener,
-			chain_monitor_event_listener,
-			bitcoind_client_arc,
-			keys_manager_listener,
-			payment_info_for_events,
-			network,
-		)
-	);
+	tokio::spawn(handle_ldk_events(
+		channel_manager_event_listener,
+		chain_monitor_event_listener,
+		bitcoind_client_arc,
+		keys_manager_listener,
+		payment_info_for_events,
+		network,
+	));
 
 	Node {
 		peer_manager,
@@ -338,7 +345,7 @@ async fn build_with_signer(keys_manager: Arc<DynKeysInterface>, args: NodeBuildA
 		event_ntfn_sender,
 		ldk_data_dir,
 		logger,
-		network: args.network
+		network: args.network,
 	}
 }
 

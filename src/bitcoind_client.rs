@@ -2,24 +2,24 @@ use std::collections::HashMap;
 use std::convert::TryInto;
 use std::iter::FromIterator;
 use std::str::FromStr;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicU32, Ordering};
+use std::sync::Arc;
 
-use bitcoin::{Amount, Block, BlockHash};
 use bitcoin::blockdata::transaction::Transaction;
 use bitcoin::util::address::Address;
 use bitcoin::util::psbt::serialize::Serialize;
+use bitcoin::{Amount, Block, BlockHash};
 use lightning::chain::chaininterface::{BroadcasterInterface, ConfirmationTarget, FeeEstimator};
-use lightning_block_sync::{AsyncBlockSourceResult, BlockHeaderData, BlockSource};
 use lightning_block_sync::http::JsonResponse;
+use lightning_block_sync::{AsyncBlockSourceResult, BlockHeaderData, BlockSource};
 use serde_json::{json, Value};
 use tokio::sync::Mutex;
 
 use crate::convert::{BlockchainInfo, FundedTx, RawTx, SignedTx};
-use jsonrpc_async::Client;
-use jsonrpc_async::simple_http::SimpleHttpTransport;
-use std::result;
 use bitcoin::hashes::hex::ToHex;
+use jsonrpc_async::simple_http::SimpleHttpTransport;
+use jsonrpc_async::Client;
+use std::result;
 
 #[derive(Clone)]
 pub struct BitcoindClient {
@@ -28,7 +28,6 @@ pub struct BitcoindClient {
 	port: u16,
 	fees: Arc<HashMap<Target, AtomicU32>>,
 }
-
 
 #[derive(Clone, Eq, Hash, PartialEq)]
 pub enum Target {
@@ -65,8 +64,9 @@ impl From<std::io::Error> for Error {
 pub type Result<T> = result::Result<T, Error>;
 
 impl BitcoindClient {
-	pub async fn new(host: String, port: u16,
-					 rpc_user: String, rpc_password: String) -> std::io::Result<Self> {
+	pub async fn new(
+		host: String, port: u16, rpc_user: String, rpc_password: String,
+	) -> std::io::Result<Self> {
 		let url = format!("http://{}:{}", host, port);
 		let mut builder = SimpleHttpTransport::builder().url(&url).await.unwrap();
 		builder = builder.auth(rpc_user, Some(rpc_password));
@@ -77,19 +77,16 @@ impl BitcoindClient {
 		fees.insert(Target::Normal, AtomicU32::new(2000));
 		fees.insert(Target::HighPriority, AtomicU32::new(5000));
 
-		let client = Self {
-			rpc: Arc::new(Mutex::new(rpc)),
-			host,
-			port,
-			fees: Arc::new(fees)
-		};
+		let client = Self { rpc: Arc::new(Mutex::new(rpc)), host, port, fees: Arc::new(fees) };
 		Ok(client)
 	}
 
 	pub async fn create_raw_transaction(&self, outputs: HashMap<String, u64>) -> RawTx {
-		let outs_converted = serde_json::to_value([serde_json::Map::from_iter(
-			outputs.iter().map(|(k, v)| (k.clone(), serde_json::Value::from(Amount::from_sat(*v).as_btc()))),
-		)]).unwrap();
+		let outs_converted =
+			serde_json::to_value([serde_json::Map::from_iter(outputs.iter().map(|(k, v)| {
+				(k.clone(), serde_json::Value::from(Amount::from_sat(*v).as_btc()))
+			}))])
+			.unwrap();
 
 		self.call_into("createrawtransaction", &vec![json!([]), outs_converted]).await.unwrap()
 	}
@@ -112,12 +109,13 @@ impl BitcoindClient {
 	}
 
 	async fn call<T: for<'a> serde::de::Deserialize<'a>>(
-		&self,
-		cmd: &str,
-		args: &[serde_json::Value],
+		&self, cmd: &str, args: &[serde_json::Value],
 	) -> Result<T> {
 		let rpc = self.rpc.lock().await;
-		let v_args : Vec<_> = args.iter().map(serde_json::value::to_raw_value).collect::<std::result::Result<_,serde_json::Error>>()?;
+		let v_args: Vec<_> = args
+			.iter()
+			.map(serde_json::value::to_raw_value)
+			.collect::<std::result::Result<_, serde_json::Error>>()?;
 		let req = rpc.build_request(cmd, &v_args[..]);
 		// if log_enabled!(Debug) {
 		// 	debug!(target: "bitcoincore_rpc", "JSON-RPC request: {} {}", cmd, serde_json::Value::from(args));
@@ -129,7 +127,9 @@ impl BitcoindClient {
 	}
 
 	async fn call_into<T>(&self, cmd: &str, args: &[serde_json::Value]) -> Result<T>
-		where JsonResponse: TryInto<T, Error=std::io::Error> {
+	where
+		JsonResponse: TryInto<T, Error = std::io::Error>,
+	{
 		let value: Value = self.call(cmd, args).await?;
 		Ok(JsonResponse(value).try_into()?)
 	}
@@ -160,20 +160,25 @@ impl BroadcasterInterface for BitcoindClient {
 			let raw_args = [serde_json::value::to_raw_value(&json![ser]).unwrap()];
 			let req = rpc.build_request("sendrawtransaction", &raw_args);
 
-			let txid: String = rpc.send_request(req).await.map_err(Error::from).unwrap().result().unwrap();
+			let txid: String =
+				rpc.send_request(req).await.map_err(Error::from).unwrap().result().unwrap();
 			println!("broadcast {}", txid);
 		});
 	}
 }
 
 impl BlockSource for BitcoindClient {
-	fn get_header<'a>(&'a mut self, header_hash: &'a BlockHash, _height_hint: Option<u32>) -> AsyncBlockSourceResult<'a, BlockHeaderData> {
+	fn get_header<'a>(
+		&'a mut self, header_hash: &'a BlockHash, _height_hint: Option<u32>,
+	) -> AsyncBlockSourceResult<'a, BlockHeaderData> {
 		Box::pin(async move {
 			Ok(self.call_into("getblockheader", &[json!(header_hash.to_hex())]).await.unwrap())
 		})
 	}
 
-	fn get_block<'a>(&'a mut self, header_hash: &'a BlockHash) -> AsyncBlockSourceResult<'a, Block> {
+	fn get_block<'a>(
+		&'a mut self, header_hash: &'a BlockHash,
+	) -> AsyncBlockSourceResult<'a, Block> {
 		Box::pin(async move {
 			Ok(self.call_into("getblock", &[json!(header_hash.to_hex()), json!(0)]).await.unwrap())
 		})

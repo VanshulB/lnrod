@@ -225,8 +225,7 @@ impl Connection {
 pub async fn setup_inbound<CMH, RMH, L>(
 	peer_manager: Arc<peer_handler::PeerManager<SocketDescriptor, Arc<CMH>, Arc<RMH>, Arc<L>>>,
 	event_notify: mpsc::Sender<()>, stream: TcpStream,
-)
-where
+) where
 	CMH: ChannelMessageHandler + 'static,
 	RMH: RoutingMessageHandler + 'static,
 	L: Logger + 'static + ?Sized,
@@ -257,7 +256,8 @@ where
 				// some work after shutdown()) and an error would be a major memory leak.
 				#[cfg(debug_assertions)]
 				assert!(Arc::try_unwrap(last_us).is_ok());
-			}});
+			}
+		});
 	} else {
 		println!("ERROR: peer_manager rejected connection");
 	}
