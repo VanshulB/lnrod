@@ -2,11 +2,14 @@ use std::convert::TryInto;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::str::FromStr;
 
+use serde_json::json;
+use tonic::{transport::Server, Request, Response, Status};
+
 use bitcoin::secp256k1::{PublicKey, Secp256k1};
 use lightning::chain::keysinterface::KeysInterface;
 use lightning::util::config::UserConfig;
+use lightning::util::logger::Logger;
 use lightning_invoice::Invoice;
-use tonic::{transport::Server, Request, Response, Status};
 
 use crate::admin::admin_api::{
 	Channel, ChannelCloseRequest, ChannelNewReply, ChannelNewRequest, InvoiceNewReply,
@@ -33,25 +36,33 @@ impl AdminHandler {
 impl Admin for AdminHandler {
 	async fn ping(&self, request: Request<PingRequest>) -> Result<Response<PingReply>, Status> {
 		let req = request.into_inner();
+		log_info!(self.node.logger, "ENTER ping");
+		log_debug!(self.node.logger, "{}", type_and_value!(&req));
 		let reply = PingReply {
 			// We must use .into_inner() as the fields of gRPC requests and responses are private
 			message: format!("Hello {}!", req.message),
 		};
+		log_debug!(self.node.logger, "{}", type_and_value!(&reply));
+		log_info!(self.node.logger, "REPLY ping");
 		Ok(Response::new(reply))
 	}
 
 	async fn node_info(&self, _request: Request<Void>) -> Result<Response<NodeInfoReply>, Status> {
+		log_info!(self.node.logger, "ENTER node_info");
 		let node_pubkey = PublicKey::from_secret_key(
 			&Secp256k1::new(),
 			&self.node.keys_manager.get_node_secret(),
 		);
 		let reply = NodeInfoReply { node_id: node_pubkey.serialize().to_vec() };
+		log_debug!(self.node.logger, "{}", type_and_value!(&reply));
+		log_info!(self.node.logger, "REPLY node_info");
 		Ok(Response::new(reply))
 	}
 
 	async fn channel_list(
 		&self, _request: Request<Void>,
 	) -> Result<Response<ChannelListReply>, Status> {
+		log_info!(self.node.logger, "ENTER channel_list");
 		let mut channels = Vec::new();
 		for details in self.node.channel_manager.list_channels() {
 			let channel = Channel {
@@ -65,6 +76,8 @@ impl Admin for AdminHandler {
 			channels.push(channel);
 		}
 		let reply = ChannelListReply { channels };
+		log_debug!(self.node.logger, "{}", type_and_value!(&reply));
+		log_info!(self.node.logger, "REPLY channel_list");
 		Ok(Response::new(reply))
 	}
 
@@ -72,6 +85,8 @@ impl Admin for AdminHandler {
 		&self, request: Request<ChannelNewRequest>,
 	) -> Result<Response<ChannelNewReply>, Status> {
 		let req = request.into_inner();
+		log_info!(self.node.logger, "ENTER channel_new");
+		log_debug!(self.node.logger, "{}", type_and_value!(&req));
 		let node_id = PublicKey::from_slice(req.node_id.as_slice())
 			.map_err(|_| Status::invalid_argument("failed to parse node_id"))?;
 
@@ -91,6 +106,8 @@ impl Admin for AdminHandler {
 		println!("created");
 
 		let reply = ChannelNewReply {};
+		log_debug!(self.node.logger, "{}", type_and_value!(&reply));
+		log_info!(self.node.logger, "REPLY channel_new");
 		Ok(Response::new(reply))
 	}
 
@@ -98,6 +115,8 @@ impl Admin for AdminHandler {
 		&self, request: Request<PeerConnectRequest>,
 	) -> Result<Response<PeerConnectReply>, Status> {
 		let req = request.into_inner();
+		log_info!(self.node.logger, "ENTER peer_connect");
+		log_debug!(self.node.logger, "{}", type_and_value!(&req));
 		let peer_addr =
 			req.address.parse().map_err(|_| Status::invalid_argument("address parse"))?;
 		let node_id = PublicKey::from_slice(req.node_id.as_slice())
@@ -113,6 +132,8 @@ impl Admin for AdminHandler {
 
 		println!("connected");
 		let reply = PeerConnectReply {};
+		log_debug!(self.node.logger, "{}", type_and_value!(&reply));
+		log_info!(self.node.logger, "REPLY peer_connect");
 		Ok(Response::new(reply))
 	}
 
@@ -120,6 +141,7 @@ impl Admin for AdminHandler {
 		&self, request: Request<PeerListRequest>,
 	) -> Result<Response<PeerListReply>, Status> {
 		let _req = request.into_inner();
+		log_info!(self.node.logger, "ENTER peer_list");
 		let peers = self
 			.node
 			.peer_manager
@@ -128,6 +150,8 @@ impl Admin for AdminHandler {
 			.map(|pkey| Peer { node_id: pkey.serialize().to_vec() })
 			.collect();
 		let reply = PeerListReply { peers };
+		log_debug!(self.node.logger, "{}", type_and_value!(&reply));
+		log_info!(self.node.logger, "REPLY peer_list");
 		Ok(Response::new(reply))
 	}
 
@@ -135,9 +159,13 @@ impl Admin for AdminHandler {
 		&self, request: Request<InvoiceNewRequest>,
 	) -> Result<Response<InvoiceNewReply>, Status> {
 		let req = request.into_inner();
+		log_info!(self.node.logger, "ENTER invoice_new");
+		log_debug!(self.node.logger, "{}", type_and_value!(&req));
 		let invoice =
 			self.node.get_invoice(req.value_msat).map_err(|e| Status::invalid_argument(e))?;
 		let reply = InvoiceNewReply { invoice: invoice.to_string() };
+		log_debug!(self.node.logger, "{}", type_and_value!(&reply));
+		log_info!(self.node.logger, "REPLY invoice_new");
 		Ok(Response::new(reply))
 	}
 
@@ -145,10 +173,14 @@ impl Admin for AdminHandler {
 		&self, request: Request<PaymentSendRequest>,
 	) -> Result<Response<PaymentSendReply>, Status> {
 		let req = request.into_inner();
+		log_info!(self.node.logger, "ENTER payment_send");
+		log_debug!(self.node.logger, "{}", type_and_value!(&req));
 		let invoice = Invoice::from_str(req.invoice.as_str())
 			.map_err(|_| Status::invalid_argument("invalid invoice"))?;
 		self.node.send_payment(invoice).map_err(|e| Status::invalid_argument(e))?;
 		let reply = PaymentSendReply {};
+		log_debug!(self.node.logger, "{}", type_and_value!(&reply));
+		log_info!(self.node.logger, "REPLY payment_send");
 		Ok(Response::new(reply))
 	}
 
@@ -156,6 +188,7 @@ impl Admin for AdminHandler {
 		&self, request: Request<Void>,
 	) -> Result<Response<PaymentListReply>, Status> {
 		let _req = request.into_inner();
+		log_info!(self.node.logger, "ENTER payment_list");
 		let payments = self
 			.node
 			.payment_info
@@ -170,6 +203,8 @@ impl Admin for AdminHandler {
 			})
 			.collect();
 		let reply = PaymentListReply { payments };
+		log_debug!(self.node.logger, "{}", type_and_value!(&reply));
+		log_info!(self.node.logger, "REPLY payment_list");
 		Ok(Response::new(reply))
 	}
 
@@ -177,6 +212,8 @@ impl Admin for AdminHandler {
 		&self, request: Request<ChannelCloseRequest>,
 	) -> Result<Response<Void>, Status> {
 		let req = request.into_inner();
+		log_info!(self.node.logger, "ENTER channel_close");
+		log_debug!(self.node.logger, "{}", type_and_value!(&req));
 		let channel_id = req
 			.channel_id
 			.as_slice()
@@ -188,6 +225,7 @@ impl Admin for AdminHandler {
 			self.node.channel_manager.close_channel(channel_id)
 		}
 		.map_err(|e| Status::aborted(format!("{:?}", e)))?;
+		log_info!(self.node.logger, "REPLY channel_close");
 		Ok(Response::new(Void {}))
 	}
 }
