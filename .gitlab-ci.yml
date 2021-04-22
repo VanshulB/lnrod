@@ -53,7 +53,7 @@ coverage:
 integration:
   stage: test
   image: python:latest
-  timeout: 5m
+  timeout: 10m
   script:
 # use this if you want to quickly iterate over the integration test (see compile job)
 #    - mkdir -p target/debug && cp .cache/lnrod .cache/lnrcli target/debug/

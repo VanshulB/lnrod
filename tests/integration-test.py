@@ -19,10 +19,13 @@ processes: [Popen] = []
 OUTPUT_DIR = 'test-output'
 ALICE_LNPORT = '9901'
 BOB_LNPORT = '9902'
-NUM_PAYMENTS = 200
-CHANNEL_BALANCE_SYNC_INTERVAL = 50
-CHANNEL_VALUE = 1000000
+NUM_PAYMENTS = 500
+CHANNEL_BALANCE_SYNC_INTERVAL = 100
+CHANNEL_VALUE_SAT = 10_000_000
+PAYMENT_MSAT = 2_000_000
 SLEEP_ON_FAIL = False
+USE_RELEASE_BINARIES = False
+
 logger = logging.getLogger()
 
 
@@ -98,7 +101,6 @@ def wait_until(name, func):
 def run():
     global processes
 
-    PAYMENT_MSATS = 10000
     atexit.register(kill_procs)
     rmtree(OUTPUT_DIR, ignore_errors=True)
     os.mkdir(OUTPUT_DIR)
@@ -117,7 +119,9 @@ def run():
 
     print('Starting alice and bob')
     alice_stdout_log = open(OUTPUT_DIR + '/node1.log', 'w')
-    alice_proc = Popen(['target/debug/lnrod',
+    optimization = 'release' if USE_RELEASE_BINARIES else 'debug'
+    lnrod = f'target/{optimization}/lnrod'
+    alice_proc = Popen([lnrod,
                         '--regtest',
                         '--datadir', OUTPUT_DIR + '/data1',
                         '--rpcport', '8801', '--lnport', ALICE_LNPORT],
@@ -125,7 +129,7 @@ def run():
     processes.append(alice_proc)
 
     bob_stdout_log = open(OUTPUT_DIR + '/node2.log', 'w')
-    bob_proc = Popen(['target/debug/lnrod',
+    bob_proc = Popen([lnrod,
                       '--regtest',
                       '--datadir', OUTPUT_DIR + '/data2',
                       '--rpcport', '8802', '--lnport', BOB_LNPORT],
@@ -147,7 +151,7 @@ def run():
     print('Create channel alice -> bob')
     try:
         alice.PeerConnect(PeerConnectRequest(node_id=bob_id, address=f'127.0.0.1:{BOB_LNPORT}'))
-        alice.ChannelNew(ChannelNewRequest(node_id=bob_id, value_sat=CHANNEL_VALUE))
+        alice.ChannelNew(ChannelNewRequest(node_id=bob_id, value_sat=CHANNEL_VALUE_SAT))
     except Exception as e:
         print(e)
         raise
@@ -171,23 +175,29 @@ def run():
     assert alice.ChannelList(Void()).channels[0].is_active
     assert bob.ChannelList(Void()).channels[0].is_active
 
-    for i in range(1, NUM_PAYMENTS):
-        print(f'Pay invoice {i}')
-        invoice = bob.InvoiceNew(InvoiceNewRequest(value_msat=PAYMENT_MSATS)).invoice
-        alice.PaymentSend(PaymentSendRequest(invoice=invoice))
+    # ensure we sync after the last payment
+    assert NUM_PAYMENTS % CHANNEL_BALANCE_SYNC_INTERVAL == 0
 
-        wait_until('payment success alice', lambda: alice.PaymentList(Void()).payments[0].status == Payment.PaymentStatus.Succeeded)
-        wait_until('payment success bob', lambda: bob.PaymentList(Void()).payments[0].status == Payment.PaymentStatus.Succeeded)
-        assert alice.PaymentList(Void()).payments[0].is_outbound
-        assert alice.PaymentList(Void()).payments[0].status == Payment.PaymentStatus.Succeeded
+    for i in range(1, NUM_PAYMENTS + 1):
+        print(f'Pay invoice {i}')
+        invoice = bob.InvoiceNew(InvoiceNewRequest(value_msat=PAYMENT_MSAT)).invoice
+        alice.PaymentSend(PaymentSendRequest(invoice=invoice))
 
         if i % CHANNEL_BALANCE_SYNC_INTERVAL == 0:
             print('*** SYNC TO CHANNEL BALANCE')
-            wait_until('channel balance alice', lambda: alice.ChannelList(Void()).channels[0].outbound_msat == CHANNEL_VALUE * 1000 - i * PAYMENT_MSATS)
-            wait_until('channel balance bob', lambda: bob.ChannelList(Void()).channels[0].outbound_msat == i * PAYMENT_MSATS)
+            wait_until('channel balance alice', lambda: alice.ChannelList(Void()).channels[0].outbound_msat == CHANNEL_VALUE_SAT * 1000 - i * PAYMENT_MSAT)
+            wait_until('channel balance bob', lambda: bob.ChannelList(Void()).channels[0].outbound_msat == i * PAYMENT_MSAT)
 
-            print(alice.ChannelList(Void()).channels[0].outbound_msat)
-            print(bob.ChannelList(Void()).channels[0].outbound_msat)
+            print(alice.ChannelList(Void()).channels[0].outbound_msat, bob.ChannelList(Void()).channels[0].outbound_msat)
+
+    def check_payments():
+        payment_list = alice.PaymentList(Void())
+        assert len(payment_list.payments) == NUM_PAYMENTS
+        for payment in payment_list.payments:
+            assert payment.is_outbound
+            assert payment.status == Payment.PaymentStatus.Succeeded, payment
+        return True
+    wait_until('check payments', check_payments)
     print('Done')
 
 
