@@ -44,6 +44,7 @@ pub mod net;
 pub mod node;
 mod transaction_utils;
 pub mod util;
+pub mod background;
 
 #[derive(PartialEq)]
 pub(crate) enum HTLCDirection {

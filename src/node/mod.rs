@@ -24,7 +24,6 @@ use lightning::routing::network_graph::NetGraphMsgHandler;
 use lightning::routing::router;
 use lightning::util::config::UserConfig;
 use lightning::util::ser::{ReadableArgs, Writer};
-use lightning_background_processor::BackgroundProcessor;
 use lightning_block_sync::{init, poll, SpvClient, UnboundedCache};
 use lightning_invoice::Invoice;
 use lightning_persister::FilesystemPersister;
@@ -41,6 +40,7 @@ use crate::{
 	disk, handle_ldk_events, ArcChainMonitor, ChannelManager, HTLCDirection, HTLCStatus,
 	MilliSatoshiAmount, PaymentInfoStorage, PeerManager,
 };
+use crate::background::BackgroundProcessor;
 
 #[derive(Clone)]
 pub struct NodeBuildArgs {
@@ -305,12 +305,12 @@ async fn build_with_signer(
 	let data_dir = ldk_data_dir.clone();
 	let persist_channel_manager_callback =
 		move |node: &ChannelManager| FilesystemPersister::persist_manager(data_dir.clone(), &*node);
-	BackgroundProcessor::start(
+	let _background = BackgroundProcessor::start(
 		persist_channel_manager_callback,
 		channel_manager.clone(),
 		peer_manager.clone(),
 		logger.clone(),
-	);
+	).await;
 
 	let peer_manager_processor = peer_manager.clone();
 	tokio::spawn(async move {
