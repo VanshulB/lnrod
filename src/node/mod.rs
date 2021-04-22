@@ -31,6 +31,7 @@ use rand::{thread_rng, Rng};
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::Sender;
 
+use crate::background::BackgroundProcessor;
 use crate::bitcoind_client::BitcoindClient;
 use crate::default_signer::InMemorySignerFactory;
 use crate::disk::FilesystemLogger;
@@ -40,7 +41,6 @@ use crate::{
 	disk, handle_ldk_events, ArcChainMonitor, ChannelManager, HTLCDirection, HTLCStatus,
 	MilliSatoshiAmount, PaymentInfoStorage, PeerManager,
 };
-use crate::background::BackgroundProcessor;
 
 #[derive(Clone)]
 pub struct NodeBuildArgs {
@@ -310,7 +310,8 @@ async fn build_with_signer(
 		channel_manager.clone(),
 		peer_manager.clone(),
 		logger.clone(),
-	).await;
+	)
+	.await;
 
 	let peer_manager_processor = peer_manager.clone();
 	tokio::spawn(async move {

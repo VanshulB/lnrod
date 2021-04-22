@@ -33,6 +33,7 @@ use crate::net::SocketDescriptor;
 pub mod macro_logger;
 
 pub mod admin;
+pub mod background;
 mod bitcoind_client;
 mod byte_utils;
 mod convert;
@@ -44,7 +45,6 @@ pub mod net;
 pub mod node;
 mod transaction_utils;
 pub mod util;
-pub mod background;
 
 #[derive(PartialEq)]
 pub(crate) enum HTLCDirection {
