@@ -527,16 +527,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "lightning-background-processor"
-version = "0.0.13"
-source = "git+https://github.com/rust-bitcoin/rust-lightning?rev=95779285575d3139482a73a943234c7dd82eb956#95779285575d3139482a73a943234c7dd82eb956"
-dependencies = [
- "bitcoin",
- "lightning",
- "lightning-persister",
-]
-
-[[package]]
 name = "lightning-block-sync"
 version = "0.0.13"
 source = "git+https://github.com/rust-bitcoin/rust-lightning?rev=95779285575d3139482a73a943234c7dd82eb956#95779285575d3139482a73a943234c7dd82eb956"
@@ -583,7 +573,6 @@ dependencies = [
  "hex",
  "jsonrpc-async",
  "lightning",
- "lightning-background-processor",
  "lightning-block-sync",
  "lightning-invoice",
  "lightning-persister",

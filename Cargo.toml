@@ -11,13 +11,12 @@ edition = "2018"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-lightning-background-processor = { git = "https://github.com/rust-bitcoin/rust-lightning", rev = "95779285575d3139482a73a943234c7dd82eb956" }
 base64 = "0.13.0"
 bitcoin = "0.26"
 bitcoin-bech32 = "0.7"
 bech32 = "0.7"
 hex = "0.3"
-lightning = { git = "https://github.com/rust-bitcoin/rust-lightning", rev = "95779285575d3139482a73a943234c7dd82eb956" }
+lightning = { git = "https://github.com/rust-bitcoin/rust-lightning", features = ["allow_wallclock_use"], rev = "95779285575d3139482a73a943234c7dd82eb956" }
 lightning-block-sync = { git = "https://github.com/rust-bitcoin/rust-lightning", features = ["rpc-client"], rev = "95779285575d3139482a73a943234c7dd82eb956" }
 lightning-invoice = { git = "https://github.com/rust-bitcoin/rust-lightning-invoice", rev = "aa3a57b9dca5205fa25fa333a2db165d7e77b3b0" }
 lightning-persister = { git = "https://github.com/rust-bitcoin/rust-lightning", rev = "95779285575d3139482a73a943234c7dd82eb956" }
