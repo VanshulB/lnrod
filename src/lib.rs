@@ -28,6 +28,10 @@ use crate::disk::FilesystemLogger;
 use crate::keys::{DynKeysInterface, DynSigner, SpendableKeysInterface};
 use crate::net::SocketDescriptor;
 
+#[macro_use]
+#[allow(unused_macros)]
+pub mod macro_logger;
+
 pub mod admin;
 mod bitcoind_client;
 mod byte_utils;

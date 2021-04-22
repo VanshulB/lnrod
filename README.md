@@ -18,16 +18,24 @@ rpcuser=user
 rpcpassword=pass
 fallbackfee=0.0000001
 
-# Start bitcoind in regtest mode, advance 101 blocks
+# Start bitcoind in regtest mode
 bitcoind -regtest -daemon
-a_mine=`bitcoin-cli -regtest -rpcwallet=default getnewaddress`
+
+# Create wallet, unload and reload w/ autoload
+bitcoin-cli --regtest createwallet default
+bitcoin-cli --regtest unloadwallet default
+bitcoin-cli --regtest loadwallet default true
+
+a_mine=`bitcoin-cli -regtest getnewaddress` && echo $a_mine
+
+# Advance 101 blocks
 bitcoin-cli -regtest generatetoaddress 101 $a_mine
 
 alias lnrod=target/debug/lnrod
 alias lnrcli=target/debug/lnrcli
 
 lnrod --regtest
-lnrod --datadir ./data2 --rpcport 8802 --lnport 9902 --regtest
+lnrod --regtest --datadir ./data2 --rpcport 8802 --lnport 9902
 
 # get the second node ID
 node2=`lnrcli -c http://127.0.0.1:8802 node info` && echo $node2
@@ -45,7 +53,7 @@ bitcoin-cli --regtest generatetoaddress 6 $a_mine
 lnrcli channel list
 
 # create invoice and pay it
-invoice=`lnrcli -c http://127.0.0.1:8802 invoice new 1000 | jq -r .invoice`
+invoice=`lnrcli -c http://127.0.0.1:8802 invoice new 1000 | jq -r .invoice` && echo $invoice
 lnrcli payment send $invoice
 
 # see new channel balance
