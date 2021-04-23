@@ -103,7 +103,7 @@ impl Admin for AdminHandler {
 				let msg = format!("failed to create channel {:?}", e);
 				Status::aborted(msg)
 			})?;
-		println!("created");
+		log_info!(self.node.logger, "created");
 
 		let reply = ChannelNewReply {};
 		log_debug!(self.node.logger, "{}", type_and_value!(&reply));
@@ -130,7 +130,7 @@ impl Admin for AdminHandler {
 		.await
 		.map_err(|_| Status::aborted("could not connect to peer"))?;
 
-		println!("connected");
+		log_info!(self.node.logger, "connected");
 		let reply = PeerConnectReply {};
 		log_debug!(self.node.logger, "{}", type_and_value!(&reply));
 		log_info!(self.node.logger, "REPLY peer_connect");
@@ -233,14 +233,15 @@ impl Admin for AdminHandler {
 #[tokio::main]
 pub async fn start(rpc_port: u16, args: NodeBuildArgs) -> Result<(), Box<dyn std::error::Error>> {
 	let node = build_node(args.clone()).await;
+	let logger = node.logger.clone();
 	let node_id =
 		PublicKey::from_secret_key(&Secp256k1::new(), &node.keys_manager.get_node_secret());
 
-	println!("p2p {} 127.0.0.1:{}", node_id, args.peer_listening_port);
-	println!("admin port {}, datadir {}", rpc_port, args.storage_dir_path);
+	log_info!(logger, "p2p {} 127.0.0.1:{}", node_id, args.peer_listening_port);
+	log_info!(logger, "admin port {}, datadir {}", rpc_port, args.storage_dir_path);
 	let addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), rpc_port);
 	let handler = AdminHandler::new(node);
-	println!("starting server");
+	log_info!(logger, "starting server");
 	Server::builder().add_service(AdminServer::new(handler)).serve(addr).await.unwrap();
 	Ok(())
 }

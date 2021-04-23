@@ -23,6 +23,7 @@ use lightning::ln::peer_handler::MessageHandler;
 use lightning::routing::network_graph::NetGraphMsgHandler;
 use lightning::routing::router;
 use lightning::util::config::UserConfig;
+use lightning::util::logger::Level as LogLevel;
 use lightning::util::ser::{ReadableArgs, Writer};
 use lightning_block_sync::{init, poll, SpvClient, UnboundedCache};
 use lightning_invoice::Invoice;
@@ -51,6 +52,8 @@ pub struct NodeBuildArgs {
 	pub storage_dir_path: String,
 	pub peer_listening_port: u16,
 	pub network: Network,
+	pub disk_log_level: LogLevel,
+	pub console_log_level: LogLevel,
 }
 
 #[allow(dead_code)]
@@ -119,7 +122,13 @@ async fn build_with_signer(
 	let fee_estimator = Arc::clone(&bitcoind_client_arc);
 
 	// Step 2: Initialize the Logger
-	let logger = Arc::new(FilesystemLogger::new(ldk_data_dir.clone()));
+	let is_daemon = false;
+	let console_log_level = if is_daemon { LogLevel::Off } else { args.console_log_level };
+	let logger = Arc::new(FilesystemLogger::new(
+		ldk_data_dir.clone(),
+		args.disk_log_level,
+		console_log_level,
+	));
 
 	// Step 3: Initialize the BroadcasterInterface
 

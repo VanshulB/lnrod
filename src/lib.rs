@@ -29,6 +29,9 @@ use crate::keys::{DynKeysInterface, DynSigner, SpendableKeysInterface};
 use crate::net::SocketDescriptor;
 
 #[macro_use]
+pub mod macro_utils;
+
+#[macro_use]
 #[allow(unused_macros)]
 pub mod macro_logger;
 
@@ -41,6 +44,7 @@ mod default_signer;
 mod disk;
 mod hex_utils;
 mod keys;
+pub mod log_utils;
 pub mod net;
 pub mod node;
 mod transaction_utils;

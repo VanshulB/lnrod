@@ -3,6 +3,7 @@ use clap::{App, Arg};
 use url::Url;
 
 use lnrod::admin;
+use lnrod::log_utils::{parse_log_level, LOG_LEVEL_NAMES};
 use lnrod::node::NodeBuildArgs;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -42,7 +43,25 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 				.default_value("http://user:pass@localhost:18443")
 				.takes_value(true),
 		)
-		.arg(Arg::new("regtest").long("regtest"));
+		.arg(Arg::new("regtest").long("regtest"))
+		.arg(
+			Arg::new("logleveldisk")
+				.about("logging level to disk")
+				.short('v')
+				.long("log-level-disk")
+				.possible_values(&LOG_LEVEL_NAMES)
+				.default_value("TRACE")
+				.takes_value(true),
+		)
+		.arg(
+			Arg::new("loglevelconsole")
+				.about("logging level to console")
+				.short('V')
+				.long("log-level-console")
+				.possible_values(&LOG_LEVEL_NAMES)
+				.default_value("INFO")
+				.takes_value(true),
+		);
 	let matches = app.clone().get_matches();
 	let bitcoin_url = Url::parse(matches.value_of("bitcoin").unwrap())?;
 
@@ -56,6 +75,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 		storage_dir_path: datadir.clone(),
 		peer_listening_port: matches.value_of("lnport").unwrap().parse().unwrap(),
 		network,
+		disk_log_level: parse_log_level(matches.value_of("logleveldisk").unwrap().to_string())
+			.expect("logleveldisk"),
+		console_log_level: parse_log_level(
+			matches.value_of("loglevelconsole").unwrap().to_string(),
+		)
+		.expect("loglevelconsole"),
 	};
 
 	let rpc_port = matches.value_of("rpcport").unwrap();
