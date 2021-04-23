@@ -3,6 +3,7 @@ use bitcoin::hashes::hex::FromHex;
 use bitcoin::{BlockHash, Txid};
 use lightning::chain::channelmonitor::ChannelMonitor;
 use lightning::chain::transaction::OutPoint;
+use lightning::util::logger::Level as LogLevel;
 use lightning::util::logger::{Logger, Record};
 use lightning::util::ser::ReadableArgs;
 use std::collections::HashMap;
@@ -14,16 +15,24 @@ use time::OffsetDateTime;
 
 pub(crate) struct FilesystemLogger {
 	data_dir: String,
+	disk_log_level: LogLevel,
+	console_log_level: LogLevel,
 }
 impl FilesystemLogger {
-	pub(crate) fn new(data_dir: String) -> Self {
+	pub(crate) fn new(
+		data_dir: String, disk_log_level: LogLevel, console_log_level: LogLevel,
+	) -> Self {
 		let logs_path = format!("{}/logs", data_dir);
 		fs::create_dir_all(logs_path.clone()).unwrap();
-		Self { data_dir: logs_path }
+		Self { data_dir: logs_path, disk_log_level, console_log_level }
 	}
 }
 impl Logger for FilesystemLogger {
 	fn log(&self, record: &Record) {
+		if self.console_log_level < record.level && self.disk_log_level < record.level {
+			// Bail quickly if below current logging thresholds
+			return;
+		}
 		let raw_log = record.args.to_string();
 		let log = format!(
 			"{} {:<5} [{}:{}] {}\n",
@@ -33,14 +42,19 @@ impl Logger for FilesystemLogger {
 			record.line,
 			raw_log
 		);
-		let logs_file_path = format!("{}/logs.txt", self.data_dir.clone());
-		fs::OpenOptions::new()
-			.create(true)
-			.append(true)
-			.open(logs_file_path)
-			.unwrap()
-			.write_all(log.as_bytes())
-			.unwrap();
+		if self.disk_log_level >= record.level {
+			let logs_file_path = format!("{}/logs.txt", self.data_dir.clone());
+			fs::OpenOptions::new()
+				.create(true)
+				.append(true)
+				.open(logs_file_path)
+				.unwrap()
+				.write_all(log.as_bytes())
+				.unwrap();
+		}
+		if self.console_log_level >= record.level {
+			print!("{}", &log);
+		}
 	}
 }
 pub(crate) fn read_channelmonitors(
