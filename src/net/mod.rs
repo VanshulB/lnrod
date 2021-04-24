@@ -44,6 +44,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::Duration;
 use std::{task, thread};
+use tokio::task::JoinHandle;
 
 static ID_COUNTER: AtomicU64 = AtomicU64::new(0);
 
@@ -225,7 +226,7 @@ impl Connection {
 pub async fn setup_inbound<CMH, RMH, L>(
 	peer_manager: Arc<peer_handler::PeerManager<SocketDescriptor, Arc<CMH>, Arc<RMH>, Arc<L>>>,
 	event_notify: mpsc::Sender<()>, stream: TcpStream,
-) where
+) -> Result<JoinHandle<()>, ()> where
 	CMH: ChannelMessageHandler + 'static,
 	RMH: RoutingMessageHandler + 'static,
 	L: Logger + 'static + ?Sized,
@@ -245,7 +246,7 @@ pub async fn setup_inbound<CMH, RMH, L>(
 		// Assert that the connection thread wasn't canceled during its lifetime
 		// TODO: is this really needed?
 		// We spawn here because this will wait until the connection is closed
-		tokio::spawn(async move {
+		let handle = tokio::spawn(async move {
 			if let Err(e) = handle.await {
 				assert!(e.is_cancelled());
 			} else {
@@ -258,8 +259,10 @@ pub async fn setup_inbound<CMH, RMH, L>(
 				assert!(Arc::try_unwrap(last_us).is_ok());
 			}
 		});
+		return Ok(handle)
 	} else {
 		println!("ERROR: peer_manager rejected connection");
+		return Err(())
 	}
 }
 
@@ -724,7 +727,7 @@ mod tests {
 
 		let (sender, _receiver) = mpsc::channel(2);
 		let fut_a = super::setup_outbound(Arc::clone(&a_manager), sender.clone(), b_pub, conn_a);
-		super::setup_inbound(b_manager, sender, conn_b).await;
+		let fut_b = super::setup_inbound(b_manager, sender, conn_b).await.unwrap();
 
 		tokio::time::timeout(Duration::from_secs(10), a_connected.recv()).await.unwrap();
 		tokio::time::timeout(Duration::from_secs(1), b_connected.recv()).await.unwrap();
@@ -743,6 +746,7 @@ mod tests {
 		assert!(b_handler.disconnected_flag.load(Ordering::SeqCst));
 
 		fut_a.await;
+		fut_b.await.unwrap();
 	}
 
 	#[tokio::test(flavor = "multi_thread")]

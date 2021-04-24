@@ -286,7 +286,7 @@ async fn build_with_signer(
 				event_ntfn_sender1.clone(),
 				tcp_stream,
 			)
-			.await;
+			.await.unwrap();
 			println!("setup");
 		}
 	});
