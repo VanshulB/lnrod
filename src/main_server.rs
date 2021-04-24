@@ -1,14 +1,18 @@
+use std::fs::read_to_string;
+use std::path::Path;
+
 use bitcoin::Network;
-use clap::{App, Arg};
+use clap::{App, Arg, ArgMatches};
 use url::Url;
 
 use lnrod::admin;
-use lnrod::log_utils::{parse_log_level, LOG_LEVEL_NAMES};
+use lnrod::log_utils::{LOG_LEVEL_NAMES, parse_log_level};
 use lnrod::node::NodeBuildArgs;
+use lnrod::config::Config;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
 	let app = App::new("lnrod")
-		.about("LDK node")
+		.about("Lightning Rod Node")
 		.arg(
 			Arg::new("lnport")
 				.about("Lightning peer listen port")
@@ -36,12 +40,19 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 				.takes_value(true),
 		)
 		.arg(
+			Arg::new("config")
+				.short('f')
+				.long("config")
+				.about("config file, default DATADIR/config")
+				.takes_value(true)
+		)
+		.arg(
 			Arg::new("bitcoin")
 				.about("Bitcoin RPC endpoint")
 				.short('b')
 				.long("bitcoin")
 				.default_value("http://user:pass@localhost:18443")
-				.takes_value(true),
+				.takes_value(true)
 		)
 		.arg(Arg::new("regtest").long("regtest"))
 		.arg(
@@ -61,36 +72,77 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 				.possible_values(&LOG_LEVEL_NAMES)
 				.default_value("INFO")
 				.takes_value(true),
+		)
+		.arg(
+			Arg::new("dump-config")
+				.long("dump-config")
 		);
 	let matches = app.clone().get_matches();
-	let bitcoin_url = Url::parse(matches.value_of("bitcoin").unwrap())?;
 
-	let network = if matches.is_present("regtest") { Network::Regtest } else { Network::Testnet };
-	let datadir = matches.value_of("datadir").unwrap().to_string();
+	let data_dir = matches.value_of("datadir").unwrap().to_string();
+	let config_path = matches.value_of("config")
+		.map(|c| c.to_string())
+		.unwrap_or_else(|| format!("{}/config", data_dir));
+	let config = get_config(&matches, &config_path);
+
+	if matches.is_present("dump-config") {
+		println!("{}", toml::to_string(&config).unwrap());
+		return Ok(())
+	}
+
+	let bitcoin_arg = matches.value_of("bitcoin").unwrap().to_string();
+	let bitcoin_url = Url::parse(
+		if matches.occurrences_of("bitcoin") > 0 { bitcoin_arg } else { config.bitcoin_rpc.clone().unwrap_or(bitcoin_arg) }
+			.as_str()
+	)?;
+	// Network is regtest if specified on the command line or in the config file
+	let network =
+		if matches.occurrences_of("regtest") > 0 || config.regtest.unwrap_or(false)
+		{ Network::Regtest } else { Network::Testnet };
+
+	let console_log_level =
+		parse_log_level(matches.value_of("loglevelconsole").unwrap().to_string())
+			.expect("loglevelconsole");
+	let disk_log_level =
+		parse_log_level(matches.value_of("logleveldisk").unwrap().to_string())
+			.expect("logleveldisk");
+
+	let lnport_arg = matches.value_of("lnport").map(|s| s.parse().unwrap()).unwrap();
+	let peer_listening_port =
+		if matches.occurrences_of("lnport") > 0 { lnport_arg }
+		else { config.lnport.unwrap_or(lnport_arg) };
+	let rpcport_arg = matches.value_of("rpcport").map(|s| s.parse().unwrap()).unwrap();
+	let rpc_port =
+		if matches.occurrences_of("rpcport") > 0 { rpcport_arg }
+		else { config.rpcport.unwrap_or(rpcport_arg) };
+
 	let args = NodeBuildArgs {
 		bitcoind_rpc_username: bitcoin_url.username().to_string(),
 		bitcoind_rpc_password: bitcoin_url.password().expect("password").to_string(),
 		bitcoind_rpc_host: bitcoin_url.host_str().expect("host").to_string(),
 		bitcoind_rpc_port: bitcoin_url.port().expect("port"),
-		storage_dir_path: datadir.clone(),
-		peer_listening_port: matches.value_of("lnport").unwrap().parse().unwrap(),
+		storage_dir_path: data_dir.clone(),
+		peer_listening_port,
 		network,
-		disk_log_level: parse_log_level(matches.value_of("logleveldisk").unwrap().to_string())
-			.expect("logleveldisk"),
-		console_log_level: parse_log_level(
-			matches.value_of("loglevelconsole").unwrap().to_string(),
-		)
-		.expect("loglevelconsole"),
+		disk_log_level,
+		console_log_level,
+		config
 	};
 
-	let rpc_port = matches.value_of("rpcport").unwrap();
-
-	admin::driver::start(rpc_port.parse().expect("port number"), args).expect("gRPC driver start");
+	admin::driver::start(rpc_port, args).expect("gRPC driver start");
 	Ok(())
 }
 
-#[test]
-fn test_url() {
-	let url = Url::parse("http://user:pass@localhost:1234");
-	println!("{:?}", url)
+fn get_config(matches: &ArgMatches, config_path: &String) -> Config {
+	let config_exists = Path::new(&config_path).exists();
+	if matches.is_present("config") && !config_exists {
+		panic!("missing config file");
+	}
+	let config: Config = if config_exists {
+		let contents = read_to_string(config_path).unwrap();
+		toml::from_str(contents.as_str()).unwrap()
+	} else {
+		Default::default()
+	};
+	config
 }

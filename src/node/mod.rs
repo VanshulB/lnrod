@@ -22,7 +22,6 @@ use lightning::ln::features::InvoiceFeatures;
 use lightning::ln::peer_handler::MessageHandler;
 use lightning::routing::network_graph::NetGraphMsgHandler;
 use lightning::routing::router;
-use lightning::util::config::UserConfig;
 use lightning::util::logger::Level as LogLevel;
 use lightning::util::ser::{ReadableArgs, Writer};
 use lightning_block_sync::{init, poll, SpvClient, UnboundedCache};
@@ -42,6 +41,7 @@ use crate::{
 	disk, handle_ldk_events, ArcChainMonitor, ChannelManager, HTLCDirection, HTLCStatus,
 	MilliSatoshiAmount, PaymentInfoStorage, PeerManager,
 };
+use crate::config::Config;
 
 #[derive(Clone)]
 pub struct NodeBuildArgs {
@@ -54,6 +54,7 @@ pub struct NodeBuildArgs {
 	pub network: Network,
 	pub disk_log_level: LogLevel,
 	pub console_log_level: LogLevel,
+	pub config: Config
 }
 
 #[allow(dead_code)]
@@ -153,10 +154,10 @@ async fn build_with_signer(
 	let mut outpoint_to_channelmonitor =
 		disk::read_channelmonitors(monitors_path.to_string(), keys_manager.clone()).unwrap();
 
+	// Step 8: ... profit
+
 	// Step 9: Initialize the ChannelManager
-	let mut user_config = UserConfig::default();
-	// Allow public channels
-	user_config.peer_channel_config_limits.force_announced_channel_preference = false;
+	let user_config = args.config.bitcoin_channel().into();
 
 	let mut restarting_node = true;
 	let (channel_manager_blockhash, mut channel_manager) = {
