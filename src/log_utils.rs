@@ -3,22 +3,17 @@ use anyhow::{anyhow, Result};
 use lightning::util::logger::Level as LogLevel;
 
 // Copied from lightning::util::logger due to insufficient visibility.
+pub const LOG_LEVELS: [LogLevel; 6] = [
+	LogLevel::Off, LogLevel::Error, LogLevel::Warn, LogLevel::Info, LogLevel::Debug, LogLevel::Trace
+];
+
 pub const LOG_LEVEL_NAMES: [&'static str; 6] = ["OFF", "ERROR", "WARN", "INFO", "DEBUG", "TRACE"];
 
 pub fn parse_log_level(lvlstr: String) -> Result<LogLevel> {
-	let ndx = LOG_LEVEL_NAMES
+	Ok(*LOG_LEVELS
 		.iter()
-		.position(|ll| lvlstr == *ll)
-		.ok_or_else(|| anyhow!("invalid log level: {}", lvlstr))?;
-	match ndx {
-		ndx if ndx == LogLevel::Off as usize => Ok(LogLevel::Off),
-		ndx if ndx == LogLevel::Error as usize => Ok(LogLevel::Error),
-		ndx if ndx == LogLevel::Warn as usize => Ok(LogLevel::Warn),
-		ndx if ndx == LogLevel::Info as usize => Ok(LogLevel::Info),
-		ndx if ndx == LogLevel::Debug as usize => Ok(LogLevel::Debug),
-		ndx if ndx == LogLevel::Trace as usize => Ok(LogLevel::Trace),
-		_ => panic!("log level name to enum botch"),
-	}
+		.find(|ll| lvlstr == ll.to_string())
+		.ok_or_else(|| anyhow!("invalid log level: {}", lvlstr))?)
 }
 
 #[cfg(test)]
