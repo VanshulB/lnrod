@@ -154,7 +154,9 @@ async fn build_with_signer(
 		disk::read_channelmonitors(monitors_path.to_string(), keys_manager.clone()).unwrap();
 
 	// Step 9: Initialize the ChannelManager
-	let user_config = UserConfig::default();
+	let mut user_config = UserConfig::default();
+	// Allow public channels
+	user_config.peer_channel_config_limits.force_announced_channel_preference = false;
 
 	let mut restarting_node = true;
 	let (channel_manager_blockhash, mut channel_manager) = {

@@ -17,8 +17,6 @@ from admin_pb2 import PingRequest, ChannelNewRequest, Void, InvoiceNewRequest, P
 
 processes: [Popen] = []
 OUTPUT_DIR = 'test-output'
-ALICE_LNPORT = '9901'
-BOB_LNPORT = '9902'
 NUM_PAYMENTS = 200
 CHANNEL_BALANCE_SYNC_INTERVAL = 100
 CHANNEL_VALUE_SAT = 10_000_000
@@ -99,46 +97,16 @@ def wait_until(name, func):
 
 
 def run():
-    global processes
-
     atexit.register(kill_procs)
     rmtree(OUTPUT_DIR, ignore_errors=True)
     os.mkdir(OUTPUT_DIR)
     print('Starting bitcoind')
-    btc_log = open(OUTPUT_DIR + '/btc.log', 'w')
-    btc_proc = Popen([
-        # 'strace', '-o', '/tmp/out', '-s', '10000', '-f',
-        'bitcoind', '--regtest', '--fallbackfee=0.0000001',
-        '--rpcuser=user', '--rpcpassword=pass',
-        f'--datadir={OUTPUT_DIR}'], stdout=btc_log)
-    processes.append(btc_proc)
-    btc = Bitcoind('btc-regtest', 'http://user:pass@localhost:18443')
+    btc = start_bitcoind()
 
-    btc.wait_for_ready()
-    btc.setup()
-
-    print('Starting alice and bob')
-    alice_stdout_log = open(OUTPUT_DIR + '/node1.log', 'w')
-    optimization = 'release' if USE_RELEASE_BINARIES else 'debug'
-    lnrod = f'target/{optimization}/lnrod'
-    alice_proc = Popen([lnrod,
-                        '--regtest',
-                        '--datadir', OUTPUT_DIR + '/data1',
-                        '--rpcport', '8801', '--lnport', ALICE_LNPORT],
-                       stdout=alice_stdout_log, stderr=subprocess.STDOUT)
-    processes.append(alice_proc)
-
-    bob_stdout_log = open(OUTPUT_DIR + '/node2.log', 'w')
-    bob_proc = Popen([lnrod,
-                      '--regtest',
-                      '--datadir', OUTPUT_DIR + '/data2',
-                      '--rpcport', '8802', '--lnport', BOB_LNPORT],
-                     stdout=bob_stdout_log, stderr=subprocess.STDOUT)
-    processes.append(bob_proc)
-
-    print('Connect to alice and bob')
-    alice = node('localhost:8801')
-    bob = node('localhost:8802')
+    print('Starting nodes')
+    alice = start_node(1)
+    bob = start_node(2)
+    charlie = start_node(3)
 
     print('Generate initial blocks')
     btc.mine(110)
@@ -147,19 +115,30 @@ def run():
 
     alice_id = alice.NodeInfo(Void()).node_id
     bob_id = bob.NodeInfo(Void()).node_id
+    charlie_id = charlie.NodeInfo(Void()).node_id
 
     print('Create channel alice -> bob')
     try:
-        alice.PeerConnect(PeerConnectRequest(node_id=bob_id, address=f'127.0.0.1:{BOB_LNPORT}'))
-        alice.ChannelNew(ChannelNewRequest(node_id=bob_id, value_sat=CHANNEL_VALUE_SAT))
+        alice.PeerConnect(PeerConnectRequest(node_id=bob_id, address=f'127.0.0.1:{bob.lnport}'))
+        alice.ChannelNew(ChannelNewRequest(node_id=bob_id, value_sat=CHANNEL_VALUE_SAT, is_public=True))
+    except Exception as e:
+        print(e)
+        raise
+
+    print('Create channel bob -> charlie')
+    try:
+        bob.PeerConnect(PeerConnectRequest(node_id=charlie_id, address=f'127.0.0.1:{charlie.lnport}'))
+        bob.ChannelNew(ChannelNewRequest(node_id=charlie_id, value_sat=CHANNEL_VALUE_SAT, is_public=True))
     except Exception as e:
         print(e)
         raise
 
     wait_until('channel at bob', lambda: bob.ChannelList(Void()).channels[0])
+    wait_until('channel at charlie', lambda: charlie.ChannelList(Void()).channels[0])
 
     assert alice.ChannelList(Void()).channels[0].is_pending
     assert bob.ChannelList(Void()).channels[0].is_pending
+    assert charlie.ChannelList(Void()).channels[0].is_pending
 
     btc.mine(6)
 
@@ -167,8 +146,10 @@ def run():
         btc.mine(1)
         return (not alice.ChannelList(Void()).channels[0].is_pending and
                 not bob.ChannelList(Void()).channels[0].is_pending and
+                not charlie.ChannelList(Void()).channels[0].is_pending and
                 alice.ChannelList(Void()).channels[0].is_active and
-                bob.ChannelList(Void()).channels[0].is_active)
+                bob.ChannelList(Void()).channels[0].is_active and
+                charlie.ChannelList(Void()).channels[0].is_active)
 
     wait_until('active at both', channel_active)
 
@@ -178,17 +159,21 @@ def run():
     # ensure we sync after the last payment
     assert NUM_PAYMENTS % CHANNEL_BALANCE_SYNC_INTERVAL == 0
 
+    print(alice.ChannelList(Void()).channels[0])
     for i in range(1, NUM_PAYMENTS + 1):
         print(f'Pay invoice {i}')
-        invoice = bob.InvoiceNew(InvoiceNewRequest(value_msat=PAYMENT_MSAT)).invoice
+        invoice = charlie.InvoiceNew(InvoiceNewRequest(value_msat=PAYMENT_MSAT)).invoice
         alice.PaymentSend(PaymentSendRequest(invoice=invoice))
 
         if i % CHANNEL_BALANCE_SYNC_INTERVAL == 0:
             print('*** SYNC TO CHANNEL BALANCE')
-            wait_until('channel balance alice', lambda: alice.ChannelList(Void()).channels[0].outbound_msat == CHANNEL_VALUE_SAT * 1000 - i * PAYMENT_MSAT)
-            wait_until('channel balance bob', lambda: bob.ChannelList(Void()).channels[0].outbound_msat == i * PAYMENT_MSAT)
-
-            print(alice.ChannelList(Void()).channels[0].outbound_msat, bob.ChannelList(Void()).channels[0].outbound_msat)
+            # check within 0.5%, due to fees
+            wait_until('channel balance alice',
+                       lambda: assert_equal_delta(CHANNEL_VALUE_SAT * 1000 - alice.ChannelList(Void()).channels[0].outbound_msat,
+                                                  i * PAYMENT_MSAT))
+            wait_until('channel balance charlie',
+                       lambda: assert_equal_delta(charlie.ChannelList(Void()).channels[0].outbound_msat,
+                                                  i * PAYMENT_MSAT))
 
     def check_payments():
         payment_list = alice.PaymentList(Void())
@@ -199,6 +184,44 @@ def run():
         return True
     wait_until('check payments', check_payments)
     print('Done')
+
+
+def assert_equal_delta(a, b):
+    if a < b * 0.995 or a > b * 1.005:
+        raise AssertionError(f'value out of range {a} vs {b}')
+    return True
+
+def start_bitcoind():
+    global processes
+
+    btc_log = open(OUTPUT_DIR + '/btc.log', 'w')
+    btc_proc = Popen([
+        # 'strace', '-o', '/tmp/out', '-s', '10000', '-f',
+        'bitcoind', '--regtest', '--fallbackfee=0.0000001',
+        '--rpcuser=user', '--rpcpassword=pass',
+        f'--datadir={OUTPUT_DIR}'], stdout=btc_log)
+    processes.append(btc_proc)
+    btc = Bitcoind('btc-regtest', 'http://user:pass@localhost:18443')
+    btc.wait_for_ready()
+    btc.setup()
+    return btc
+
+
+def start_node(n):
+    global processes
+
+    stdout_log = open(OUTPUT_DIR + f'/node{n}.log', 'w')
+    optimization = 'release' if USE_RELEASE_BINARIES else 'debug'
+    lnrod = f'target/{optimization}/lnrod'
+    p = Popen([lnrod,
+               '--regtest',
+               '--datadir', f'{OUTPUT_DIR}/data{n}',
+               '--rpcport', str(8800 + n), '--lnport', str(9900 + n)],
+              stdout=stdout_log, stderr=subprocess.STDOUT)
+    processes.append(p)
+    lnrod = node(f'localhost:{8800 + n}')
+    lnrod.lnport = 9900 + n
+    return lnrod
 
 
 if __name__ == '__main__':
