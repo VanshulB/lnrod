@@ -79,10 +79,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 		);
 	let matches = app.clone().get_matches();
 
-	let data_dir = matches.value_of("datadir").unwrap().to_string();
-	let config_path = matches.value_of("config")
-		.map(|c| c.to_string())
-		.unwrap_or_else(|| format!("{}/config", data_dir));
+	let data_dir = matches.value_of_t_or_exit("datadir");
+	let config_path = matches.value_of_t("config")
+		.unwrap_or_else(|_| format!("{}/config", data_dir));
 	let config = get_config(&matches, &config_path);
 
 	if matches.is_present("dump-config") {
@@ -90,7 +89,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 		return Ok(())
 	}
 
-	let bitcoin_arg = matches.value_of("bitcoin").unwrap().to_string();
+	let bitcoin_arg = matches.value_of_t_or_exit("bitcoin");
 	let bitcoin_url = Url::parse(
 		if matches.occurrences_of("bitcoin") > 0 { bitcoin_arg } else { config.bitcoin_rpc.clone().unwrap_or(bitcoin_arg) }
 			.as_str()
@@ -101,17 +100,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 		{ Network::Regtest } else { Network::Testnet };
 
 	let console_log_level =
-		parse_log_level(matches.value_of("loglevelconsole").unwrap().to_string())
+		parse_log_level(matches.value_of_t_or_exit("loglevelconsole"))
 			.expect("loglevelconsole");
 	let disk_log_level =
-		parse_log_level(matches.value_of("logleveldisk").unwrap().to_string())
+		parse_log_level(matches.value_of_t_or_exit("logleveldisk"))
 			.expect("logleveldisk");
 
-	let lnport_arg = matches.value_of("lnport").map(|s| s.parse().unwrap()).unwrap();
+	let lnport_arg = matches.value_of_t_or_exit("lnport");
 	let peer_listening_port =
 		if matches.occurrences_of("lnport") > 0 { lnport_arg }
 		else { config.lnport.unwrap_or(lnport_arg) };
-	let rpcport_arg = matches.value_of("rpcport").map(|s| s.parse().unwrap()).unwrap();
+	let rpcport_arg = matches.value_of_t_or_exit("rpcport");
 	let rpc_port =
 		if matches.occurrences_of("rpcport") > 0 { rpcport_arg }
 		else { config.rpcport.unwrap_or(rpcport_arg) };
@@ -121,7 +120,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 		bitcoind_rpc_password: bitcoin_url.password().expect("password").to_string(),
 		bitcoind_rpc_host: bitcoin_url.host_str().expect("host").to_string(),
 		bitcoind_rpc_port: bitcoin_url.port().expect("port"),
-		storage_dir_path: data_dir.clone(),
+		storage_dir_path: data_dir,
 		peer_listening_port,
 		network,
 		disk_log_level,
