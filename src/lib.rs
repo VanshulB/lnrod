@@ -39,6 +39,7 @@ pub mod admin;
 pub mod background;
 mod bitcoind_client;
 mod byte_utils;
+pub mod config;
 mod convert;
 mod default_signer;
 mod disk;
@@ -49,7 +50,6 @@ pub mod net;
 pub mod node;
 mod transaction_utils;
 pub mod util;
-pub mod config;
 
 #[derive(PartialEq)]
 pub(crate) enum HTLCDirection {

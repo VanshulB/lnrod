@@ -2,6 +2,7 @@ use std::collections::HashSet;
 use std::io::Read;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
+use anyhow::{anyhow, Result};
 use bitcoin::blockdata::opcodes;
 use bitcoin::blockdata::script::Builder;
 use bitcoin::hash_types::WPubkeyHash;
@@ -41,7 +42,7 @@ pub trait SpendableKeysInterface: KeysInterface {
 		&self, descriptors: &[&SpendableOutputDescriptor], outputs: Vec<TxOut>,
 		change_destination_script: Script, feerate_sat_per_1000_weight: u32,
 		secp_ctx: &Secp256k1<All>,
-	) -> Result<Transaction, ()>;
+	) -> Result<Transaction>;
 }
 
 pub(crate) struct DynKeysInterface {
@@ -87,7 +88,7 @@ impl SpendableKeysInterface for DynKeysInterface {
 		&self, descriptors: &[&SpendableOutputDescriptor], outputs: Vec<TxOut>,
 		change_destination_script: Script, feerate_sat_per_1000_weight: u32,
 		secp_ctx: &Secp256k1<All>,
-	) -> Result<Transaction, ()> {
+	) -> Result<Transaction> {
 		self.inner.spend_spendable_outputs(
 			descriptors,
 			outputs,
@@ -295,7 +296,7 @@ impl<F: SignerFactory> SpendableKeysInterface for KeysManager<F> {
 		&self, descriptors: &[&SpendableOutputDescriptor], outputs: Vec<TxOut>,
 		change_destination_script: Script, feerate_sat_per_1000_weight: u32,
 		secp_ctx: &Secp256k1<All>,
-	) -> Result<Transaction, ()> {
+	) -> Result<Transaction> {
 		let mut input = Vec::new();
 		let mut input_value = 0;
 		let mut witness_weight = 0;
@@ -312,7 +313,7 @@ impl<F: SignerFactory> SpendableKeysInterface for KeysManager<F> {
 					witness_weight += StaticPaymentOutputDescriptor::MAX_WITNESS_LENGTH;
 					input_value += descriptor.output.value;
 					if !output_set.insert(descriptor.outpoint) {
-						return Err(());
+						return Err(anyhow!("Descriptor was duplicated"));
 					}
 				}
 				SpendableOutputDescriptor::DelayedPaymentOutput(descriptor) => {
@@ -325,7 +326,7 @@ impl<F: SignerFactory> SpendableKeysInterface for KeysManager<F> {
 					witness_weight += DelayedPaymentOutputDescriptor::MAX_WITNESS_LENGTH;
 					input_value += descriptor.output.value;
 					if !output_set.insert(descriptor.outpoint) {
-						return Err(());
+						return Err(anyhow!("Descriptor was duplicated"));
 					}
 				}
 				SpendableOutputDescriptor::StaticOutput { ref outpoint, ref output } => {
@@ -338,12 +339,12 @@ impl<F: SignerFactory> SpendableKeysInterface for KeysManager<F> {
 					witness_weight += 1 + 73 + 34;
 					input_value += output.value;
 					if !output_set.insert(*outpoint) {
-						return Err(());
+						return Err(anyhow!("Descriptor was duplicated"));
 					}
 				}
 			}
 			if input_value > MAX_VALUE_MSAT / 1000 {
-				return Err(());
+				return Err(anyhow!("Input value greater than max satoshis"));
 			}
 		}
 		let mut spend_tx = Transaction { version: 2, lock_time: 0, input, output: outputs };

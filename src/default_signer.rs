@@ -1,5 +1,6 @@
 use crate::byte_utils;
 use crate::keys::{DynSigner, InnerSign, PaymentSign, SignerFactory};
+use anyhow::Result;
 use bitcoin::hashes::sha256::Hash as Sha256;
 use bitcoin::hashes::{Hash, HashEngine};
 use bitcoin::secp256k1::{All, Secp256k1, SecretKey};

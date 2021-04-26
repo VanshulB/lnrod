@@ -4,7 +4,12 @@ use lightning::util::logger::Level as LogLevel;
 
 // Copied from lightning::util::logger due to insufficient visibility.
 pub const LOG_LEVELS: [LogLevel; 6] = [
-	LogLevel::Off, LogLevel::Error, LogLevel::Warn, LogLevel::Info, LogLevel::Debug, LogLevel::Trace
+	LogLevel::Off,
+	LogLevel::Error,
+	LogLevel::Warn,
+	LogLevel::Info,
+	LogLevel::Debug,
+	LogLevel::Trace,
 ];
 
 pub const LOG_LEVEL_NAMES: [&'static str; 6] = ["OFF", "ERROR", "WARN", "INFO", "DEBUG", "TRACE"];

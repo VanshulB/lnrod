@@ -33,6 +33,7 @@ use tokio::sync::mpsc::Sender;
 
 use crate::background::BackgroundProcessor;
 use crate::bitcoind_client::BitcoindClient;
+use crate::config::Config;
 use crate::default_signer::InMemorySignerFactory;
 use crate::disk::FilesystemLogger;
 use crate::keys::{DynKeysInterface, KeysManager};
@@ -41,7 +42,6 @@ use crate::{
 	disk, handle_ldk_events, ArcChainMonitor, ChannelManager, HTLCDirection, HTLCStatus,
 	MilliSatoshiAmount, PaymentInfoStorage, PeerManager,
 };
-use crate::config::Config;
 
 #[derive(Clone)]
 pub struct NodeBuildArgs {
@@ -54,7 +54,7 @@ pub struct NodeBuildArgs {
 	pub network: Network,
 	pub disk_log_level: LogLevel,
 	pub console_log_level: LogLevel,
-	pub config: Config
+	pub config: Config,
 }
 
 #[allow(dead_code)]
@@ -289,7 +289,8 @@ async fn build_with_signer(
 				event_ntfn_sender1.clone(),
 				tcp_stream,
 			)
-			.await.unwrap();
+			.await
+			.unwrap();
 			println!("setup");
 		}
 	});

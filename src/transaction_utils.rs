@@ -1,3 +1,4 @@
+use anyhow::{anyhow, Result};
 use bitcoin::consensus::Encodable;
 use bitcoin::{Script, Transaction, TxOut, VarInt};
 
@@ -21,22 +22,22 @@ fn get_dust_value(output_script: &Script) -> u64 {
 pub(crate) fn maybe_add_change_output(
 	tx: &mut Transaction, input_value: u64, witness_max_weight: usize,
 	feerate_sat_per_1000_weight: u32, change_destination_script: Script,
-) -> Result<(), ()> {
+) -> Result<()> {
 	if input_value > MAX_VALUE_MSAT / 1000 {
-		return Err(());
+		return Err(anyhow!("Input value is greater than max satoshis"));
 	}
 
 	let mut output_value = 0;
 	for output in tx.output.iter() {
 		output_value += output.value;
 		if output_value >= input_value {
-			return Err(());
+			return Err(anyhow!("Ouput value equals or exceeds input value"));
 		}
 	}
 
 	let dust_value = get_dust_value(&change_destination_script);
 	let mut change_output = TxOut { script_pubkey: change_destination_script, value: 0 };
-	let change_len = change_output.consensus_encode(&mut std::io::sink()).unwrap();
+	let change_len = change_output.consensus_encode(&mut std::io::sink())?;
 	let mut weight_with_change: i64 =
 		tx.get_weight() as i64 + 2 + witness_max_weight as i64 + change_len as i64 * 4;
 	// Include any extra bytes required to push an extra output.
@@ -54,7 +55,7 @@ pub(crate) fn maybe_add_change_output(
 			* feerate_sat_per_1000_weight as i64
 			/ 1000 < 0
 	{
-		return Err(());
+		return Err(anyhow!("Requested fee rate cannot be met"));
 	}
 
 	Ok(())

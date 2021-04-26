@@ -1,5 +1,7 @@
-use serde::{Serialize, Deserialize};
-use lightning::util::config::{ChannelConfig, ChannelHandshakeLimits, ChannelHandshakeConfig, UserConfig};
+use lightning::util::config::{
+	ChannelConfig, ChannelHandshakeConfig, ChannelHandshakeLimits, UserConfig,
+};
+use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize, Debug, Default, Clone)]
 pub struct Config {
@@ -16,8 +18,7 @@ pub struct Config {
 
 impl Config {
 	pub fn bitcoin_channel(&self) -> ConfigCoinChannel {
-		self.channel.unwrap_or(Default::default())
-			.bitcoin.unwrap_or(Default::default())
+		self.channel.unwrap_or(Default::default()).bitcoin.unwrap_or(Default::default())
 	}
 }
 
@@ -38,7 +39,7 @@ impl Into<UserConfig> for ConfigCoinChannel {
 		UserConfig {
 			own_channel_config: self.propose.unwrap_or(Default::default()).into(),
 			peer_channel_config_limits: self.limit.unwrap_or(Default::default()).into(),
-			channel_options: self.default.unwrap_or(Default::default()).into()
+			channel_options: self.default.unwrap_or(Default::default()).into(),
 		}
 	}
 }
@@ -55,7 +56,7 @@ impl Into<ChannelHandshakeConfig> for ConfigProposeCoinChannel {
 		ChannelHandshakeConfig {
 			minimum_depth: self.minimum_depth.unwrap_or(6),
 			our_to_self_delay: self.our_to_self_delay.unwrap_or(144),
-			our_htlc_minimum_msat: self.our_htlc_minimum_msat.unwrap_or(1)
+			our_htlc_minimum_msat: self.our_htlc_minimum_msat.unwrap_or(1),
 		}
 	}
 }
@@ -85,8 +86,10 @@ impl Into<ChannelHandshakeLimits> for ConfigLimitCoinChannel {
 			min_dust_limit_satoshis: self.min_dust_limit_satoshis.unwrap_or(546),
 			max_dust_limit_satoshis: self.max_dust_limit_satoshis.unwrap_or(u64::max_value()),
 			max_minimum_depth: self.max_minimum_depth.unwrap_or(144),
-			force_announced_channel_preference: self.force_announced_channel_preference.unwrap_or(false),
-			their_to_self_delay: self.their_to_self_delay.unwrap_or(2016)
+			force_announced_channel_preference: self
+				.force_announced_channel_preference
+				.unwrap_or(false),
+			their_to_self_delay: self.their_to_self_delay.unwrap_or(2016),
 		}
 	}
 }
@@ -105,7 +108,7 @@ impl Into<ChannelConfig> for DefaultCoinChannelConfig {
 			fee_proportional_millionths: self.fee_proportional_millionths.unwrap_or(0),
 			cltv_expiry_delta: self.cltv_expiry_delta.unwrap_or(10),
 			announced_channel: self.announced_channel.unwrap_or(false),
-			commit_upfront_shutdown_pubkey: self.commit_upfront_shutdown_pubkey.unwrap_or(true)
+			commit_upfront_shutdown_pubkey: self.commit_upfront_shutdown_pubkey.unwrap_or(true),
 		}
 	}
 }
@@ -124,15 +127,11 @@ mod tests {
 	}
 
 	fn strip_comments(config_str: String) -> String {
-		config_str.split("\n")
-			.filter(|l| !l.starts_with("#"))
-			.collect::<Vec<&str>>().join("\n")
+		config_str.split("\n").filter(|l| !l.starts_with("#")).collect::<Vec<&str>>().join("\n")
 	}
 
 	fn strip_blank_lines(config_str: String) -> String {
-		config_str.split("\n")
-			.filter(|l| *l != "")
-			.collect::<Vec<&str>>().join("\n")
+		config_str.split("\n").filter(|l| *l != "").collect::<Vec<&str>>().join("\n")
 	}
 
 	#[test]
