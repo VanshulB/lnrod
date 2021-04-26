@@ -9,6 +9,7 @@ use lnrod::admin;
 use lnrod::log_utils::{LOG_LEVEL_NAMES, parse_log_level};
 use lnrod::node::NodeBuildArgs;
 use lnrod::config::Config;
+use std::str::FromStr;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
 	let app = App::new("lnrod")
@@ -79,41 +80,36 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 		);
 	let matches = app.clone().get_matches();
 
-	let data_dir = matches.value_of_t_or_exit("datadir");
-	let config_path = matches.value_of_t("config")
-		.unwrap_or_else(|_| format!("{}/config", data_dir));
-	let config = get_config(&matches, &config_path);
+	let config =
+		if matches.is_present("config")
+		{ get_config(&matches, &matches.value_of_t("config").unwrap()) }
+		else { Config::default() };
 
 	if matches.is_present("dump-config") {
 		println!("{}", toml::to_string(&config).unwrap());
 		return Ok(())
 	}
 
-	let bitcoin_arg = matches.value_of_t_or_exit("bitcoin");
+	let data_dir = arg_value_or_config("datadir", &matches, &config.data_dir);
+
 	let bitcoin_url = Url::parse(
-		if matches.occurrences_of("bitcoin") > 0 { bitcoin_arg } else { config.bitcoin_rpc.clone().unwrap_or(bitcoin_arg) }
-			.as_str()
+		arg_value_or_config("bitcoin", &matches, &config.bitcoin_rpc).as_str()
 	)?;
+
 	// Network is regtest if specified on the command line or in the config file
 	let network =
 		if matches.occurrences_of("regtest") > 0 || config.regtest.unwrap_or(false)
 		{ Network::Regtest } else { Network::Testnet };
 
 	let console_log_level =
-		parse_log_level(matches.value_of_t_or_exit("loglevelconsole"))
-			.expect("loglevelconsole");
+		parse_log_level(arg_value_or_config("loglevelconsole", &matches, &config.log_level_console))
+			.expect("log-level-console");
 	let disk_log_level =
-		parse_log_level(matches.value_of_t_or_exit("logleveldisk"))
-			.expect("logleveldisk");
+		parse_log_level(arg_value_or_config("logleveldisk", &matches, &config.log_level_disk))
+			.expect("log-level-disk");
 
-	let lnport_arg = matches.value_of_t_or_exit("lnport");
-	let peer_listening_port =
-		if matches.occurrences_of("lnport") > 0 { lnport_arg }
-		else { config.lnport.unwrap_or(lnport_arg) };
-	let rpcport_arg = matches.value_of_t_or_exit("rpcport");
-	let rpc_port =
-		if matches.occurrences_of("rpcport") > 0 { rpcport_arg }
-		else { config.rpcport.unwrap_or(rpcport_arg) };
+	let peer_listening_port = arg_value_or_config("lnport", &matches, &config.ln_port);
+	let rpc_port = arg_value_or_config("rpcport", &matches, &config.rpc_port);
 
 	let args = NodeBuildArgs {
 		bitcoind_rpc_username: bitcoin_url.username().to_string(),
@@ -130,6 +126,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 	admin::driver::start(rpc_port, args).expect("gRPC driver start");
 	Ok(())
+}
+
+fn arg_value_or_config<T: Clone + FromStr>(name: &str, matches: &ArgMatches, config_value: &Option<T>) -> T
+	where <T as FromStr>::Err: std::fmt::Display
+{
+	let arg = matches.value_of_t_or_exit(name);
+	if matches.occurrences_of("datadir") > 0 {
+		arg
+	} else {
+		config_value.clone().unwrap_or(arg)
+	}
 }
 
 fn get_config(matches: &ArgMatches, config_path: &String) -> Config {

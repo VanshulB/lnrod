@@ -4,9 +4,13 @@ use lightning::util::config::{ChannelConfig, ChannelHandshakeLimits, ChannelHand
 #[derive(Serialize, Deserialize, Debug, Default, Clone)]
 pub struct Config {
 	pub regtest: Option<bool>,
-	pub lnport: Option<u16>,
-	pub rpcport: Option<u16>,
+	pub ln_port: Option<u16>,
+	pub rpc_port: Option<u16>,
 	pub bitcoin_rpc: Option<String>,
+	pub data_dir: Option<String>,
+	pub log_level_console: Option<String>,
+	pub log_level_disk: Option<String>,
+
 	pub channel: Option<ConfigChannel>,
 }
 
@@ -133,7 +137,7 @@ mod tests {
 
 	#[test]
 	fn load_sample_config() {
-		let config_str = read_to_string("doc/sample-config").unwrap();
+		let config_str = read_to_string("doc/sample-config.toml").unwrap();
 
 		let config: Config = toml::from_str(config_str.as_str()).unwrap();
 		let config_re_str = toml::to_string(&config).unwrap();

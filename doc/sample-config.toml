@@ -1,7 +1,10 @@
 regtest = true
-lnport = 9901
-rpcport = 8801
+ln_port = 9901
+rpc_port = 8801
 bitcoin_rpc = "http://user:pass@localhost:18443"
+data_dir = "data"
+log_level_console = "INFO"
+log_level_disk = "TRACE"
 
 [channel.bitcoin.propose]
 # Channel confirmation depth
