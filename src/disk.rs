@@ -1,4 +1,5 @@
 use crate::keys::{DynKeysInterface, DynSigner};
+use anyhow::Result;
 use bitcoin::hashes::hex::FromHex;
 use bitcoin::{BlockHash, Txid};
 use lightning::chain::channelmonitor::ChannelMonitor;
@@ -13,6 +14,8 @@ use std::path::Path;
 use std::sync::Arc;
 use time::OffsetDateTime;
 
+const MAX_CHANNEL_MONITOR_FILENAME_LENGTH: usize = 65;
+
 pub(crate) struct FilesystemLogger {
 	data_dir: String,
 	disk_log_level: LogLevel,
@@ -23,7 +26,7 @@ impl FilesystemLogger {
 		data_dir: String, disk_log_level: LogLevel, console_log_level: LogLevel,
 	) -> Self {
 		let logs_path = format!("{}/logs", data_dir);
-		fs::create_dir_all(logs_path.clone()).unwrap();
+		fs::create_dir_all(logs_path.clone()).expect("Cannot create logs directory");
 		Self { data_dir: logs_path, disk_log_level, console_log_level }
 	}
 }
@@ -47,10 +50,10 @@ impl Logger for FilesystemLogger {
 			fs::OpenOptions::new()
 				.create(true)
 				.append(true)
-				.open(logs_file_path)
-				.unwrap()
+				.open(&logs_file_path)
+				.expect(&format!("Failed to open file: {}", &logs_file_path))
 				.write_all(log.as_bytes())
-				.unwrap();
+				.expect(&format!("Failed to write to file: {}", &logs_file_path));
 		}
 		if self.console_log_level >= record.level {
 			print!("{}", &log);
@@ -64,32 +67,38 @@ pub(crate) fn read_channelmonitors(
 		return Ok(HashMap::new());
 	}
 	let mut outpoint_to_channelmonitor = HashMap::new();
-	for file_option in fs::read_dir(path).unwrap() {
-		let file = file_option.unwrap();
+	for file_option in fs::read_dir(path)? {
+		let file = file_option?;
 		let owned_file_name = file.file_name();
-		let filename = owned_file_name.to_str();
-		if !filename.is_some() || !filename.unwrap().is_ascii() || filename.unwrap().len() < 65 {
+		let filename = owned_file_name.to_str().ok_or(std::io::Error::new(
+			std::io::ErrorKind::Other,
+			"Invalid ChannelMonitor file name: Not valid Unicode",
+		))?;
+
+		if !filename.is_ascii() || filename.len() < MAX_CHANNEL_MONITOR_FILENAME_LENGTH {
 			return Err(std::io::Error::new(
 				std::io::ErrorKind::Other,
-				"Invalid ChannelMonitor file name",
+				format!(
+					"Invalid ChannelMonitor file name: Must be ASCII with more than {} characters",
+					MAX_CHANNEL_MONITOR_FILENAME_LENGTH
+				),
 			));
 		}
 
-		let txid = Txid::from_hex(filename.unwrap().split_at(64).0);
-		if txid.is_err() {
-			return Err(std::io::Error::new(
-				std::io::ErrorKind::Other,
-				"Invalid tx ID in filename",
-			));
-		}
+		let txid = Txid::from_hex(filename.split_at(64).0).map_err(|_| {
+			std::io::Error::new(std::io::ErrorKind::Other, "Invalid tx ID in filename")
+		})?;
 
-		let index = filename.unwrap().split_at(65).1.split('.').next().unwrap().parse();
-		if index.is_err() {
-			return Err(std::io::Error::new(
-				std::io::ErrorKind::Other,
-				"Invalid tx index in filename",
-			));
-		}
+		let index = filename
+			.split_at(MAX_CHANNEL_MONITOR_FILENAME_LENGTH)
+			.1
+			.split('.')
+			.next()
+			.unwrap()
+			.parse()
+			.map_err(|_| {
+				std::io::Error::new(std::io::ErrorKind::Other, "Invalid tx index in filename")
+			})?;
 
 		let contents = fs::read(&file.path())?;
 
@@ -97,10 +106,8 @@ pub(crate) fn read_channelmonitors(
 			&mut Cursor::new(&contents),
 			&*keys_manager,
 		) {
-			outpoint_to_channelmonitor.insert(
-				OutPoint { txid: txid.unwrap(), index: index.unwrap() },
-				(blockhash, channel_monitor),
-			);
+			outpoint_to_channelmonitor
+				.insert(OutPoint { txid, index }, (blockhash, channel_monitor));
 		} else {
 			return Err(std::io::Error::new(
 				std::io::ErrorKind::Other,

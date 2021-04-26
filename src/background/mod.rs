@@ -6,18 +6,19 @@
 #![deny(missing_docs)]
 #![deny(unsafe_code)]
 
+use anyhow::Result;
 use lightning::chain;
 use lightning::chain::chaininterface::{BroadcasterInterface, FeeEstimator};
-use lightning::chain::keysinterface::{Sign, KeysInterface};
+use lightning::chain::keysinterface::{KeysInterface, Sign};
 use lightning::ln::channelmanager::ChannelManager;
 use lightning::ln::msgs::{ChannelMessageHandler, RoutingMessageHandler};
 use lightning::ln::peer_handler::{PeerManager, SocketDescriptor};
 use lightning::util::logger::Logger;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 use std::time::{Duration, Instant};
-use tokio::task::JoinHandle;
 use tokio::task;
+use tokio::task::JoinHandle;
 
 /// BackgroundProcessor takes care of tasks that (1) need to happen periodically to keep
 /// Rust-Lightning running properly, and (2) either can or should be run in the background. Its
@@ -64,21 +65,32 @@ impl BackgroundProcessor {
 	/// [`ChannelManager`]: lightning::ln::channelmanager::ChannelManager
 	/// [`ChannelManager::write`]: lightning::ln::channelmanager::ChannelManager#impl-Writeable
 	/// [`FilesystemPersister::persist_manager`]: lightning_persister::FilesystemPersister::persist_manager
-	pub async fn start<PM, Signer, M, T, K, F, L, Descriptor: 'static + SocketDescriptor + Send, CM, RM>(
+	pub async fn start<
+		PM,
+		Signer,
+		M,
+		T,
+		K,
+		F,
+		L,
+		Descriptor: 'static + SocketDescriptor + Send,
+		CM,
+		RM,
+	>(
 		persist_channel_manager: PM,
 		channel_manager: Arc<ChannelManager<Signer, Arc<M>, Arc<T>, Arc<K>, Arc<F>, Arc<L>>>,
 		peer_manager: Arc<PeerManager<Descriptor, Arc<CM>, Arc<RM>, Arc<L>>>, logger: Arc<L>,
 	) -> Self
-		where
-			Signer: 'static + Sign,
-			M: 'static + chain::Watch<Signer>,
-			T: 'static + BroadcasterInterface,
-			K: 'static + KeysInterface<Signer = Signer>,
-			F: 'static + FeeEstimator,
-			L: 'static + Logger,
-			CM: 'static + ChannelMessageHandler,
-			RM: 'static + RoutingMessageHandler,
-			PM: 'static
+	where
+		Signer: 'static + Sign,
+		M: 'static + chain::Watch<Signer>,
+		T: 'static + BroadcasterInterface,
+		K: 'static + KeysInterface<Signer = Signer>,
+		F: 'static + FeeEstimator,
+		L: 'static + Logger,
+		CM: 'static + ChannelMessageHandler,
+		RM: 'static + RoutingMessageHandler,
+		PM: 'static
 			+ Send
 			+ Fn(
 				&ChannelManager<Signer, Arc<M>, Arc<T>, Arc<K>, Arc<F>, Arc<L>>,
@@ -91,9 +103,12 @@ impl BackgroundProcessor {
 			loop {
 				peer_manager.process_events();
 				let channel_manager_for_await = Arc::clone(&channel_manager);
-				let updates_available = task::spawn_blocking( move || {
-					channel_manager_for_await.await_persistable_update_timeout(Duration::from_millis(100))
-				}).await.unwrap();
+				let updates_available = task::spawn_blocking(move || {
+					channel_manager_for_await
+						.await_persistable_update_timeout(Duration::from_millis(100))
+				})
+				.await
+				.unwrap();
 				if updates_available {
 					persist_channel_manager(&*channel_manager)?;
 				}
@@ -103,7 +118,10 @@ impl BackgroundProcessor {
 					return Ok(());
 				}
 				if current_time.elapsed().as_secs() > FRESHNESS_TIMER {
-					log_trace!(logger, "Calling ChannelManager's and PeerManager's timer_tick_occurred");
+					log_trace!(
+						logger,
+						"Calling ChannelManager's and PeerManager's timer_tick_occurred"
+					);
 					channel_manager.timer_tick_occurred();
 					peer_manager.timer_tick_occurred();
 					current_time = Instant::now();

@@ -1,17 +1,18 @@
 use std::fs::read_to_string;
 use std::path::Path;
 
+use anyhow::Result;
 use bitcoin::Network;
 use clap::{App, Arg, ArgMatches};
 use url::Url;
 
 use lnrod::admin;
-use lnrod::log_utils::{LOG_LEVEL_NAMES, parse_log_level};
-use lnrod::node::NodeBuildArgs;
 use lnrod::config::Config;
+use lnrod::log_utils::{parse_log_level, LOG_LEVEL_NAMES};
+use lnrod::node::NodeBuildArgs;
 use std::str::FromStr;
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
+fn main() -> Result<()> {
 	let app = App::new("lnrod")
 		.about("Lightning Rod Node")
 		.arg(
@@ -45,7 +46,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 				.short('f')
 				.long("config")
 				.about("config file, default DATADIR/config")
-				.takes_value(true)
+				.takes_value(true),
 		)
 		.arg(
 			Arg::new("bitcoin")
@@ -53,7 +54,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 				.short('b')
 				.long("bitcoin")
 				.default_value("http://user:pass@localhost:18443")
-				.takes_value(true)
+				.takes_value(true),
 		)
 		.arg(Arg::new("regtest").long("regtest"))
 		.arg(
@@ -74,36 +75,38 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 				.default_value("INFO")
 				.takes_value(true),
 		)
-		.arg(
-			Arg::new("dump-config")
-				.long("dump-config")
-		);
+		.arg(Arg::new("dump-config").long("dump-config"));
 	let matches = app.clone().get_matches();
 
-	let config =
-		if matches.is_present("config")
-		{ get_config(&matches, &matches.value_of_t("config").unwrap()) }
-		else { Config::default() };
+	let config = if matches.is_present("config") {
+		get_config(&matches, &matches.value_of_t("config").unwrap())
+	} else {
+		Config::default()
+	};
 
 	if matches.is_present("dump-config") {
 		println!("{}", toml::to_string(&config).unwrap());
-		return Ok(())
+		return Ok(());
 	}
 
 	let data_dir = arg_value_or_config("datadir", &matches, &config.data_dir);
 
-	let bitcoin_url = Url::parse(
-		arg_value_or_config("bitcoin", &matches, &config.bitcoin_rpc).as_str()
-	)?;
+	let bitcoin_url =
+		Url::parse(arg_value_or_config("bitcoin", &matches, &config.bitcoin_rpc).as_str())?;
 
 	// Network is regtest if specified on the command line or in the config file
-	let network =
-		if matches.occurrences_of("regtest") > 0 || config.regtest.unwrap_or(false)
-		{ Network::Regtest } else { Network::Testnet };
+	let network = if matches.occurrences_of("regtest") > 0 || config.regtest.unwrap_or(false) {
+		Network::Regtest
+	} else {
+		Network::Testnet
+	};
 
-	let console_log_level =
-		parse_log_level(arg_value_or_config("loglevelconsole", &matches, &config.log_level_console))
-			.expect("log-level-console");
+	let console_log_level = parse_log_level(arg_value_or_config(
+		"loglevelconsole",
+		&matches,
+		&config.log_level_console,
+	))
+	.expect("log-level-console");
 	let disk_log_level =
 		parse_log_level(arg_value_or_config("logleveldisk", &matches, &config.log_level_disk))
 			.expect("log-level-disk");
@@ -121,15 +124,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 		network,
 		disk_log_level,
 		console_log_level,
-		config
+		config,
 	};
 
 	admin::driver::start(rpc_port, args).expect("gRPC driver start");
 	Ok(())
 }
 
-fn arg_value_or_config<T: Clone + FromStr>(name: &str, matches: &ArgMatches, config_value: &Option<T>) -> T
-	where <T as FromStr>::Err: std::fmt::Display
+fn arg_value_or_config<T: Clone + FromStr>(
+	name: &str, matches: &ArgMatches, config_value: &Option<T>,
+) -> T
+where
+	<T as FromStr>::Err: std::fmt::Display,
 {
 	let arg = matches.value_of_t_or_exit(name);
 	if matches.occurrences_of("datadir") > 0 {

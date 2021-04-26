@@ -5,6 +5,7 @@ use std::str::FromStr;
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Arc;
 
+use anyhow::{anyhow, Result};
 use bitcoin::blockdata::transaction::Transaction;
 use bitcoin::util::address::Address;
 use bitcoin::util::psbt::serialize::Serialize;
@@ -19,7 +20,6 @@ use crate::convert::{BlockchainInfo, FundedTx, RawTx, SignedTx};
 use bitcoin::hashes::hex::ToHex;
 use jsonrpc_async::simple_http::SimpleHttpTransport;
 use jsonrpc_async::Client;
-use std::result;
 
 #[derive(Clone)]
 pub struct BitcoindClient {
@@ -60,8 +60,6 @@ impl From<std::io::Error> for Error {
 		Error::Io(e)
 	}
 }
-
-pub type Result<T> = result::Result<T, Error>;
 
 impl BitcoindClient {
 	pub async fn new(
@@ -123,7 +121,7 @@ impl BitcoindClient {
 
 		let resp = rpc.send_request(req).await.map_err(Error::from);
 		// log_response(cmd, &resp);
-		Ok(resp?.result()?)
+		Ok(resp.map_err(|e| anyhow!("RPC call failed: {:?}", e))?.result()?)
 	}
 
 	async fn call_into<T>(&self, cmd: &str, args: &[serde_json::Value]) -> Result<T>

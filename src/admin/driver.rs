@@ -2,6 +2,7 @@ use std::convert::TryInto;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::str::FromStr;
 
+use anyhow::Result;
 use serde_json::json;
 use tonic::{transport::Server, Request, Response, Status};
 
@@ -193,7 +194,7 @@ impl Admin for AdminHandler {
 			.node
 			.payment_info
 			.lock()
-			.unwrap()
+			.map_err(|_| Status::unavailable("Failed to acquire lock on payment info"))?
 			.iter()
 			.map(|(payment_hash, (_, direction, status, value_msat))| Payment {
 				value_msat: value_msat.0.unwrap(),
@@ -242,6 +243,6 @@ pub async fn start(rpc_port: u16, args: NodeBuildArgs) -> Result<(), Box<dyn std
 	let addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), rpc_port);
 	let handler = AdminHandler::new(node);
 	log_info!(logger, "starting server");
-	Server::builder().add_service(AdminServer::new(handler)).serve(addr).await.unwrap();
+	Server::builder().add_service(AdminServer::new(handler)).serve(addr).await?;
 	Ok(())
 }

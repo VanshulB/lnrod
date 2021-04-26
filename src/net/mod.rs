@@ -26,6 +26,8 @@
 #![deny(broken_intra_doc_links)]
 #![deny(missing_docs)]
 
+use anyhow::Result;
+
 use bitcoin::secp256k1::key::PublicKey;
 
 use tokio::io::{AsyncReadExt, AsyncWrite, AsyncWriteExt};
@@ -226,7 +228,8 @@ impl Connection {
 pub async fn setup_inbound<CMH, RMH, L>(
 	peer_manager: Arc<peer_handler::PeerManager<SocketDescriptor, Arc<CMH>, Arc<RMH>, Arc<L>>>,
 	event_notify: mpsc::Sender<()>, stream: TcpStream,
-) -> Result<JoinHandle<()>, ()> where
+) -> Result<JoinHandle<()>, ()>
+where
 	CMH: ChannelMessageHandler + 'static,
 	RMH: RoutingMessageHandler + 'static,
 	L: Logger + 'static + ?Sized,
@@ -259,10 +262,10 @@ pub async fn setup_inbound<CMH, RMH, L>(
 				assert!(Arc::try_unwrap(last_us).is_ok());
 			}
 		});
-		return Ok(handle)
+		return Ok(handle);
 	} else {
 		println!("ERROR: peer_manager rejected connection");
-		return Err(())
+		return Err(());
 	}
 }
 

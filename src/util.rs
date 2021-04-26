@@ -1,3 +1,4 @@
+use anyhow::Result;
 use serde::Serializer;
 
 pub fn as_hex<S>(buf: &Vec<u8>, serializer: S) -> Result<S::Ok, S::Error>
