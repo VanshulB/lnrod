@@ -1,14 +1,19 @@
+use std::fs::read_to_string;
+use std::path::Path;
+
 use bitcoin::Network;
-use clap::{App, Arg};
+use clap::{App, Arg, ArgMatches};
 use url::Url;
 
 use lnrod::admin;
-use lnrod::log_utils::{parse_log_level, LOG_LEVEL_NAMES};
+use lnrod::log_utils::{LOG_LEVEL_NAMES, parse_log_level};
 use lnrod::node::NodeBuildArgs;
+use lnrod::config::Config;
+use std::str::FromStr;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
 	let app = App::new("lnrod")
-		.about("LDK node")
+		.about("Lightning Rod Node")
 		.arg(
 			Arg::new("lnport")
 				.about("Lightning peer listen port")
@@ -36,12 +41,19 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 				.takes_value(true),
 		)
 		.arg(
+			Arg::new("config")
+				.short('f')
+				.long("config")
+				.about("config file, default DATADIR/config")
+				.takes_value(true)
+		)
+		.arg(
 			Arg::new("bitcoin")
 				.about("Bitcoin RPC endpoint")
 				.short('b')
 				.long("bitcoin")
 				.default_value("http://user:pass@localhost:18443")
-				.takes_value(true),
+				.takes_value(true)
 		)
 		.arg(Arg::new("regtest").long("regtest"))
 		.arg(
@@ -61,36 +73,82 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 				.possible_values(&LOG_LEVEL_NAMES)
 				.default_value("INFO")
 				.takes_value(true),
+		)
+		.arg(
+			Arg::new("dump-config")
+				.long("dump-config")
 		);
 	let matches = app.clone().get_matches();
-	let bitcoin_url = Url::parse(matches.value_of("bitcoin").unwrap())?;
 
-	let network = if matches.is_present("regtest") { Network::Regtest } else { Network::Testnet };
-	let datadir = matches.value_of("datadir").unwrap().to_string();
+	let config =
+		if matches.is_present("config")
+		{ get_config(&matches, &matches.value_of_t("config").unwrap()) }
+		else { Config::default() };
+
+	if matches.is_present("dump-config") {
+		println!("{}", toml::to_string(&config).unwrap());
+		return Ok(())
+	}
+
+	let data_dir = arg_value_or_config("datadir", &matches, &config.data_dir);
+
+	let bitcoin_url = Url::parse(
+		arg_value_or_config("bitcoin", &matches, &config.bitcoin_rpc).as_str()
+	)?;
+
+	// Network is regtest if specified on the command line or in the config file
+	let network =
+		if matches.occurrences_of("regtest") > 0 || config.regtest.unwrap_or(false)
+		{ Network::Regtest } else { Network::Testnet };
+
+	let console_log_level =
+		parse_log_level(arg_value_or_config("loglevelconsole", &matches, &config.log_level_console))
+			.expect("log-level-console");
+	let disk_log_level =
+		parse_log_level(arg_value_or_config("logleveldisk", &matches, &config.log_level_disk))
+			.expect("log-level-disk");
+
+	let peer_listening_port = arg_value_or_config("lnport", &matches, &config.ln_port);
+	let rpc_port = arg_value_or_config("rpcport", &matches, &config.rpc_port);
+
 	let args = NodeBuildArgs {
 		bitcoind_rpc_username: bitcoin_url.username().to_string(),
 		bitcoind_rpc_password: bitcoin_url.password().expect("password").to_string(),
 		bitcoind_rpc_host: bitcoin_url.host_str().expect("host").to_string(),
 		bitcoind_rpc_port: bitcoin_url.port().expect("port"),
-		storage_dir_path: datadir.clone(),
-		peer_listening_port: matches.value_of("lnport").unwrap().parse().unwrap(),
+		storage_dir_path: data_dir,
+		peer_listening_port,
 		network,
-		disk_log_level: parse_log_level(matches.value_of("logleveldisk").unwrap().to_string())
-			.expect("logleveldisk"),
-		console_log_level: parse_log_level(
-			matches.value_of("loglevelconsole").unwrap().to_string(),
-		)
-		.expect("loglevelconsole"),
+		disk_log_level,
+		console_log_level,
+		config
 	};
 
-	let rpc_port = matches.value_of("rpcport").unwrap();
-
-	admin::driver::start(rpc_port.parse().expect("port number"), args).expect("gRPC driver start");
+	admin::driver::start(rpc_port, args).expect("gRPC driver start");
 	Ok(())
 }
 
-#[test]
-fn test_url() {
-	let url = Url::parse("http://user:pass@localhost:1234");
-	println!("{:?}", url)
+fn arg_value_or_config<T: Clone + FromStr>(name: &str, matches: &ArgMatches, config_value: &Option<T>) -> T
+	where <T as FromStr>::Err: std::fmt::Display
+{
+	let arg = matches.value_of_t_or_exit(name);
+	if matches.occurrences_of("datadir") > 0 {
+		arg
+	} else {
+		config_value.clone().unwrap_or(arg)
+	}
+}
+
+fn get_config(matches: &ArgMatches, config_path: &String) -> Config {
+	let config_exists = Path::new(&config_path).exists();
+	if matches.is_present("config") && !config_exists {
+		panic!("missing config file");
+	}
+	let config: Config = if config_exists {
+		let contents = read_to_string(config_path).unwrap();
+		toml::from_str(contents.as_str()).unwrap()
+	} else {
+		Default::default()
+	};
+	config
 }
