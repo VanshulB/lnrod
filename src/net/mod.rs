@@ -123,9 +123,9 @@ impl Connection {
 		let disconnect_type = loop {
 			macro_rules! shutdown_socket {
 				($err: expr, $need_disconnect: expr) => {{
-					println!("Disconnecting peer due to {}!", $err);
+					log_info!("Disconnecting peer due to {}!", $err);
 					break $need_disconnect;
-				}};
+					}};
 			}
 
 			macro_rules! prepare_read_write_call {
@@ -136,9 +136,9 @@ impl Connection {
 							"disconnect_socket() call from RL",
 							Disconnect::CloseConnection
 						);
-					}
+						}
 					us_lock.block_disconnect_socket = true;
-				}};
+					}};
 			}
 
 			let read_paused = us.lock().unwrap().read_paused;
@@ -264,7 +264,7 @@ where
 		});
 		return Ok(handle);
 	} else {
-		println!("ERROR: peer_manager rejected connection");
+		log_info!("ERROR: peer_manager rejected connection");
 		return Err(());
 	}
 }
@@ -311,7 +311,7 @@ where
 							// schedule_read prior to any relevant calls into RL.
 						}
 						_ => {
-							eprintln!("Failed to write first full message to socket!");
+							log_error!("Failed to write first full message to socket!");
 							peer_manager
 								.socket_disconnected(&SocketDescriptor::new(Arc::clone(&us)));
 							break Err(());
@@ -533,6 +533,8 @@ mod tests {
 	use std::sync::{Arc, Mutex};
 	use std::time::Duration;
 
+	use crate::logger::{self, AbstractLogger};
+
 	pub struct TestLogger();
 	impl lightning::util::logger::Logger for TestLogger {
 		fn log(&self, record: &lightning::util::logger::Record) {
@@ -682,7 +684,7 @@ mod tests {
 			},
 			a_key.clone(),
 			&[1; 32],
-			Arc::new(TestLogger()),
+			logger::get(),
 		));
 
 		let (b_connected_sender, mut b_connected) = mpsc::channel(1);
@@ -701,7 +703,7 @@ mod tests {
 			},
 			b_key.clone(),
 			&[2; 32],
-			Arc::new(TestLogger()),
+			logger::get(),
 		));
 
 		// We bind on localhost, hoping the environment is properly configured with a local
@@ -754,6 +756,7 @@ mod tests {
 
 	#[tokio::test(flavor = "multi_thread")]
 	async fn basic_threaded_connection_test() {
+		logger::set(Arc::new(AbstractLogger::new(Box::new(TestLogger()))));
 		do_basic_connection_test().await;
 	}
 	#[tokio::test]

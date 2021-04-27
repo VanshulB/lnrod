@@ -16,6 +16,7 @@ use time::OffsetDateTime;
 
 const MAX_CHANNEL_MONITOR_FILENAME_LENGTH: usize = 65;
 
+#[derive(Debug)]
 pub(crate) struct FilesystemLogger {
 	data_dir: String,
 	disk_log_level: LogLevel,

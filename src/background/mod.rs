@@ -79,7 +79,7 @@ impl BackgroundProcessor {
 	>(
 		persist_channel_manager: PM,
 		channel_manager: Arc<ChannelManager<Signer, Arc<M>, Arc<T>, Arc<K>, Arc<F>, Arc<L>>>,
-		peer_manager: Arc<PeerManager<Descriptor, Arc<CM>, Arc<RM>, Arc<L>>>, logger: Arc<L>,
+		peer_manager: Arc<PeerManager<Descriptor, Arc<CM>, Arc<RM>, Arc<L>>>,
 	) -> Self
 	where
 		Signer: 'static + Sign,
@@ -114,14 +114,11 @@ impl BackgroundProcessor {
 				}
 				// Exit the loop if the background processor was requested to stop.
 				if stop_thread.load(Ordering::Acquire) == true {
-					log_trace!(logger, "Terminating background processor.");
+					log_trace!("Terminating background processor.");
 					return Ok(());
 				}
 				if current_time.elapsed().as_secs() > FRESHNESS_TIMER {
-					log_trace!(
-						logger,
-						"Calling ChannelManager's and PeerManager's timer_tick_occurred"
-					);
+					log_trace!("Calling ChannelManager's and PeerManager's timer_tick_occurred");
 					channel_manager.timer_tick_occurred();
 					peer_manager.timer_tick_occurred();
 					current_time = Instant::now();

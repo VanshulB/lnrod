@@ -8,7 +8,7 @@ use url::Url;
 
 use lnrod::admin;
 use lnrod::config::Config;
-use lnrod::log_utils::{parse_log_level, LOG_LEVEL_NAMES};
+use lnrod::logger::{parse_log_level, LOG_LEVEL_NAMES};
 use lnrod::node::NodeBuildArgs;
 use std::str::FromStr;
 
