@@ -11,6 +11,7 @@ use bitcoin::util::address::Address;
 use bitcoin::util::psbt::serialize::Serialize;
 use bitcoin::{Amount, Block, BlockHash};
 use lightning::chain::chaininterface::{BroadcasterInterface, ConfirmationTarget, FeeEstimator};
+use lightning::util::logger::Logger;
 use lightning_block_sync::http::JsonResponse;
 use lightning_block_sync::{AsyncBlockSourceResult, BlockHeaderData, BlockSource};
 use serde_json::{json, Value};
@@ -160,7 +161,7 @@ impl BroadcasterInterface for BitcoindClient {
 
 			let txid: String =
 				rpc.send_request(req).await.map_err(Error::from).unwrap().result().unwrap();
-			println!("broadcast {}", txid);
+			log_info!("broadcast {}", txid);
 		});
 	}
 }

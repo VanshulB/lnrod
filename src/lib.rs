@@ -4,6 +4,8 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use std::{fmt, io};
 
+use rand::{thread_rng, Rng};
+
 use bitcoin::consensus::encode;
 use bitcoin::hashes::sha256::Hash as Sha256;
 use bitcoin::hashes::Hash;
@@ -20,12 +22,12 @@ use lightning::ln::channelmanager::{PaymentHash, PaymentPreimage};
 use lightning::ln::peer_handler::PeerManager as RLPeerManager;
 use lightning::routing::network_graph::NetGraphMsgHandler;
 use lightning::util::events::{Event, EventsProvider};
+use lightning::util::logger::Logger;
 use lightning_persister::FilesystemPersister;
-use rand::{thread_rng, Rng};
 
 use crate::bitcoind_client::BitcoindClient;
-use crate::disk::FilesystemLogger;
 use crate::keys::{DynKeysInterface, DynSigner, SpendableKeysInterface};
+use crate::logger::AbstractLogger;
 use crate::net::SocketDescriptor;
 
 #[macro_use]
@@ -45,7 +47,7 @@ mod default_signer;
 mod disk;
 mod hex_utils;
 mod keys;
-pub mod log_utils;
+pub mod logger;
 pub mod net;
 pub mod node;
 mod transaction_utils;
@@ -89,12 +91,12 @@ type ArcChainMonitor = ChainMonitor<
 	Arc<dyn Filter>,
 	Arc<BitcoindClient>,
 	Arc<BitcoindClient>,
-	Arc<FilesystemLogger>,
+	Arc<AbstractLogger>,
 	Arc<FilesystemPersister>,
 >;
 
 pub(crate) type PeerManager =
-	SimpleArcPeerManager<SocketDescriptor, dyn chain::Access, FilesystemLogger>;
+	SimpleArcPeerManager<SocketDescriptor, dyn chain::Access, AbstractLogger>;
 
 pub(crate) type SimpleArcPeerManager<SD, C, L> =
 	RLPeerManager<SD, Arc<ChannelManager>, Arc<NetGraphMsgHandler<Arc<C>, Arc<L>>>, Arc<L>>;
@@ -105,7 +107,7 @@ pub(crate) type ChannelManager = RLChannelManager<
 	Arc<BitcoindClient>,
 	Arc<DynKeysInterface>,
 	Arc<BitcoindClient>,
-	Arc<FilesystemLogger>,
+	Arc<AbstractLogger>,
 >;
 
 async fn handle_ldk_events(
@@ -175,7 +177,7 @@ async fn handle_ldk_events(
 						);
 
 						if success {
-							println!(
+							log_info!(
 								"\nEVENT: received payment from payment_hash {} of {} satoshis",
 								hex_utils::hex_str(&payment_hash.0),
 								amt_msat / 1000
@@ -185,15 +187,15 @@ async fn handle_ldk_events(
 								payments.get_mut(&payment_hash).unwrap();
 							*status = HTLCStatus::Succeeded;
 						} else {
-							println!(
+							log_info!(
 								"\nEVENT: failed to claim payment with {} msat, preimage {}",
 								amt_msat,
 								hex::encode(preimage.0)
 							);
-							payment_secret.map(|s| println!("secret {}", hex::encode(s.0)));
+							payment_secret.map(|s| log_info!("secret {}", hex::encode(s.0)));
 						}
 					} else {
-						println!("\nERROR: we received a payment but didn't know the preimage");
+						log_info!("\nERROR: we received a payment but didn't know the preimage");
 						print!("> ");
 						io::stdout().flush().unwrap();
 						loop_channel_manager.fail_htlc_backwards(&payment_hash, &payment_secret);
@@ -216,7 +218,7 @@ async fn handle_ldk_events(
 						if *payment_hash == hashed {
 							*preimage_option = Some(payment_preimage);
 							*status = HTLCStatus::Succeeded;
-							println!(
+							log_info!(
 								"\nEVENT: successfully sent payment of {} satoshis from \
                                          payment hash {:?} with preimage {:?}",
 								amt_sat,
@@ -234,9 +236,9 @@ async fn handle_ldk_events(
 						hex_utils::hex_str(&payment_hash.0)
 					);
 					if rejected_by_dest {
-						println!("rejected by destination node");
+						log_info!("rejected by destination node");
 					} else {
-						println!("route failed");
+						log_info!("route failed");
 					}
 					print!("> ");
 					io::stdout().flush().unwrap();

@@ -23,6 +23,7 @@ use lightning::ln::peer_handler::MessageHandler;
 use lightning::routing::network_graph::NetGraphMsgHandler;
 use lightning::routing::router;
 use lightning::util::logger::Level as LogLevel;
+use lightning::util::logger::Logger;
 use lightning::util::ser::{ReadableArgs, Writer};
 use lightning_block_sync::{init, poll, SpvClient, UnboundedCache};
 use lightning_invoice::Invoice;
@@ -37,6 +38,7 @@ use crate::config::Config;
 use crate::default_signer::InMemorySignerFactory;
 use crate::disk::FilesystemLogger;
 use crate::keys::{DynKeysInterface, KeysManager};
+use crate::logger::{self, AbstractLogger};
 use crate::net::{setup_inbound, setup_outbound};
 use crate::{
 	disk, handle_ldk_events, ArcChainMonitor, ChannelManager, HTLCDirection, HTLCStatus,
@@ -61,12 +63,11 @@ pub struct NodeBuildArgs {
 pub(crate) struct Node {
 	pub(crate) peer_manager: Arc<PeerManager>,
 	pub(crate) channel_manager: Arc<ChannelManager>,
-	pub(crate) router: Arc<NetGraphMsgHandler<Arc<dyn chain::Access>, Arc<FilesystemLogger>>>,
+	pub(crate) router: Arc<NetGraphMsgHandler<Arc<dyn chain::Access>, Arc<AbstractLogger>>>,
 	pub(crate) payment_info: PaymentInfoStorage,
 	pub(crate) keys_manager: Arc<DynKeysInterface>,
 	pub(crate) event_ntfn_sender: Sender<()>,
 	pub(crate) ldk_data_dir: String,
-	pub(crate) logger: Arc<FilesystemLogger>,
 	pub(crate) network: Network,
 }
 
@@ -123,13 +124,14 @@ async fn build_with_signer(
 	let fee_estimator = Arc::clone(&bitcoind_client_arc);
 
 	// Step 2: Initialize the Logger
+	// TODO(ksedgwic) - Resolve data_dir setup and move this to main_server because earlier.
 	let is_daemon = false;
 	let console_log_level = if is_daemon { LogLevel::Off } else { args.console_log_level };
-	let logger = Arc::new(FilesystemLogger::new(
+	logger::set(Arc::new(AbstractLogger::new(Box::new(FilesystemLogger::new(
 		ldk_data_dir.clone(),
 		args.disk_log_level,
 		console_log_level,
-	));
+	)))));
 
 	// Step 3: Initialize the BroadcasterInterface
 
@@ -144,7 +146,7 @@ async fn build_with_signer(
 	let chain_monitor: Arc<ArcChainMonitor> = Arc::new(ChainMonitor::new(
 		None,
 		broadcaster.clone(),
-		logger.clone(),
+		logger::get(),
 		fee_estimator.clone(),
 		persister.clone(),
 	));
@@ -171,7 +173,7 @@ async fn build_with_signer(
 				fee_estimator.clone(),
 				chain_monitor.clone(),
 				broadcaster.clone(),
-				logger.clone(),
+				logger::get(),
 				user_config,
 				channel_monitor_mut_references,
 			);
@@ -189,7 +191,7 @@ async fn build_with_signer(
 				fee_estimator.clone(),
 				chain_monitor.clone(),
 				broadcaster.clone(),
-				logger.clone(),
+				logger::get(),
 				keys_manager.clone(),
 				user_config,
 				chain_params,
@@ -211,7 +213,7 @@ async fn build_with_signer(
 			let channel_monitor = blockhash_and_monitor.1;
 			chain_listener_channel_monitors.push((
 				blockhash,
-				(channel_monitor, broadcaster.clone(), fee_estimator.clone(), logger.clone()),
+				(channel_monitor, broadcaster.clone(), fee_estimator.clone(), logger::get()),
 				outpoint,
 			));
 		}
@@ -245,7 +247,7 @@ async fn build_with_signer(
 	// XXX persist routing data
 	let genesis = genesis_block(args.network).header.block_hash();
 	let router =
-		Arc::new(NetGraphMsgHandler::new(genesis, None::<Arc<dyn chain::Access>>, logger.clone()));
+		Arc::new(NetGraphMsgHandler::new(genesis, None::<Arc<dyn chain::Access>>, logger::get()));
 
 	// Step 14: Initialize the PeerManager
 	let channel_manager: Arc<ChannelManager> = Arc::new(channel_manager);
@@ -257,7 +259,7 @@ async fn build_with_signer(
 		lightning_msg_handler,
 		keys_manager.get_node_secret(),
 		&ephemeral_bytes,
-		logger.clone(),
+		logger::get(),
 	));
 
 	// ## Running LDK
@@ -283,7 +285,7 @@ async fn build_with_signer(
 			tokio::net::TcpListener::bind(format!("0.0.0.0:{}", listening_port)).await.unwrap();
 		loop {
 			let tcp_stream = listener.accept().await.unwrap().0;
-			println!("accepted");
+			log_info!("accepted");
 			setup_inbound(
 				peer_manager_connection_handler.clone(),
 				event_ntfn_sender1.clone(),
@@ -291,7 +293,7 @@ async fn build_with_signer(
 			)
 			.await
 			.unwrap();
-			println!("setup");
+			log_info!("setup");
 		}
 	});
 
@@ -322,7 +324,6 @@ async fn build_with_signer(
 		persist_channel_manager_callback,
 		channel_manager.clone(),
 		peer_manager.clone(),
-		logger.clone(),
 	)
 	.await;
 
@@ -358,7 +359,6 @@ async fn build_with_signer(
 		keys_manager,
 		event_ntfn_sender,
 		ldk_data_dir,
-		logger,
 		network: args.network,
 	}
 }
@@ -387,16 +387,16 @@ pub(crate) async fn connect_peer_if_necessary(
 				if peer_connected {
 					break;
 				}
-				println!("waiting for peer connection setup");
+				log_info!("waiting for peer connection setup");
 				tokio::time::sleep(Duration::new(1, 0)).await;
 			}
 			if !peer_connected {
-				println!("timed out setting up peer connection");
+				log_info!("timed out setting up peer connection");
 				return Err(());
 			}
 		}
 		Err(e) => {
-			println!("ERROR: failed to connect to peer: {:?}", e);
+			log_info!("ERROR: failed to connect to peer: {:?}", e);
 			return Err(());
 		}
 	}
@@ -436,7 +436,7 @@ impl Node {
 				Some(info) => info,
 				None => continue,
 			};
-			println!("VMW: adding routehop, info.fee base: {}", forwarding_info.fee_base_msat);
+			log_info!("VMW: adding routehop, info.fee base: {}", forwarding_info.fee_base_msat);
 			invoice = invoice.route(vec![lightning_invoice::RouteHop {
 				pubkey: channel.remote_network_id,
 				short_channel_id,
@@ -452,8 +452,8 @@ impl Node {
 		});
 
 		match invoice.clone() {
-			Ok(invoice) => println!("SUCCESS: generated invoice: {}", invoice),
-			Err(e) => println!("ERROR: failed to create invoice: {:?}", e),
+			Ok(invoice) => log_info!("SUCCESS: generated invoice: {}", invoice),
+			Err(e) => log_info!("ERROR: failed to create invoice: {:?}", e),
 		}
 
 		payments.insert(
@@ -550,21 +550,21 @@ impl Node {
 			&vec![],
 			amt_msat,
 			final_cltv,
-			self.logger.clone(),
+			logger::get(),
 		);
 		if let Err(e) = route {
-			println!("ERROR: failed to find route: {}", e.err);
+			log_info!("ERROR: failed to find route: {}", e.err);
 			return Err(e.err);
 		}
 		let status =
 			match self.channel_manager.send_payment(&route.unwrap(), payment_hash, &payment_secret)
 			{
 				Ok(()) => {
-					println!("EVENT: initiated sending {} msats to {}", amt_msat, payee);
+					log_info!("EVENT: initiated sending {} msats to {}", amt_msat, payee);
 					HTLCStatus::Pending
 				}
 				Err(e) => {
-					println!("ERROR: failed to send payment: {:?}", e);
+					log_info!("ERROR: failed to send payment: {:?}", e);
 					HTLCStatus::Failed
 				}
 			};
