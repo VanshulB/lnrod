@@ -1,4 +1,4 @@
-use anyhow::{anyhow, Result};
+use anyhow::{bail, Result};
 use bitcoin::consensus::Encodable;
 use bitcoin::{Script, Transaction, TxOut, VarInt};
 
@@ -24,14 +24,14 @@ pub(crate) fn maybe_add_change_output(
 	feerate_sat_per_1000_weight: u32, change_destination_script: Script,
 ) -> Result<()> {
 	if input_value > MAX_VALUE_MSAT / 1000 {
-		return Err(anyhow!("Input value is greater than max satoshis"));
+		bail!("Input value is greater than max satoshis");
 	}
 
 	let mut output_value = 0;
 	for output in tx.output.iter() {
 		output_value += output.value;
 		if output_value >= input_value {
-			return Err(anyhow!("Ouput value equals or exceeds input value"));
+			bail!("Ouput value equals or exceeds input value");
 		}
 	}
 
@@ -55,7 +55,7 @@ pub(crate) fn maybe_add_change_output(
 			* feerate_sat_per_1000_weight as i64
 			/ 1000 < 0
 	{
-		return Err(anyhow!("Requested fee rate cannot be met"));
+		bail!("Requested fee rate cannot be met");
 	}
 
 	Ok(())

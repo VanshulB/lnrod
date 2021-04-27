@@ -125,7 +125,7 @@ impl Connection {
 				($err: expr, $need_disconnect: expr) => {{
 					log_info!("Disconnecting peer due to {}!", $err);
 					break $need_disconnect;
-					}};
+				}};
 			}
 
 			macro_rules! prepare_read_write_call {
@@ -136,9 +136,9 @@ impl Connection {
 							"disconnect_socket() call from RL",
 							Disconnect::CloseConnection
 						);
-						}
+					}
 					us_lock.block_disconnect_socket = true;
-					}};
+				}};
 			}
 
 			let read_paused = us.lock().unwrap().read_paused;
