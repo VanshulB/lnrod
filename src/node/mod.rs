@@ -5,6 +5,7 @@ use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, SystemTime};
 
+use anyhow::Result;
 use bitcoin::blockdata::constants::genesis_block;
 use bitcoin::hashes::sha256::Hash as Sha256Hash;
 use bitcoin::hashes::Hash;

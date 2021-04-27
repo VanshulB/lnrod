@@ -2,7 +2,7 @@ use std::collections::HashSet;
 use std::io::Read;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use anyhow::{anyhow, Result};
+use anyhow::{bail, Result};
 use bitcoin::blockdata::opcodes;
 use bitcoin::blockdata::script::Builder;
 use bitcoin::hash_types::WPubkeyHash;
@@ -313,7 +313,7 @@ impl<F: SignerFactory> SpendableKeysInterface for KeysManager<F> {
 					witness_weight += StaticPaymentOutputDescriptor::MAX_WITNESS_LENGTH;
 					input_value += descriptor.output.value;
 					if !output_set.insert(descriptor.outpoint) {
-						return Err(anyhow!("Descriptor was duplicated"));
+						bail!("Descriptor was duplicated");
 					}
 				}
 				SpendableOutputDescriptor::DelayedPaymentOutput(descriptor) => {
@@ -326,7 +326,7 @@ impl<F: SignerFactory> SpendableKeysInterface for KeysManager<F> {
 					witness_weight += DelayedPaymentOutputDescriptor::MAX_WITNESS_LENGTH;
 					input_value += descriptor.output.value;
 					if !output_set.insert(descriptor.outpoint) {
-						return Err(anyhow!("Descriptor was duplicated"));
+						bail!("Descriptor was duplicated");
 					}
 				}
 				SpendableOutputDescriptor::StaticOutput { ref outpoint, ref output } => {
@@ -339,12 +339,12 @@ impl<F: SignerFactory> SpendableKeysInterface for KeysManager<F> {
 					witness_weight += 1 + 73 + 34;
 					input_value += output.value;
 					if !output_set.insert(*outpoint) {
-						return Err(anyhow!("Descriptor was duplicated"));
+						bail!("Descriptor was duplicated");
 					}
 				}
 			}
 			if input_value > MAX_VALUE_MSAT / 1000 {
-				return Err(anyhow!("Input value greater than max satoshis"));
+				bail!("Input value greater than max satoshis");
 			}
 		}
 		let mut spend_tx = Transaction { version: 2, lock_time: 0, input, output: outputs };
