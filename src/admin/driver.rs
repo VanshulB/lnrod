@@ -238,7 +238,7 @@ pub async fn start(rpc_port: u16, args: NodeBuildArgs) -> Result<(), Box<dyn std
 		PublicKey::from_secret_key(&Secp256k1::new(), &node.keys_manager.get_node_secret());
 
 	log_info!("p2p {} 127.0.0.1:{}", node_id, args.peer_listening_port);
-	log_info!("admin port {}, datadir {}", rpc_port, args.storage_dir_path);
+	log_info!("admin port {}, datadir {}, signer {}", rpc_port, args.storage_dir_path, args.signer_name);
 	let addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), rpc_port);
 	let handler = AdminHandler::new(node);
 	log_info!("starting server");

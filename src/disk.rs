@@ -1,4 +1,4 @@
-use crate::keys::{DynKeysInterface, DynSigner};
+use crate::signer::keys::{DynKeysInterface, DynSigner};
 use anyhow::Result;
 use bitcoin::hashes::hex::FromHex;
 use bitcoin::{BlockHash, Txid};

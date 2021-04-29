@@ -3,7 +3,7 @@ use std::fs;
 use std::fs::File;
 use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
-use std::time::{Duration, SystemTime};
+use std::time::Duration;
 
 use anyhow::Result;
 use bitcoin::blockdata::constants::genesis_block;
@@ -36,15 +36,15 @@ use tokio::sync::mpsc::Sender;
 use crate::background::BackgroundProcessor;
 use crate::bitcoind_client::BitcoindClient;
 use crate::config::Config;
-use crate::default_signer::InMemorySignerFactory;
 use crate::disk::FilesystemLogger;
-use crate::keys::{DynKeysInterface, KeysManager};
+use crate::signer::keys::DynKeysInterface;
 use crate::logger::{self, AbstractLogger};
 use crate::net::{setup_inbound, setup_outbound};
 use crate::{
 	disk, handle_ldk_events, ArcChainMonitor, ChannelManager, HTLCDirection, HTLCStatus,
 	MilliSatoshiAmount, PaymentInfoStorage, PeerManager,
 };
+use crate::signer::get_keys_manager;
 
 #[derive(Clone)]
 pub struct NodeBuildArgs {
@@ -57,6 +57,7 @@ pub struct NodeBuildArgs {
 	pub network: Network,
 	pub disk_log_level: LogLevel,
 	pub console_log_level: LogLevel,
+	pub signer_name: String,
 	pub config: Config,
 }
 
@@ -95,10 +96,7 @@ pub(crate) async fn build_node(args: NodeBuildArgs) -> Node {
 		f.sync_all().expect("Failed to sync node keys seed to disk");
 		key
 	};
-	let cur = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap();
-	let factory = InMemorySignerFactory::new(&keys_seed);
-	let manager =
-		Box::new(KeysManager::new(&keys_seed, cur.as_secs(), cur.subsec_nanos(), factory));
+	let manager = get_keys_manager(args.signer_name.as_str(), &keys_seed).unwrap();
 	let keys_manager = Arc::new(DynKeysInterface::new(manager));
 
 	build_with_signer(keys_manager, args, ldk_data_dir).await

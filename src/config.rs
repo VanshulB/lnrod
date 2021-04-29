@@ -12,6 +12,7 @@ pub struct Config {
 	pub data_dir: Option<String>,
 	pub log_level_console: Option<String>,
 	pub log_level_disk: Option<String>,
+	pub signer: Option<String>,
 
 	pub channel: Option<ConfigChannel>,
 }
