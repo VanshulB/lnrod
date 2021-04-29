@@ -37,14 +37,14 @@ use crate::background::BackgroundProcessor;
 use crate::bitcoind_client::BitcoindClient;
 use crate::config::Config;
 use crate::disk::FilesystemLogger;
-use crate::signer::keys::DynKeysInterface;
 use crate::logger::{self, AbstractLogger};
 use crate::net::{setup_inbound, setup_outbound};
+use crate::signer::get_keys_manager;
+use crate::signer::keys::DynKeysInterface;
 use crate::{
 	disk, handle_ldk_events, ArcChainMonitor, ChannelManager, HTLCDirection, HTLCStatus,
 	MilliSatoshiAmount, PaymentInfoStorage, PeerManager,
 };
-use crate::signer::get_keys_manager;
 
 #[derive(Clone)]
 pub struct NodeBuildArgs {

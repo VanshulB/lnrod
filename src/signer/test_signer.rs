@@ -1,19 +1,21 @@
 use std::any::Any;
 
 use anyhow::Result;
-use bitcoin::hashes::{Hash, HashEngine};
 use bitcoin::hashes::sha256::Hash as Sha256;
+use bitcoin::hashes::{Hash, HashEngine};
 use bitcoin::secp256k1::{All, Secp256k1, SecretKey};
-use bitcoin::Transaction;
 use bitcoin::util::bip32::{ChildNumber, ExtendedPrivKey};
+use bitcoin::Transaction;
 use lightning::chain::keysinterface::{
 	DelayedPaymentOutputDescriptor, InMemorySigner, StaticPaymentOutputDescriptor,
 };
 
 use crate::byte_utils;
-use crate::signer::keys::{DynSigner, InnerSign, PaymentSign, SignerFactory, KeysManager, SpendableKeysInterface};
-use std::time::Duration;
+use crate::signer::keys::{
+	DynSigner, InnerSign, KeysManager, PaymentSign, SignerFactory, SpendableKeysInterface,
+};
 use lightning::util::ser::Writeable;
+use std::time::Duration;
 
 pub struct InMemorySignerFactory {
 	seed: [u8; 32],
@@ -117,9 +119,14 @@ impl SignerFactory for InMemorySignerFactory {
 	}
 }
 
-pub(crate) fn make_signer(seed: &&[u8; 32], cur: Duration) -> Box<dyn SpendableKeysInterface<Signer=DynSigner>> {
-	let manager =
-		KeysManager::new(&seed, cur.as_secs(), cur.subsec_nanos(),
-						 InMemorySignerFactory::new(seed));
+pub(crate) fn make_signer(
+	seed: &&[u8; 32], cur: Duration,
+) -> Box<dyn SpendableKeysInterface<Signer = DynSigner>> {
+	let manager = KeysManager::new(
+		&seed,
+		cur.as_secs(),
+		cur.subsec_nanos(),
+		InMemorySignerFactory::new(seed),
+	);
 	Box::new(manager)
 }

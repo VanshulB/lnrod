@@ -10,8 +10,8 @@ use lnrod::admin;
 use lnrod::config::Config;
 use lnrod::logger::{parse_log_level, LOG_LEVEL_NAMES};
 use lnrod::node::NodeBuildArgs;
-use std::str::FromStr;
 use lnrod::signer::SIGNER_NAMES;
+use std::str::FromStr;
 
 fn main() -> Result<()> {
 	let app = App::new("lnrod")
@@ -82,7 +82,7 @@ fn main() -> Result<()> {
 				.long("signer")
 				.possible_values(&SIGNER_NAMES)
 				.default_value(SIGNER_NAMES[0])
-				.takes_value(true)
+				.takes_value(true),
 		)
 		.arg(Arg::new("dump-config").long("dump-config"));
 	let matches = app.clone().get_matches();

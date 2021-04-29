@@ -1,29 +1,38 @@
-use lightning::chain::keysinterface::{SpendableOutputDescriptor, KeysManager, KeysInterface, DelayedPaymentOutputDescriptor, StaticPaymentOutputDescriptor};
-use crate::signer::keys::{SpendableKeysInterface, DynSigner, InnerSign, PaymentSign};
-use bitcoin::secp256k1::{All, Secp256k1, SecretKey, PublicKey};
-use bitcoin::{Script, TxOut, Transaction};
+use crate::signer::keys::{DynSigner, InnerSign, PaymentSign, SpendableKeysInterface};
 use anyhow::Result;
-use lightning_signer::util::loopback::{LoopbackSignerKeysInterface, LoopbackChannelSigner};
-use std::time::Duration;
-use lightning_signer::server::my_signer::MySigner;
+use bitcoin::secp256k1::{All, PublicKey, Secp256k1, SecretKey};
+use bitcoin::{Script, Transaction, TxOut};
+use lightning::chain::keysinterface::{
+	DelayedPaymentOutputDescriptor, KeysInterface, KeysManager, SpendableOutputDescriptor,
+	StaticPaymentOutputDescriptor,
+};
+use lightning::ln::msgs::DecodeError;
 use lightning_signer::node::node::NodeConfig;
 use lightning_signer::server::my_keys_manager::KeyDerivationStyle;
-use std::sync::Arc;
-use lightning::ln::msgs::DecodeError;
+use lightning_signer::server::my_signer::MySigner;
+use lightning_signer::util::loopback::{LoopbackChannelSigner, LoopbackSignerKeysInterface};
 use std::any::Any;
+use std::sync::Arc;
+use std::time::Duration;
 
 struct Adapter {
-	inner: LoopbackSignerKeysInterface
+	inner: LoopbackSignerKeysInterface,
 }
 
 impl PaymentSign for LoopbackChannelSigner {
 	#[allow(unused)]
-	fn sign_counterparty_payment_input_t(&self, spend_tx: &Transaction, input_idx: usize, descriptor: &StaticPaymentOutputDescriptor, secp_ctx: &Secp256k1<All>) -> Result<Vec<Vec<u8>>, ()> {
+	fn sign_counterparty_payment_input_t(
+		&self, spend_tx: &Transaction, input_idx: usize,
+		descriptor: &StaticPaymentOutputDescriptor, secp_ctx: &Secp256k1<All>,
+	) -> Result<Vec<Vec<u8>>, ()> {
 		todo!()
 	}
 
 	#[allow(unused)]
-	fn sign_dynamic_p2wsh_input_t(&self, spend_tx: &Transaction, input_idx: usize, descriptor: &DelayedPaymentOutputDescriptor, secp_ctx: &Secp256k1<All>) -> Result<Vec<Vec<u8>>, ()> {
+	fn sign_dynamic_p2wsh_input_t(
+		&self, spend_tx: &Transaction, input_idx: usize,
+		descriptor: &DelayedPaymentOutputDescriptor, secp_ctx: &Secp256k1<All>,
+	) -> Result<Vec<Vec<u8>>, ()> {
 		todo!()
 	}
 }
@@ -61,9 +70,7 @@ impl KeysInterface for Adapter {
 
 	fn get_channel_signer(&self, inbound: bool, channel_value_satoshis: u64) -> Self::Signer {
 		let inner = self.inner.get_channel_signer(inbound, channel_value_satoshis);
-		DynSigner {
-			inner: Box::new(inner)
-		}
+		DynSigner { inner: Box::new(inner) }
 	}
 
 	fn get_secure_random_bytes(&self) -> [u8; 32] {
@@ -92,24 +99,27 @@ impl SpendableKeysInterface for Adapter {
 		change_destination_script: Script, feerate_sat_per_1000_weight: u32,
 		secp_ctx: &Secp256k1<All>,
 	) -> Result<Transaction> {
-		self.inner.backing.spend_spendable_outputs(descriptors, outputs, change_destination_script, feerate_sat_per_1000_weight, secp_ctx)
+		self.inner
+			.backing
+			.spend_spendable_outputs(
+				descriptors,
+				outputs,
+				change_destination_script,
+				feerate_sat_per_1000_weight,
+				secp_ctx,
+			)
 			.map_err(|()| anyhow::anyhow!("failed in spend_spendable_outputs"))
 	}
 }
 
-pub(crate) fn make_signer(seed: &[u8; 32], cur: Duration) -> Box<dyn SpendableKeysInterface<Signer=DynSigner>> {
+pub(crate) fn make_signer(
+	seed: &[u8; 32], cur: Duration,
+) -> Box<dyn SpendableKeysInterface<Signer = DynSigner>> {
 	let signer = MySigner::new();
-	let node_config = NodeConfig {
-		key_derivation_style: KeyDerivationStyle::Native
-	};
+	let node_config = NodeConfig { key_derivation_style: KeyDerivationStyle::Native };
 	let node_id = signer.new_node(node_config);
 
-	let backing =
-		KeysManager::new(&seed, cur.as_secs(), cur.subsec_nanos());
-	let manager = LoopbackSignerKeysInterface {
-		node_id,
-		signer: Arc::new(signer),
-		backing
-	};
+	let backing = KeysManager::new(&seed, cur.as_secs(), cur.subsec_nanos());
+	let manager = LoopbackSignerKeysInterface { node_id, signer: Arc::new(signer), backing };
 	Box::new(Adapter { inner: manager })
 }

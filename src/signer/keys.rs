@@ -534,7 +534,9 @@ impl BaseSign for DynSigner {
 		self.inner.sign_holder_commitment_and_htlcs(commitment_tx, secp_ctx)
 	}
 
-	fn unsafe_sign_holder_commitment_and_htlcs(&self, _commitment_tx: &HolderCommitmentTransaction, _secp_ctx: &Secp256k1<All>) -> Result<(Signature, Vec<Signature>), ()> {
+	fn unsafe_sign_holder_commitment_and_htlcs(
+		&self, _commitment_tx: &HolderCommitmentTransaction, _secp_ctx: &Secp256k1<All>,
+	) -> Result<(Signature, Vec<Signature>), ()> {
 		unimplemented!()
 	}
 
