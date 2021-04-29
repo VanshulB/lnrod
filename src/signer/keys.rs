@@ -465,6 +465,7 @@ pub trait PaymentSign: BaseSign {
 pub trait InnerSign: PaymentSign {
 	fn box_clone(&self) -> Box<dyn InnerSign>;
 	fn as_any(&self) -> &dyn Any;
+	fn vwrite(&self, writer: &mut Vec<u8>) -> Result<(), ::std::io::Error>;
 }
 
 pub struct DynSigner {
@@ -533,6 +534,10 @@ impl BaseSign for DynSigner {
 		self.inner.sign_holder_commitment_and_htlcs(commitment_tx, secp_ctx)
 	}
 
+	fn unsafe_sign_holder_commitment_and_htlcs(&self, _commitment_tx: &HolderCommitmentTransaction, _secp_ctx: &Secp256k1<All>) -> Result<(Signature, Vec<Signature>), ()> {
+		unimplemented!()
+	}
+
 	fn sign_justice_transaction(
 		&self, justice_tx: &Transaction, input: usize, amount: u64, per_commitment_key: &SecretKey,
 		htlc: &Option<HTLCOutputInCommitment>, secp_ctx: &Secp256k1<secp256k1::All>,
@@ -581,11 +586,8 @@ impl BaseSign for DynSigner {
 impl Writeable for DynSigner {
 	fn write<W: Writer>(&self, writer: &mut W) -> Result<(), ::std::io::Error> {
 		let inner = self.inner.as_ref();
-		// TODO(devrandom) make this polymorphic
-		let inmem = inner
-			.as_any()
-			.downcast_ref::<InMemorySigner>()
-			.expect("only know about InMemorySigner for now");
-		inmem.write(writer)
+		let mut buf = Vec::new();
+		inner.vwrite(&mut buf)?;
+		buf.write(writer)
 	}
 }

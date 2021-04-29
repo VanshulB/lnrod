@@ -18,7 +18,6 @@ bitcoin = "0.26"
 bitcoin-bech32 = "0.7"
 bech32 = "0.7"
 hex = "0.3"
-lightning = { git = "https://github.com/rust-bitcoin/rust-lightning", features = ["allow_wallclock_use"], rev = "95779285575d3139482a73a943234c7dd82eb956" }
 lightning-block-sync = { git = "https://github.com/rust-bitcoin/rust-lightning", features = ["rpc-client"], rev = "95779285575d3139482a73a943234c7dd82eb956" }
 lightning-invoice = { git = "https://github.com/rust-bitcoin/rust-lightning-invoice", rev = "aa3a57b9dca5205fa25fa333a2db165d7e77b3b0" }
 lightning-persister = { git = "https://github.com/rust-bitcoin/rust-lightning", rev = "95779285575d3139482a73a943234c7dd82eb956" }
@@ -36,6 +35,15 @@ url = "2.2"
 jsonrpc-async = "2.0.1"
 serde = { version = "1.0.105", features = ["derive"] }
 
+
+[dependencies.lightning]
+git = "https://github.com/rust-bitcoin/rust-lightning.git"
+rev = "95779285575d3139482a73a943234c7dd82eb956"
+features = ["allow_wallclock_use"]
+
+[dependencies.lightning-signer]
+git = "https://gitlab.com/lightning-signer/rust-lightning-signer.git"
+rev = "8e49e7f64513e8a3674710b8a5f352f78a08e0a3"
 
 [build-dependencies]
 tonic-build = "0.4"

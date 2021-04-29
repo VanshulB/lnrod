@@ -5,6 +5,7 @@ bitcoin_rpc = "http://user:pass@localhost:18443"
 data_dir = "data"
 log_level_console = "INFO"
 log_level_disk = "TRACE"
+signer = "test"
 
 [channel.bitcoin.propose]
 # Channel confirmation depth

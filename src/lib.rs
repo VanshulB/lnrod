@@ -1,32 +1,32 @@
+use std::{fmt, io};
 use std::collections::HashMap;
 use std::io::Write;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
-use std::{fmt, io};
 
-use rand::{thread_rng, Rng};
-
-use bitcoin::consensus::encode;
-use bitcoin::hashes::sha256::Hash as Sha256;
-use bitcoin::hashes::Hash;
-use bitcoin::secp256k1::Secp256k1;
 use bitcoin::{Network, Transaction};
+use bitcoin::consensus::encode;
+use bitcoin::hashes::Hash;
+use bitcoin::hashes::sha256::Hash as Sha256;
+use bitcoin::secp256k1::Secp256k1;
 use bitcoin_bech32::WitnessProgram;
 use lightning::chain;
 use lightning::chain::chaininterface::{BroadcasterInterface, ConfirmationTarget, FeeEstimator};
 use lightning::chain::chainmonitor::ChainMonitor;
-use lightning::chain::transaction::OutPoint;
 use lightning::chain::Filter;
-use lightning::ln::channelmanager::ChannelManager as RLChannelManager;
+use lightning::chain::transaction::OutPoint;
 use lightning::ln::channelmanager::{PaymentHash, PaymentPreimage};
+use lightning::ln::channelmanager::ChannelManager as RLChannelManager;
 use lightning::ln::peer_handler::PeerManager as RLPeerManager;
 use lightning::routing::network_graph::NetGraphMsgHandler;
 use lightning::util::events::{Event, EventsProvider};
 use lightning::util::logger::Logger;
 use lightning_persister::FilesystemPersister;
+use rand::{Rng, thread_rng};
+
+use signer::keys::{DynKeysInterface, DynSigner, SpendableKeysInterface};
 
 use crate::bitcoind_client::BitcoindClient;
-use crate::keys::{DynKeysInterface, DynSigner, SpendableKeysInterface};
 use crate::logger::AbstractLogger;
 use crate::net::SocketDescriptor;
 
@@ -43,15 +43,14 @@ mod bitcoind_client;
 mod byte_utils;
 pub mod config;
 mod convert;
-mod default_signer;
 mod disk;
 mod hex_utils;
-mod keys;
 pub mod logger;
 pub mod net;
 pub mod node;
 mod transaction_utils;
 pub mod util;
+pub mod signer;
 
 #[derive(PartialEq)]
 pub(crate) enum HTLCDirection {

@@ -23,6 +23,7 @@ CHANNEL_VALUE_SAT = 10_000_000
 PAYMENT_MSAT = 2_000_000
 SLEEP_ON_FAIL = False
 USE_RELEASE_BINARIES = False
+SIGNER = "test"
 
 logger = logging.getLogger()
 
@@ -216,6 +217,7 @@ def start_node(n):
     p = Popen([lnrod,
                '--regtest',
                '--datadir', f'{OUTPUT_DIR}/data{n}',
+               '--signer', SIGNER,
                '--rpcport', str(8800 + n), '--lnport', str(9900 + n)],
               stdout=stdout_log, stderr=subprocess.STDOUT)
     processes.append(p)

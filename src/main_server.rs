@@ -11,6 +11,7 @@ use lnrod::config::Config;
 use lnrod::logger::{parse_log_level, LOG_LEVEL_NAMES};
 use lnrod::node::NodeBuildArgs;
 use std::str::FromStr;
+use lnrod::signer::SIGNER_NAMES;
 
 fn main() -> Result<()> {
 	let app = App::new("lnrod")
@@ -75,6 +76,14 @@ fn main() -> Result<()> {
 				.default_value("INFO")
 				.takes_value(true),
 		)
+		.arg(
+			Arg::new("signer")
+				.about("signer name")
+				.long("signer")
+				.possible_values(&SIGNER_NAMES)
+				.default_value(SIGNER_NAMES[0])
+				.takes_value(true)
+		)
 		.arg(Arg::new("dump-config").long("dump-config"));
 	let matches = app.clone().get_matches();
 
@@ -114,6 +123,8 @@ fn main() -> Result<()> {
 	let peer_listening_port = arg_value_or_config("lnport", &matches, &config.ln_port);
 	let rpc_port = arg_value_or_config("rpcport", &matches, &config.rpc_port);
 
+	let signer_name = arg_value_or_config("signer", &matches, &config.signer);
+
 	let args = NodeBuildArgs {
 		bitcoind_rpc_username: bitcoin_url.username().to_string(),
 		bitcoind_rpc_password: bitcoin_url.password().expect("password").to_string(),
@@ -124,6 +135,7 @@ fn main() -> Result<()> {
 		network,
 		disk_log_level,
 		console_log_level,
+		signer_name,
 		config,
 	};
 
