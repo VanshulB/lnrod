@@ -43,12 +43,12 @@ features = ["allow_wallclock_use"]
 
 [dependencies.lightning-signer-core]
 git = "https://gitlab.com/lightning-signer/rust-lightning-signer.git"
-rev = "f5e1d10dcb5571c94d60597643ca53a74897f10a"
+rev = "8cbf82ea78225f98e1bf406437b3e66d84f3f06c"
 #path = "../rust-lightning-signer/lightning-signer-core"
 
 [dependencies.lightning-signer-server]
 git = "https://gitlab.com/lightning-signer/rust-lightning-signer.git"
-rev = "f5e1d10dcb5571c94d60597643ca53a74897f10a"
+rev = "8cbf82ea78225f98e1bf406437b3e66d84f3f06c"
 #path = "../rust-lightning-signer/lightning-signer-server"
 
 [build-dependencies]
