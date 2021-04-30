@@ -18,9 +18,9 @@ bitcoin = "0.26"
 bitcoin-bech32 = "0.7"
 bech32 = "0.7"
 hex = "0.3"
-lightning-block-sync = { git = "https://github.com/rust-bitcoin/rust-lightning", features = ["rpc-client"], rev = "95779285575d3139482a73a943234c7dd82eb956" }
+lightning-block-sync = { git = "https://github.com/rust-bitcoin/rust-lightning", features = ["rpc-client"], rev = "3b67be235a46d8f9a9a6faf7ca7c5872ffbd8646" }
 lightning-invoice = { git = "https://github.com/rust-bitcoin/rust-lightning-invoice", rev = "aa3a57b9dca5205fa25fa333a2db165d7e77b3b0" }
-lightning-persister = { git = "https://github.com/rust-bitcoin/rust-lightning", rev = "95779285575d3139482a73a943234c7dd82eb956" }
+lightning-persister = { git = "https://github.com/rust-bitcoin/rust-lightning", rev = "3b67be235a46d8f9a9a6faf7ca7c5872ffbd8646" }
 once_cell = "1.7.2"
 time = "0.2"
 rand = "0.4"
@@ -38,12 +38,18 @@ serde = { version = "1.0.105", features = ["derive"] }
 
 [dependencies.lightning]
 git = "https://github.com/rust-bitcoin/rust-lightning.git"
-rev = "95779285575d3139482a73a943234c7dd82eb956"
+rev = "3b67be235a46d8f9a9a6faf7ca7c5872ffbd8646"
 features = ["allow_wallclock_use"]
 
-[dependencies.lightning-signer]
+[dependencies.lightning-signer-core]
 git = "https://gitlab.com/lightning-signer/rust-lightning-signer.git"
-rev = "8e49e7f64513e8a3674710b8a5f352f78a08e0a3"
+rev = "f5e1d10dcb5571c94d60597643ca53a74897f10a"
+#path = "../rust-lightning-signer/lightning-signer-core"
+
+[dependencies.lightning-signer-server]
+git = "https://gitlab.com/lightning-signer/rust-lightning-signer.git"
+rev = "f5e1d10dcb5571c94d60597643ca53a74897f10a"
+#path = "../rust-lightning-signer/lightning-signer-server"
 
 [build-dependencies]
 tonic-build = "0.4"

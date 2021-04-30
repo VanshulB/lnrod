@@ -230,9 +230,9 @@ pub async fn setup_inbound<CMH, RMH, L>(
 	event_notify: mpsc::Sender<()>, stream: TcpStream,
 ) -> Result<JoinHandle<()>, ()>
 where
-	CMH: ChannelMessageHandler + 'static,
-	RMH: RoutingMessageHandler + 'static,
-	L: Logger + 'static + ?Sized,
+	CMH: ChannelMessageHandler + 'static + Send + Sync,
+	RMH: RoutingMessageHandler + 'static + Send + Sync,
+	L: Logger + 'static + ?Sized + Send + Sync,
 {
 	let (reader, write_receiver, read_receiver, us) = Connection::new(event_notify, stream);
 	#[cfg(debug_assertions)]
@@ -283,9 +283,9 @@ pub fn setup_outbound<CMH, RMH, L>(
 	event_notify: mpsc::Sender<()>, their_node_id: PublicKey, stream: TcpStream,
 ) -> impl std::future::Future<Output = ()>
 where
-	CMH: ChannelMessageHandler + 'static,
-	RMH: RoutingMessageHandler + 'static,
-	L: Logger + 'static + ?Sized,
+	CMH: ChannelMessageHandler + 'static + Send + Sync,
+	RMH: RoutingMessageHandler + 'static + Send + Sync,
+	L: Logger + 'static + ?Sized + Send + Sync,
 {
 	let (reader, mut write_receiver, read_receiver, us) = Connection::new(event_notify, stream);
 	#[cfg(debug_assertions)]
@@ -366,9 +366,9 @@ pub async fn connect_outbound<CMH, RMH, L>(
 	event_notify: mpsc::Sender<()>, their_node_id: PublicKey, addr: SocketAddr,
 ) -> Option<impl std::future::Future<Output = ()>>
 where
-	CMH: ChannelMessageHandler + 'static,
-	RMH: RoutingMessageHandler + 'static,
-	L: Logger + 'static + ?Sized,
+	CMH: ChannelMessageHandler + 'static + Send + Sync,
+	RMH: RoutingMessageHandler + 'static + Send + Sync,
+	L: Logger + 'static + ?Sized + Send + Sync,
 {
 	if let Ok(Ok(stream)) =
 		time::timeout(Duration::from_secs(10), async { TcpStream::connect(&addr).await }).await
@@ -534,6 +534,8 @@ mod tests {
 	use std::time::Duration;
 
 	use crate::logger::{self, AbstractLogger};
+	use lightning_signer::signer::my_signer::SyncLogger;
+	use lightning_signer::SendSync;
 
 	pub struct TestLogger();
 	impl lightning::util::logger::Logger for TestLogger {
@@ -548,6 +550,8 @@ mod tests {
 			);
 		}
 	}
+	impl SendSync for TestLogger {}
+	impl SyncLogger for TestLogger {}
 
 	struct MsgHandler {
 		expected_pubkey: PublicKey,

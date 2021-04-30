@@ -71,14 +71,14 @@ impl BackgroundProcessor {
 		peer_manager: Arc<PeerManager<Descriptor, Arc<CM>, Arc<RM>, Arc<L>>>,
 	) -> Self
 		where
-			Signer: 'static + Sign,
-			M: 'static + chain::Watch<Signer>,
-			T: 'static + BroadcasterInterface,
-			K: 'static + KeysInterface<Signer = Signer>,
-			F: 'static + FeeEstimator,
-			L: 'static + Logger,
-			CM: 'static + ChannelMessageHandler,
-			RM: 'static + RoutingMessageHandler,
+			Signer: 'static + Sign + Send + Sync,
+			M: 'static + chain::Watch<Signer> + Send + Sync,
+			T: 'static + BroadcasterInterface + Send + Sync,
+			K: 'static + KeysInterface<Signer = Signer> + Send + Sync,
+			F: 'static + FeeEstimator + Send + Sync,
+			L: 'static + Logger + Send + Sync,
+			CM: 'static + ChannelMessageHandler + Send + Sync,
+			RM: 'static + RoutingMessageHandler + Send + Sync,
 			PM: 'static
 			+ Send
 			+ Fn(

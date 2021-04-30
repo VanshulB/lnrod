@@ -7,6 +7,8 @@ use once_cell::sync::OnceCell;
 
 use lightning::util::logger::Level as LogLevel;
 use lightning::util::logger::Record;
+use lightning_signer::signer::my_signer::SyncLogger;
+use lightning_signer::SendSync;
 
 // Copied from lightning::util::logger due to insufficient visibility.
 pub const LOG_LEVELS: [LogLevel; 6] = [
@@ -28,10 +30,10 @@ pub fn parse_log_level(lvlstr: String) -> Result<LogLevel> {
 }
 
 pub struct AbstractLogger {
-	logger: Box<dyn lightning::util::logger::Logger>,
+	logger: Box<dyn SyncLogger>,
 }
 impl AbstractLogger {
-	pub fn new(logger: Box<dyn lightning::util::logger::Logger>) -> AbstractLogger {
+	pub fn new(logger: Box<dyn SyncLogger>) -> AbstractLogger {
 		AbstractLogger { logger }
 	}
 }
@@ -45,6 +47,8 @@ impl fmt::Debug for AbstractLogger {
 		self.logger.fmt(f)
 	}
 }
+impl SendSync for AbstractLogger {}
+impl SyncLogger for AbstractLogger {}
 
 static SINGLETON: OnceCell<Arc<AbstractLogger>> = OnceCell::new();
 
