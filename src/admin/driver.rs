@@ -163,7 +163,7 @@ impl Admin for AdminHandler {
 		log_info!("ENTER invoice_new");
 		log_debug!("{}", type_and_value!(&req));
 		let invoice =
-			self.node.get_invoice(req.value_msat).map_err(|e| Status::invalid_argument(e))?;
+			self.node.new_invoice(req.value_msat).map_err(|e| Status::invalid_argument(e))?;
 		let reply = InvoiceNewReply { invoice: invoice.to_string() };
 		log_debug!("{}", type_and_value!(&reply));
 		log_info!("REPLY invoice_new");

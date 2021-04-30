@@ -1,5 +1,7 @@
 use crate::signer::keys::{DynSigner, InnerSign, PaymentSign, SpendableKeysInterface};
 use anyhow::Result;
+use lightning_signer::util::loopback::{LoopbackSignerKeysInterface, LoopbackChannelSigner};
+use std::time::Duration;
 use bitcoin::secp256k1::{All, PublicKey, Secp256k1, SecretKey};
 use bitcoin::{Script, Transaction, TxOut};
 use lightning::chain::keysinterface::{
@@ -8,12 +10,11 @@ use lightning::chain::keysinterface::{
 };
 use lightning::ln::msgs::DecodeError;
 use lightning_signer::node::node::NodeConfig;
-use lightning_signer::server::my_keys_manager::KeyDerivationStyle;
-use lightning_signer::server::my_signer::MySigner;
-use lightning_signer::util::loopback::{LoopbackChannelSigner, LoopbackSignerKeysInterface};
 use std::any::Any;
+use lightning_signer::signer::my_keys_manager::KeyDerivationStyle;
+use lightning_signer::signer::my_signer::MySigner;
+use bitcoin::secp256k1::recovery::RecoverableSignature;
 use std::sync::Arc;
-use std::time::Duration;
 
 struct Adapter {
 	inner: LoopbackSignerKeysInterface,
@@ -78,6 +79,10 @@ impl KeysInterface for Adapter {
 	}
 
 	fn read_chan_signer(&self, _reader: &[u8]) -> Result<Self::Signer, DecodeError> {
+		unimplemented!()
+	}
+
+	fn sign_invoice(&self, _invoice_preimage: Vec<u8>) -> Result<RecoverableSignature, ()> {
 		unimplemented!()
 	}
 }

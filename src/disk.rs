@@ -13,6 +13,8 @@ use std::io::{Cursor, Write};
 use std::path::Path;
 use std::sync::Arc;
 use time::OffsetDateTime;
+use lightning_signer::signer::my_signer::SyncLogger;
+use lightning_signer::SendSync;
 
 const MAX_CHANNEL_MONITOR_FILENAME_LENGTH: usize = 65;
 
@@ -61,6 +63,10 @@ impl Logger for FilesystemLogger {
 		}
 	}
 }
+
+impl SendSync for FilesystemLogger {}
+impl SyncLogger for FilesystemLogger {}
+
 pub(crate) fn read_channelmonitors(
 	path: String, keys_manager: Arc<DynKeysInterface>,
 ) -> Result<HashMap<OutPoint, (BlockHash, ChannelMonitor<DynSigner>)>, std::io::Error> {

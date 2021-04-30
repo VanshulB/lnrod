@@ -14,9 +14,9 @@ use lightning::chain;
 use lightning::chain::chaininterface::{BroadcasterInterface, ConfirmationTarget, FeeEstimator};
 use lightning::chain::chainmonitor::ChainMonitor;
 use lightning::chain::transaction::OutPoint;
+use lightning::ln::{PaymentHash, PaymentPreimage};
 use lightning::chain::Filter;
 use lightning::ln::channelmanager::ChannelManager as RLChannelManager;
-use lightning::ln::channelmanager::{PaymentHash, PaymentPreimage};
 use lightning::ln::peer_handler::PeerManager as RLPeerManager;
 use lightning::routing::network_graph::NetGraphMsgHandler;
 use lightning::util::events::{Event, EventsProvider};
@@ -65,6 +65,9 @@ pub(crate) enum HTLCStatus {
 	Failed = 2,
 }
 
+pub trait SyncAccess: chain::Access + Send + Sync {}
+pub trait SyncFilter: Filter + Send + Sync {}
+
 pub(crate) struct MilliSatoshiAmount(Option<u64>);
 
 impl fmt::Display for MilliSatoshiAmount {
@@ -87,7 +90,7 @@ pub(crate) type PaymentInfoStorage = Arc<
 
 type ArcChainMonitor = ChainMonitor<
 	DynSigner,
-	Arc<dyn Filter>,
+	Arc<dyn SyncFilter>,
 	Arc<BitcoindClient>,
 	Arc<BitcoindClient>,
 	Arc<AbstractLogger>,
@@ -95,7 +98,7 @@ type ArcChainMonitor = ChainMonitor<
 >;
 
 pub(crate) type PeerManager =
-	SimpleArcPeerManager<SocketDescriptor, dyn chain::Access, AbstractLogger>;
+	SimpleArcPeerManager<SocketDescriptor, dyn SyncAccess, AbstractLogger>;
 
 pub(crate) type SimpleArcPeerManager<SD, C, L> =
 	RLPeerManager<SD, Arc<ChannelManager>, Arc<NetGraphMsgHandler<Arc<C>, Arc<L>>>, Arc<L>>;
@@ -166,20 +169,18 @@ async fn handle_ldk_events(
 						.unwrap();
 					pending_txs.insert(outpoint, final_tx);
 				}
-				Event::PaymentReceived { payment_hash, payment_secret, amt: amt_msat } => {
+				Event::PaymentReceived { amt, payment_hash, payment_secret, .. } => {
 					let mut payments = payment_storage.lock().unwrap();
 					if let Some((Some(preimage), _, _, _)) = payments.get(&payment_hash) {
 						let success = loop_channel_manager.claim_funds(
 							preimage.clone(),
-							&payment_secret,
-							amt_msat,
 						);
 
 						if success {
 							log_info!(
 								"\nEVENT: received payment from payment_hash {} of {} satoshis",
 								hex_utils::hex_str(&payment_hash.0),
-								amt_msat / 1000
+								amt / 1000
 							);
 							io::stdout().flush().unwrap();
 							let (_, _, ref mut status, _) =
@@ -188,16 +189,16 @@ async fn handle_ldk_events(
 						} else {
 							log_info!(
 								"\nEVENT: failed to claim payment with {} msat, preimage {}",
-								amt_msat,
+								amt,
 								hex::encode(preimage.0)
 							);
-							payment_secret.map(|s| log_info!("secret {}", hex::encode(s.0)));
+							hex::encode(payment_secret.0);
 						}
 					} else {
 						log_info!("\nERROR: we received a payment but didn't know the preimage");
 						print!("> ");
 						io::stdout().flush().unwrap();
-						loop_channel_manager.fail_htlc_backwards(&payment_hash, &payment_secret);
+						loop_channel_manager.fail_htlc_backwards(&payment_hash);
 						payments.insert(
 							payment_hash,
 							(

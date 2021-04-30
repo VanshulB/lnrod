@@ -15,13 +15,11 @@ use lightning::chain;
 use lightning::chain::chainmonitor::ChainMonitor;
 use lightning::chain::keysinterface::KeysInterface;
 use lightning::chain::Watch;
-use lightning::ln::channelmanager;
-use lightning::ln::channelmanager::{
-	ChainParameters, ChannelManagerReadArgs, PaymentHash, PaymentPreimage, PaymentSecret,
-};
+use lightning::ln::{channelmanager, PaymentHash, PaymentPreimage, PaymentSecret};
+use lightning::ln::channelmanager::{ChainParameters, ChannelManagerReadArgs, BestBlock};
 use lightning::ln::features::InvoiceFeatures;
 use lightning::ln::peer_handler::MessageHandler;
-use lightning::routing::network_graph::NetGraphMsgHandler;
+use lightning::routing::network_graph::{NetGraphMsgHandler, RoutingFees};
 use lightning::routing::router;
 use lightning::util::logger::Level as LogLevel;
 use lightning::util::logger::Logger;
@@ -41,10 +39,8 @@ use crate::logger::{self, AbstractLogger};
 use crate::net::{setup_inbound, setup_outbound};
 use crate::signer::get_keys_manager;
 use crate::signer::keys::DynKeysInterface;
-use crate::{
-	disk, handle_ldk_events, ArcChainMonitor, ChannelManager, HTLCDirection, HTLCStatus,
-	MilliSatoshiAmount, PaymentInfoStorage, PeerManager,
-};
+use crate::{disk, handle_ldk_events, ArcChainMonitor, ChannelManager, HTLCDirection, HTLCStatus, MilliSatoshiAmount, PaymentInfoStorage, PeerManager, SyncAccess};
+use lightning::routing::router::RouteHintHop;
 
 #[derive(Clone)]
 pub struct NodeBuildArgs {
@@ -65,7 +61,7 @@ pub struct NodeBuildArgs {
 pub(crate) struct Node {
 	pub(crate) peer_manager: Arc<PeerManager>,
 	pub(crate) channel_manager: Arc<ChannelManager>,
-	pub(crate) router: Arc<NetGraphMsgHandler<Arc<dyn chain::Access>, Arc<AbstractLogger>>>,
+	pub(crate) router: Arc<NetGraphMsgHandler<Arc<dyn SyncAccess>, Arc<AbstractLogger>>>,
 	pub(crate) payment_info: PaymentInfoStorage,
 	pub(crate) keys_manager: Arc<DynKeysInterface>,
 	pub(crate) event_ntfn_sender: Sender<()>,
@@ -181,10 +177,11 @@ async fn build_with_signer(
 			// We're starting a fresh node.
 			restarting_node = false;
 			let getinfo_resp = bitcoind_client.get_blockchain_info().await;
+			let best_block = BestBlock::new(getinfo_resp.latest_blockhash,
+											getinfo_resp.latest_height as u32);
 			let chain_params = ChainParameters {
 				network: args.network,
-				latest_hash: getinfo_resp.latest_blockhash,
-				latest_height: getinfo_resp.latest_height,
+				best_block,
 			};
 			let fresh_channel_manager = channelmanager::ChannelManager::new(
 				fee_estimator.clone(),
@@ -246,7 +243,7 @@ async fn build_with_signer(
 	// XXX persist routing data
 	let genesis = genesis_block(args.network).header.block_hash();
 	let router =
-		Arc::new(NetGraphMsgHandler::new(genesis, None::<Arc<dyn chain::Access>>, logger::get()));
+		Arc::new(NetGraphMsgHandler::new(genesis, None::<Arc<dyn SyncAccess>>, logger::get()));
 
 	// Step 14: Initialize the PeerManager
 	let channel_manager: Arc<ChannelManager> = Arc::new(channel_manager);
@@ -403,13 +400,21 @@ pub(crate) async fn connect_peer_if_necessary(
 }
 
 impl Node {
-	pub fn get_invoice(&self, amt_msat: u64) -> Result<Invoice, String> {
+	pub fn new_invoice(&self, amt_msat: u64) -> Result<Invoice, String> {
 		let mut payments = self.payment_info.lock().unwrap();
 		let secp_ctx = Secp256k1::new();
 
 		let mut preimage = [0; 32];
 		rand::thread_rng().fill_bytes(&mut preimage);
 		let payment_hash = Sha256Hash::hash(&preimage);
+		let features = InvoiceFeatures::known();
+
+		let payment_secret =
+			self.channel_manager.create_inbound_payment_for_hash(
+				PaymentHash(payment_hash.into_inner()),
+				Some(amt_msat),
+				7200, 0)
+				.map_err(|e| format!("{:?}", e))?;
 
 		let our_node_pubkey = self.channel_manager.get_our_node_id();
 		let mut invoice = lightning_invoice::InvoiceBuilder::new(match self.network {
@@ -418,17 +423,19 @@ impl Node {
 			Network::Regtest => lightning_invoice::Currency::Regtest,
 			Network::Signet => panic!("Signet invoices not supported"),
 		})
-		.payment_hash(payment_hash)
-		.description("rust-lightning-bitcoinrpc invoice".to_string())
-		.amount_pico_btc(amt_msat * 10)
-		.current_timestamp()
-		.payee_pub_key(our_node_pubkey);
+			.payment_hash(payment_hash)
+			.payment_secret(payment_secret)
+			.description("rust-lightning-bitcoinrpc invoice".to_string())
+			.amount_pico_btc(amt_msat * 10)
+			.current_timestamp()
+			.features(features)
+			.payee_pub_key(our_node_pubkey);
 
 		// Add route hints to the invoice.
 		let our_channels = self.channel_manager.list_usable_channels();
 		for channel in our_channels {
 			let short_channel_id = match channel.short_channel_id {
-				Some(id) => id.to_be_bytes(),
+				Some(id) => id,
 				None => continue,
 			};
 			let forwarding_info = match channel.counterparty_forwarding_info {
@@ -436,25 +443,25 @@ impl Node {
 				None => continue,
 			};
 			log_info!("VMW: adding routehop, info.fee base: {}", forwarding_info.fee_base_msat);
-			invoice = invoice.route(vec![lightning_invoice::RouteHop {
-				pubkey: channel.remote_network_id,
+			invoice = invoice.route(vec![RouteHintHop {
+				src_node_id: channel.remote_network_id,
 				short_channel_id,
-				fee_base_msat: forwarding_info.fee_base_msat,
-				fee_proportional_millionths: forwarding_info.fee_proportional_millionths,
 				cltv_expiry_delta: forwarding_info.cltv_expiry_delta,
+				htlc_minimum_msat: None,
+				fees: RoutingFees {
+					base_msat: forwarding_info.fee_base_msat,
+					proportional_millionths: forwarding_info.fee_proportional_millionths
+				},
+				htlc_maximum_msat: None
 			}]);
 		}
 
 		// Sign the invoice.
 		let invoice = invoice.build_signed(|msg_hash| {
 			secp_ctx.sign_recoverable(msg_hash, &self.keys_manager.get_node_secret())
-		});
+		}).map_err(|e| format!("{:?}", e))?;
 
-		match invoice.clone() {
-			Ok(invoice) => log_info!("SUCCESS: generated invoice: {}", invoice),
-			Err(e) => log_info!("ERROR: failed to create invoice: {:?}", e),
-		}
-
+		log_info!("generated invoice with hash {} secret {}", hex::encode(payment_hash), hex::encode(payment_secret.0));
 		payments.insert(
 			PaymentHash(payment_hash.into_inner()),
 			(
@@ -464,7 +471,7 @@ impl Node {
 				MilliSatoshiAmount(Some(amt_msat)),
 			),
 		);
-		invoice.map_err(|e| format!("{:?}", e))
+		Ok(invoice)
 	}
 
 	pub fn send_payment(&self, invoice: Invoice) -> Result<(), String> {
@@ -472,7 +479,7 @@ impl Node {
 		let amt_msat = amt_pico_btc.unwrap() / 10;
 
 		let payee_pubkey = invoice.recover_payee_pub_key();
-		let final_cltv = *invoice.min_final_cltv_expiry().unwrap_or(&20) as u32;
+		let final_cltv = invoice.min_final_cltv_expiry().unwrap_or(20u64) as u32;
 
 		let mut payment_hash = PaymentHash([0; 32]);
 		payment_hash.0.copy_from_slice(&invoice.payment_hash().as_ref()[0..32]);
@@ -486,49 +493,16 @@ impl Node {
 			None => None,
 		};
 
-		// rust-lightning-invoice doesn't currently support features, so we parse features
-		// manually from the invoice.
-		let mut invoice_features = InvoiceFeatures::empty();
-		for field in &invoice.into_signed_raw().raw_invoice().data.tagged_fields {
-			match field {
-				lightning_invoice::RawTaggedField::UnknownSemantics(vec) => {
-					if vec[0] == bech32::u5::try_from_u8(5).unwrap() {
-						if vec.len() >= 6 && vec[5].to_u8() & 0b10000 != 0 {
-							invoice_features =
-								invoice_features.set_variable_length_onion_optional();
-						}
-						if vec.len() >= 6 && vec[5].to_u8() & 0b01000 != 0 {
-							invoice_features =
-								invoice_features.set_variable_length_onion_required();
-						}
-						if vec.len() >= 4 && vec[3].to_u8() & 0b00001 != 0 {
-							invoice_features = invoice_features.set_payment_secret_optional();
-						}
-						if vec.len() >= 5 && vec[4].to_u8() & 0b10000 != 0 {
-							invoice_features = invoice_features.set_payment_secret_required();
-						}
-						if vec.len() >= 4 && vec[3].to_u8() & 0b00100 != 0 {
-							invoice_features = invoice_features.set_basic_mpp_optional();
-						}
-						if vec.len() >= 4 && vec[3].to_u8() & 0b00010 != 0 {
-							invoice_features = invoice_features.set_basic_mpp_required();
-						}
-					}
-				}
-				_ => {}
-			}
-		}
-		let invoice_features_opt = match invoice_features == InvoiceFeatures::empty() {
-			true => None,
-			false => Some(invoice_features),
-		};
+		let features = invoice.features().map(|f| f.clone());
+		log_debug!("Sending payment with secret {:?} features {:?}", payment_secret, features);
+
 		self.do_send_payment(
 			payee_pubkey,
 			amt_msat,
 			final_cltv,
 			payment_hash,
 			payment_secret,
-			invoice_features_opt,
+			features,
 		)
 	}
 

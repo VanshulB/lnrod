@@ -28,6 +28,7 @@ use lightning::util::ser::{Readable, Writeable, Writer};
 use crate::transaction_utils::MAX_VALUE_MSAT;
 use crate::{byte_utils, transaction_utils};
 use std::any::Any;
+use bitcoin::secp256k1::recovery::RecoverableSignature;
 
 /// Decouple creation of DynSigner from KeysManager
 pub trait SignerFactory: Sync + Send {
@@ -37,7 +38,7 @@ pub trait SignerFactory: Sync + Send {
 }
 
 // TODO(devrandom) why is spend_spendable_outputs not in KeysInterface?
-pub trait SpendableKeysInterface: KeysInterface {
+pub trait SpendableKeysInterface: KeysInterface + Send + Sync {
 	fn spend_spendable_outputs(
 		&self, descriptors: &[&SpendableOutputDescriptor], outputs: Vec<TxOut>,
 		change_destination_script: Script, feerate_sat_per_1000_weight: u32,
@@ -80,6 +81,10 @@ impl KeysInterface for DynKeysInterface {
 
 	fn read_chan_signer(&self, reader: &[u8]) -> Result<Self::Signer, DecodeError> {
 		self.inner.read_chan_signer(reader)
+	}
+
+	fn sign_invoice(&self, invoice_preimage: Vec<u8>) -> Result<RecoverableSignature, ()> {
+		self.inner.sign_invoice(invoice_preimage)
 	}
 }
 
@@ -278,6 +283,12 @@ impl<F: SignerFactory> KeysInterface for KeysManager<F> {
 		let signer = InMemorySigner::read(&mut cursor)?;
 		Ok(DynSigner { inner: Box::new(signer) })
 	}
+
+	fn sign_invoice(&self, invoice_preimage: Vec<u8>) -> Result<RecoverableSignature, ()> {
+		let hash = Sha256::hash(invoice_preimage.as_slice());
+		let message = secp256k1::Message::from_slice(&hash).unwrap();
+		Ok(self.secp_ctx.sign_recoverable(&message, &self.get_node_secret()))
+	}
 }
 
 impl<F: SignerFactory> SpendableKeysInterface for KeysManager<F> {
@@ -462,7 +473,7 @@ pub trait PaymentSign: BaseSign {
 }
 
 /// Helper to allow DynSigner to clone itself
-pub trait InnerSign: PaymentSign {
+pub trait InnerSign: PaymentSign + Send + Sync {
 	fn box_clone(&self) -> Box<dyn InnerSign>;
 	fn as_any(&self) -> &dyn Any;
 	fn vwrite(&self, writer: &mut Vec<u8>) -> Result<(), ::std::io::Error>;
@@ -534,10 +545,8 @@ impl BaseSign for DynSigner {
 		self.inner.sign_holder_commitment_and_htlcs(commitment_tx, secp_ctx)
 	}
 
-	fn unsafe_sign_holder_commitment_and_htlcs(
-		&self, _commitment_tx: &HolderCommitmentTransaction, _secp_ctx: &Secp256k1<All>,
-	) -> Result<(Signature, Vec<Signature>), ()> {
-		unimplemented!()
+	fn unsafe_sign_holder_commitment_and_htlcs(&self, commitment_tx: &HolderCommitmentTransaction, secp_ctx: &Secp256k1<All>) -> Result<(Signature, Vec<Signature>), ()> {
+		self.inner.unsafe_sign_holder_commitment_and_htlcs(commitment_tx, secp_ctx)
 	}
 
 	fn sign_justice_transaction(

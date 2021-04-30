@@ -160,7 +160,6 @@ def run():
     # ensure we sync after the last payment
     assert NUM_PAYMENTS % CHANNEL_BALANCE_SYNC_INTERVAL == 0
 
-    print(alice.ChannelList(Void()).channels[0])
     for i in range(1, NUM_PAYMENTS + 1):
         print(f'Pay invoice {i}')
         invoice = charlie.InvoiceNew(InvoiceNewRequest(value_msat=PAYMENT_MSAT)).invoice
