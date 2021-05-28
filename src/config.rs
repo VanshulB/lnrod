@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 #[derive(Serialize, Deserialize, Debug, Default, Clone)]
 pub struct Config {
 	pub regtest: Option<bool>,
+	pub signet: Option<bool>,
 	pub ln_port: Option<u16>,
 	pub rpc_port: Option<u16>,
 	pub bitcoin_rpc: Option<String>,

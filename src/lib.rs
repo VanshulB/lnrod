@@ -138,13 +138,14 @@ async fn handle_ldk_events(
 							Network::Bitcoin => bitcoin_bech32::constants::Network::Bitcoin,
 							Network::Testnet => bitcoin_bech32::constants::Network::Testnet,
 							Network::Regtest => bitcoin_bech32::constants::Network::Regtest,
-							Network::Signet => panic!("Signet unsupported"),
+							Network::Signet => bitcoin_bech32::constants::Network::Testnet,
 						},
 					)
 					.expect("Lightning funding tx should always be to a SegWit output")
 					.to_address();
 					let mut outputs = HashMap::with_capacity(1);
 					outputs.insert(addr, channel_value_satoshis);
+					log_debug!("create_raw_transaction {:?}", outputs);
 					let raw_tx = bitcoind_client.create_raw_transaction(outputs).await;
 
 					// Have your wallet put the inputs into the transaction such that the output is

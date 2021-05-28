@@ -58,6 +58,7 @@ fn main() -> Result<()> {
 				.takes_value(true),
 		)
 		.arg(Arg::new("regtest").long("regtest"))
+		.arg(Arg::new("signet").long("signet"))
 		.arg(
 			Arg::new("logleveldisk")
 				.about("logging level to disk")
@@ -103,9 +104,11 @@ fn main() -> Result<()> {
 	let bitcoin_url =
 		Url::parse(arg_value_or_config("bitcoin", &matches, &config.bitcoin_rpc).as_str())?;
 
-	// Network is regtest if specified on the command line or in the config file
+	// Network can be specified on the command line or in the config file
 	let network = if matches.occurrences_of("regtest") > 0 || config.regtest.unwrap_or(false) {
 		Network::Regtest
+	} else if matches.occurrences_of("signet") > 0 || config.signet.unwrap_or(false) {
+		Network::Signet
 	} else {
 		Network::Testnet
 	};
