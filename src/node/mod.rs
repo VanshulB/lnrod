@@ -421,7 +421,7 @@ impl Node {
 			Network::Bitcoin => lightning_invoice::Currency::Bitcoin,
 			Network::Testnet => lightning_invoice::Currency::BitcoinTestnet,
 			Network::Regtest => lightning_invoice::Currency::Regtest,
-			Network::Signet => panic!("Signet invoices not supported"),
+			Network::Signet => lightning_invoice::Currency::BitcoinTestnet,
 		})
 			.payment_hash(payment_hash)
 			.payment_secret(payment_secret)

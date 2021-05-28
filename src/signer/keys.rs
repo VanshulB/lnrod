@@ -599,6 +599,28 @@ impl Writeable for DynSigner {
 		let inner = self.inner.as_ref();
 		let mut buf = Vec::new();
 		inner.vwrite(&mut buf)?;
-		buf.write(writer)
+		writer.write_all(&buf)
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use crate::signer::keys::{DynKeysInterface, DynSigner};
+	use crate::signer::test_signer;
+	use std::time::Duration;
+	use lightning::util::ser::Writeable;
+	use lightning::chain::keysinterface::{KeysInterface, BaseSign};
+
+	#[test]
+	fn ser_deser_dyn_signer() {
+		let seed = [0x33_u8; 32];
+		let cur = Duration::new(0, 0);
+		let manager = test_signer::make_signer(&seed, cur);
+		let keys_manager = DynKeysInterface::new(manager);
+		let signer: DynSigner = keys_manager.get_channel_signer(false, 1234);
+		let mut buf = Vec::new();
+		signer.write(&mut buf).unwrap();
+		let signer_deser = keys_manager.read_chan_signer(&mut buf).unwrap();
+		assert_eq!(signer.pubkeys().funding_pubkey,  signer_deser.pubkeys().funding_pubkey);
 	}
 }

@@ -120,7 +120,7 @@ impl SignerFactory for InMemorySignerFactory {
 }
 
 pub(crate) fn make_signer(
-	seed: &&[u8; 32], cur: Duration,
+	seed: &[u8; 32], cur: Duration,
 ) -> Box<dyn SpendableKeysInterface<Signer = DynSigner>> {
 	let manager = KeysManager::new(
 		&seed,
