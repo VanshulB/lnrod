@@ -24,6 +24,7 @@ before_script:
 compile:
   stage: build
   image: rust:1.49.0
+  timeout: 20m
   script:
     - cargo build
     - cargo test
