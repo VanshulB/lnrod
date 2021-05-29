@@ -152,6 +152,7 @@ impl FeeEstimator for BitcoindClient {
 
 impl BroadcasterInterface for BitcoindClient {
 	fn broadcast_transaction(&self, tx: &Transaction) {
+		log_info!("before broadcast {}", tx.txid());
 		let rpc = Arc::clone(&self.rpc);
 		let ser = hex::encode(tx.serialize());
 		tokio::spawn(async move {

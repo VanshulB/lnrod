@@ -12,6 +12,7 @@ cache:
     - bin
 
 before_script:
+  - ls -al
   - mkdir -p bin
   - if [ ! -e bin/bitcoind ]; then
     wget --no-verbose https://bitcoin.org/bin/bitcoin-core-0.21.0/bitcoin-0.21.0-x86_64-linux-gnu.tar.gz &&
@@ -24,6 +25,7 @@ before_script:
 compile:
   stage: build
   image: rust:1.49.0
+  timeout: 30m
   script:
     - cargo build
     - cargo test

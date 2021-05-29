@@ -138,13 +138,14 @@ async fn handle_ldk_events(
 							Network::Bitcoin => bitcoin_bech32::constants::Network::Bitcoin,
 							Network::Testnet => bitcoin_bech32::constants::Network::Testnet,
 							Network::Regtest => bitcoin_bech32::constants::Network::Regtest,
-							Network::Signet => panic!("Signet unsupported"),
+							Network::Signet => bitcoin_bech32::constants::Network::Testnet,
 						},
 					)
 					.expect("Lightning funding tx should always be to a SegWit output")
 					.to_address();
 					let mut outputs = HashMap::with_capacity(1);
 					outputs.insert(addr, channel_value_satoshis);
+					log_debug!("create_raw_transaction {:?}", outputs);
 					let raw_tx = bitcoind_client.create_raw_transaction(outputs).await;
 
 					// Have your wallet put the inputs into the transaction such that the output is
@@ -196,7 +197,6 @@ async fn handle_ldk_events(
 						}
 					} else {
 						log_info!("\nERROR: we received a payment but didn't know the preimage");
-						print!("> ");
 						io::stdout().flush().unwrap();
 						loop_channel_manager.fail_htlc_backwards(&payment_hash);
 						payments.insert(
@@ -219,20 +219,19 @@ async fn handle_ldk_events(
 							*preimage_option = Some(payment_preimage);
 							*status = HTLCStatus::Succeeded;
 							log_info!(
-								"\nEVENT: successfully sent payment of {} satoshis from \
+								"EVENT: successfully sent payment of {} satoshis from \
                                          payment hash {:?} with preimage {:?}",
 								amt_sat,
 								hex_utils::hex_str(&payment_hash.0),
 								hex_utils::hex_str(&payment_preimage.0)
 							);
-							print!("> ");
 							io::stdout().flush().unwrap();
 						}
 					}
 				}
 				Event::PaymentFailed { payment_hash, rejected_by_dest } => {
-					print!(
-						"\nEVENT: Failed to send payment to payment hash {:?}: ",
+					log_info!(
+						"EVENT: Failed to send payment to payment hash {:?}: ",
 						hex_utils::hex_str(&payment_hash.0)
 					);
 					if rejected_by_dest {
@@ -240,7 +239,6 @@ async fn handle_ldk_events(
 					} else {
 						log_info!("route failed");
 					}
-					print!("> ");
 					io::stdout().flush().unwrap();
 
 					let mut payments = payment_storage.lock().unwrap();
