@@ -7,7 +7,7 @@ use once_cell::sync::OnceCell;
 
 use lightning::util::logger::Level as LogLevel;
 use lightning::util::logger::Record;
-use lightning_signer::signer::my_signer::SyncLogger;
+use lightning_signer::signer::multi_signer::SyncLogger;
 use lightning_signer::SendSync;
 
 // Copied from lightning::util::logger due to insufficient visibility.

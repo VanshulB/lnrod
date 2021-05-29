@@ -534,7 +534,7 @@ mod tests {
 	use std::time::Duration;
 
 	use crate::logger::{self, AbstractLogger};
-	use lightning_signer::signer::my_signer::SyncLogger;
+	use lightning_signer::signer::multi_signer::SyncLogger;
 	use lightning_signer::SendSync;
 
 	pub struct TestLogger();

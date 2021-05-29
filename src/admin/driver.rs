@@ -79,7 +79,7 @@ impl Admin for AdminHandler {
 				channel_id: details.channel_id.to_vec(),
 				is_pending: details.short_channel_id.is_none(),
 				value_sat: details.channel_value_satoshis,
-				is_active: details.is_live,
+				is_active: details.is_usable,
 				outbound_msat: details.outbound_capacity_msat,
 			};
 			channels.push(channel);

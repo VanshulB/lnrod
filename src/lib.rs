@@ -49,7 +49,6 @@ pub mod logger;
 pub mod net;
 pub mod node;
 pub mod signer;
-mod transaction_utils;
 pub mod util;
 
 #[derive(PartialEq)]
@@ -130,6 +129,7 @@ async fn handle_ldk_events(
 					output_script,
 					..
 				} => {
+					log_info!("EVENT: funding generation ready");
 					// Construct the raw transaction with one output, that is paid the amount of the
 					// channel.
 					let addr = WitnessProgram::from_scriptpubkey(
@@ -179,7 +179,7 @@ async fn handle_ldk_events(
 
 						if success {
 							log_info!(
-								"\nEVENT: received payment from payment_hash {} of {} satoshis",
+								"EVENT: received payment from payment_hash {} of {} satoshis",
 								hex_utils::hex_str(&payment_hash.0),
 								amt / 1000
 							);
@@ -188,15 +188,15 @@ async fn handle_ldk_events(
 								payments.get_mut(&payment_hash).unwrap();
 							*status = HTLCStatus::Succeeded;
 						} else {
-							log_info!(
-								"\nEVENT: failed to claim payment with {} msat, preimage {}",
+							log_error!(
+								"EVENT: failed to claim payment with {} msat, preimage {}",
 								amt,
 								hex::encode(preimage.0)
 							);
 							hex::encode(payment_secret.0);
 						}
 					} else {
-						log_info!("\nERROR: we received a payment but didn't know the preimage");
+						log_error!("ERROR: we received a payment but didn't know the preimage");
 						io::stdout().flush().unwrap();
 						loop_channel_manager.fail_htlc_backwards(&payment_hash);
 						payments.insert(
@@ -230,14 +230,14 @@ async fn handle_ldk_events(
 					}
 				}
 				Event::PaymentFailed { payment_hash, rejected_by_dest } => {
-					log_info!(
+					log_error!(
 						"EVENT: Failed to send payment to payment hash {:?}: ",
 						hex_utils::hex_str(&payment_hash.0)
 					);
 					if rejected_by_dest {
-						log_info!("rejected by destination node");
+						log_error!("rejected by destination node");
 					} else {
-						log_info!("route failed");
+						log_error!("route failed");
 					}
 					io::stdout().flush().unwrap();
 
@@ -248,6 +248,7 @@ async fn handle_ldk_events(
 					}
 				}
 				Event::PendingHTLCsForwardable { time_forwardable } => {
+					log_info!("EVENT: HTLCs available for forwarding");
 					let forwarding_channel_manager = loop_channel_manager.clone();
 					tokio::spawn(async move {
 						let min = time_forwardable.as_millis() as u64;
@@ -259,6 +260,7 @@ async fn handle_ldk_events(
 					});
 				}
 				Event::SpendableOutputs { outputs } => {
+					log_info!("EVENT: got spendable outputs {:?}", outputs);
 					let destination_address = bitcoind_client.get_new_address().await;
 					let output_descriptors = &outputs.iter().map(|a| a).collect::<Vec<_>>();
 					let tx_feerate =

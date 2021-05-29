@@ -16,7 +16,7 @@ use lightning::chain::chainmonitor::ChainMonitor;
 use lightning::chain::keysinterface::KeysInterface;
 use lightning::chain::Watch;
 use lightning::ln::{channelmanager, PaymentHash, PaymentPreimage, PaymentSecret};
-use lightning::ln::channelmanager::{ChainParameters, ChannelManagerReadArgs, BestBlock};
+use lightning::ln::channelmanager::{ChainParameters, ChannelManagerReadArgs, BestBlock, MIN_FINAL_CLTV_EXPIRY};
 use lightning::ln::features::InvoiceFeatures;
 use lightning::ln::peer_handler::MessageHandler;
 use lightning::routing::network_graph::{NetGraphMsgHandler, RoutingFees};
@@ -407,7 +407,6 @@ impl Node {
 		let mut preimage = [0; 32];
 		rand::thread_rng().fill_bytes(&mut preimage);
 		let payment_hash = Sha256Hash::hash(&preimage);
-		let features = InvoiceFeatures::known();
 
 		let payment_secret =
 			self.channel_manager.create_inbound_payment_for_hash(
@@ -425,10 +424,10 @@ impl Node {
 		})
 			.payment_hash(payment_hash)
 			.payment_secret(payment_secret)
-			.description("rust-lightning-bitcoinrpc invoice".to_string())
+			.description("lnrod invoice".to_string())
 			.amount_pico_btc(amt_msat * 10)
 			.current_timestamp()
-			.features(features)
+			.min_final_cltv_expiry(MIN_FINAL_CLTV_EXPIRY as u64)
 			.payee_pub_key(our_node_pubkey);
 
 		// Add route hints to the invoice.
@@ -479,7 +478,7 @@ impl Node {
 		let amt_msat = amt_pico_btc.unwrap() / 10;
 
 		let payee_pubkey = invoice.recover_payee_pub_key();
-		let final_cltv = invoice.min_final_cltv_expiry().unwrap_or(20u64) as u32;
+		let final_cltv = invoice.min_final_cltv_expiry() as u32;
 
 		let mut payment_hash = PaymentHash([0; 32]);
 		payment_hash.0.copy_from_slice(&invoice.payment_hash().as_ref()[0..32]);

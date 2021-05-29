@@ -1,18 +1,17 @@
 use crate::signer::keys::{DynSigner, InnerSign, PaymentSign, SpendableKeysInterface};
 use anyhow::Result;
 use lightning_signer::util::loopback::{LoopbackSignerKeysInterface, LoopbackChannelSigner};
-use std::time::Duration;
 use bitcoin::secp256k1::{All, PublicKey, Secp256k1, SecretKey};
 use bitcoin::{Script, Transaction, TxOut};
 use lightning::chain::keysinterface::{
-	DelayedPaymentOutputDescriptor, KeysInterface, KeysManager, SpendableOutputDescriptor,
+	DelayedPaymentOutputDescriptor, KeysInterface, SpendableOutputDescriptor,
 	StaticPaymentOutputDescriptor,
 };
 use lightning::ln::msgs::DecodeError;
-use lightning_signer::node::node::NodeConfig;
+use lightning_signer::node::NodeConfig;
 use std::any::Any;
 use lightning_signer::signer::my_keys_manager::KeyDerivationStyle;
-use lightning_signer::signer::my_signer::MySigner;
+use lightning_signer::signer::multi_signer::MultiSigner;
 use bitcoin::secp256k1::recovery::RecoverableSignature;
 use std::sync::Arc;
 
@@ -105,7 +104,6 @@ impl SpendableKeysInterface for Adapter {
 		secp_ctx: &Secp256k1<All>,
 	) -> Result<Transaction> {
 		self.inner
-			.backing
 			.spend_spendable_outputs(
 				descriptors,
 				outputs,
@@ -117,14 +115,12 @@ impl SpendableKeysInterface for Adapter {
 	}
 }
 
-pub(crate) fn make_signer(
-	seed: &[u8; 32], cur: Duration,
-) -> Box<dyn SpendableKeysInterface<Signer = DynSigner>> {
-	let signer = MySigner::new();
+pub(crate) fn make_signer() -> Box<dyn SpendableKeysInterface<Signer = DynSigner>> {
+	// FIXME used Node directly
+	let signer = MultiSigner::new();
 	let node_config = NodeConfig { key_derivation_style: KeyDerivationStyle::Native };
 	let node_id = signer.new_node(node_config);
 
-	let backing = KeysManager::new(&seed, cur.as_secs(), cur.subsec_nanos());
-	let manager = LoopbackSignerKeysInterface { node_id, signer: Arc::new(signer), backing };
+	let manager = LoopbackSignerKeysInterface { node_id, signer: Arc::new(signer) };
 	Box::new(Adapter { inner: manager })
 }
