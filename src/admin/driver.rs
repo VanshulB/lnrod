@@ -7,6 +7,7 @@ use serde_json::json;
 use tonic::{transport::Server, Request, Response, Status};
 
 use bitcoin::secp256k1::{PublicKey, Secp256k1};
+use bitcoin::PublicKey as BitcoinPublicKey;
 use lightning::chain::keysinterface::KeysInterface;
 use lightning::util::config::UserConfig;
 use lightning::util::logger::Logger;
@@ -22,6 +23,7 @@ use crate::HTLCDirection;
 
 use super::admin_api::admin_server::{Admin, AdminServer};
 use super::admin_api::{ChannelListReply, NodeInfoReply, PingReply, PingRequest, Void};
+use bitcoin::Address;
 
 struct AdminHandler {
 	node: Node,
@@ -54,7 +56,13 @@ impl Admin for AdminHandler {
 			&Secp256k1::new(),
 			&self.node.keys_manager.get_node_secret(),
 		);
-		let reply = NodeInfoReply { node_id: node_pubkey.serialize().to_vec() };
+		let shutdown_pubkey = self.node.keys_manager.get_shutdown_pubkey();
+		let bitcoin_pubkey = BitcoinPublicKey { compressed: true, key: shutdown_pubkey };
+		let shutdown_address = Address::p2wpkh(&bitcoin_pubkey, self.node.network).unwrap().to_string();
+		let reply = NodeInfoReply {
+			node_id: node_pubkey.serialize().to_vec(),
+			shutdown_address
+		};
 		log_debug!("{}", type_and_value!(&reply));
 		log_info!("REPLY node_info");
 		Ok(Response::new(reply))

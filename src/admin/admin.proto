@@ -44,6 +44,7 @@ message ChannelCloseRequest {
 
 message NodeInfoReply {
   bytes node_id = 1;
+  string shutdown_address = 10;
 }
 
 message Channel {
