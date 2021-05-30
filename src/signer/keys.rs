@@ -55,6 +55,13 @@ impl DynKeysInterface {
 	pub fn new(inner: Box<dyn SpendableKeysInterface<Signer = DynSigner>>) -> Self {
 		DynKeysInterface { inner }
 	}
+
+	pub fn get_node_id(&self) -> PublicKey {
+		PublicKey::from_secret_key(
+			&Secp256k1::new(),
+			&self.get_node_secret(),
+		)
+	}
 }
 
 impl KeysInterface for DynKeysInterface {

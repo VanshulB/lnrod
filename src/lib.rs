@@ -261,7 +261,8 @@ async fn handle_ldk_events(
 				}
 				Event::SpendableOutputs { outputs } => {
 					log_info!("EVENT: got spendable outputs {:?}", outputs);
-					let destination_address = bitcoind_client.get_new_address().await;
+					let label = format!("sweep-{}", keys_manager.get_node_id().to_string());
+					let destination_address = bitcoind_client.get_new_address(label).await;
 					let output_descriptors = &outputs.iter().map(|a| a).collect::<Vec<_>>();
 					let tx_feerate =
 						bitcoind_client.get_est_sat_per_1000_weight(ConfirmationTarget::Normal);

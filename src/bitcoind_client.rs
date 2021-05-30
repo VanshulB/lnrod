@@ -21,6 +21,7 @@ use crate::convert::{BlockchainInfo, FundedTx, RawTx, SignedTx};
 use bitcoin::hashes::hex::ToHex;
 use jsonrpc_async::simple_http::SimpleHttpTransport;
 use jsonrpc_async::Client;
+use jsonrpc_async::error as rpc_error;
 
 #[derive(Clone)]
 pub struct BitcoindClient {
@@ -28,6 +29,8 @@ pub struct BitcoindClient {
 	host: String,
 	port: u16,
 	fees: Arc<HashMap<Target, AtomicU32>>,
+	queued_transactions: Arc<Mutex<Vec<Transaction>>>,
+	lastest_tip: BlockHash,
 }
 
 #[derive(Clone, Eq, Hash, PartialEq)]
@@ -76,7 +79,14 @@ impl BitcoindClient {
 		fees.insert(Target::Normal, AtomicU32::new(2000));
 		fees.insert(Target::HighPriority, AtomicU32::new(5000));
 
-		let client = Self { rpc: Arc::new(Mutex::new(rpc)), host, port, fees: Arc::new(fees) };
+		let client = Self {
+			rpc: Arc::new(Mutex::new(rpc)),
+			host,
+			port,
+			fees: Arc::new(fees),
+			queued_transactions: Arc::new(Mutex::new(Vec::new())),
+			lastest_tip: BlockHash::default(),
+		};
 		Ok(client)
 	}
 
@@ -98,8 +108,8 @@ impl BitcoindClient {
 		self.call_into("signrawtransactionwithwallet", &vec![json!(tx_hex)]).await.unwrap()
 	}
 
-	pub async fn get_new_address(&self) -> Address {
-		let addr: String = self.call("getnewaddress", &vec![]).await.unwrap();
+	pub async fn get_new_address(&self, label: String) -> Address {
+		let addr: String = self.call("getnewaddress", &vec![json!(label)]).await.unwrap();
 		Address::from_str(addr.as_str()).unwrap()
 	}
 
@@ -132,6 +142,16 @@ impl BitcoindClient {
 		let value: Value = self.call(cmd, args).await?;
 		Ok(JsonResponse(value).try_into()?)
 	}
+
+	async fn on_new_block(&self) {
+		let queue: Vec<Transaction> = {
+			self.queued_transactions.lock().await.drain(..).collect()
+		};
+		log_info!("on_new_block with {} queued txs", queue.len());
+		for tx in queue.iter() {
+			self.broadcast_transaction(tx);
+		}
+	}
 }
 
 impl FeeEstimator for BitcoindClient {
@@ -151,18 +171,36 @@ impl FeeEstimator for BitcoindClient {
 }
 
 impl BroadcasterInterface for BitcoindClient {
-	fn broadcast_transaction(&self, tx: &Transaction) {
+	fn broadcast_transaction(&self, tx_ref: &Transaction) {
+		let tx = tx_ref.clone();
 		log_info!("before broadcast {}", tx.txid());
 		let rpc = Arc::clone(&self.rpc);
+		let queue = Arc::clone(&self.queued_transactions);
 		let ser = hex::encode(tx.serialize());
 		tokio::spawn(async move {
-			let rpc = rpc.lock().await;
-			let raw_args = [serde_json::value::to_raw_value(&json![ser]).unwrap()];
-			let req = rpc.build_request("sendrawtransaction", &raw_args);
+			let result: Result<String, _> = {
+				let rpc = rpc.lock().await;
+				let raw_args = [serde_json::value::to_raw_value(&json![ser]).unwrap()];
+				let req = rpc.build_request("sendrawtransaction", &raw_args);
+				rpc.send_request(req).await.map_err(Error::from).unwrap().result()
+			};
 
-			let txid: String =
-				rpc.send_request(req).await.map_err(Error::from).unwrap().result().unwrap();
-			log_info!("broadcast {}", txid);
+			match result {
+				Ok(txid) => {
+					log_info!("broadcast {}", txid);
+				}
+				Err(rpc_error::Error::Rpc(e)) => {
+					if e.code == -26 {
+						log_warn!("non-final, will retry, for {}", ser);
+						queue.lock().await.push(tx.clone());
+					} else {
+						log_error!("RPC error on broadcast: {:?} for {}", e, ser)
+					}
+				}
+				Err(e) => {
+					log_error!("could not broadcast: {} for {}", e, ser)
+				}
+			}
 		});
 	}
 }
@@ -184,9 +222,12 @@ impl BlockSource for BitcoindClient {
 		})
 	}
 
-	fn get_best_block<'a>(&'a mut self) -> AsyncBlockSourceResult<'_, (BlockHash, Option<u32>)> {
+	fn get_best_block(&mut self) -> AsyncBlockSourceResult<(BlockHash, Option<u32>)> {
 		Box::pin(async move {
 			let info = self.get_blockchain_info().await;
+			if info.latest_blockhash != self.lastest_tip {
+				self.on_new_block().await;
+			}
 			Ok((info.latest_blockhash, Some(info.latest_height as u32)))
 		})
 	}

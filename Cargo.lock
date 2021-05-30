@@ -236,6 +236,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cf1de2fe8c75bc145a2f577add951f8134889b4795d47466a54a5c846d691693"
 
 [[package]]
+name = "bugsalot"
+version = "0.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2ecfa84116fbdfe0a25779563defa5e6600ec6ef041017efe21ef494206e6928"
+
+[[package]]
 name = "bumpalo"
 version = "3.6.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -952,7 +958,7 @@ dependencies = [
 [[package]]
 name = "lightning-signer-core"
 version = "0.1.0-2"
-source = "git+https://gitlab.com/lightning-signer/rust-lightning-signer.git?rev=cc5cfeafc86a5d058572b4931b5fe839661a722f#cc5cfeafc86a5d058572b4931b5fe839661a722f"
+source = "git+https://gitlab.com/lightning-signer/rust-lightning-signer.git?rev=4125464e1a8ca0638985515ddeb3f2e90609f7d4#4125464e1a8ca0638985515ddeb3f2e90609f7d4"
 dependencies = [
  "backtrace",
  "bitcoin",
@@ -966,7 +972,7 @@ dependencies = [
 [[package]]
 name = "lightning-signer-server"
 version = "0.1.0-1"
-source = "git+https://gitlab.com/lightning-signer/rust-lightning-signer.git?rev=cc5cfeafc86a5d058572b4931b5fe839661a722f#cc5cfeafc86a5d058572b4931b5fe839661a722f"
+source = "git+https://gitlab.com/lightning-signer/rust-lightning-signer.git?rev=4125464e1a8ca0638985515ddeb3f2e90609f7d4#4125464e1a8ca0638985515ddeb3f2e90609f7d4"
 dependencies = [
  "backtrace",
  "bip39",
@@ -997,6 +1003,7 @@ dependencies = [
  "bech32 0.7.3",
  "bitcoin",
  "bitcoin-bech32",
+ "bugsalot",
  "clap",
  "hex 0.3.2",
  "jsonrpc-async",

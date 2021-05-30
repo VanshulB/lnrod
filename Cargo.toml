@@ -11,7 +11,12 @@ edition = "2018"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
+[features]
+bugs = ["bugsalot"]
+
 [dependencies]
+bugsalot = { version = "0.2", optional = true }
+
 anyhow = "1.0"
 base64 = "0.13.0"
 bitcoin = "0.26"
@@ -43,12 +48,12 @@ features = ["allow_wallclock_use"]
 
 [dependencies.lightning-signer-core]
 git = "https://gitlab.com/lightning-signer/rust-lightning-signer.git"
-rev = "cc5cfeafc86a5d058572b4931b5fe839661a722f"
+rev = "4125464e1a8ca0638985515ddeb3f2e90609f7d4"
 #path = "../rust-lightning-signer/lightning-signer-core"
 
 [dependencies.lightning-signer-server]
 git = "https://gitlab.com/lightning-signer/rust-lightning-signer.git"
-rev = "cc5cfeafc86a5d058572b4931b5fe839661a722f"
+rev = "4125464e1a8ca0638985515ddeb3f2e90609f7d4"
 #path = "../rust-lightning-signer/lightning-signer-server"
 
 [build-dependencies]
