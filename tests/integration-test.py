@@ -99,6 +99,9 @@ def wait_until(name, func):
 
 
 def run():
+    # ensure we sync after the last payment
+    assert NUM_PAYMENTS % CHANNEL_BALANCE_SYNC_INTERVAL == 0
+
     atexit.register(kill_procs)
     rmtree(OUTPUT_DIR, ignore_errors=True)
     os.mkdir(OUTPUT_DIR)
@@ -148,18 +151,17 @@ def run():
         btc.mine(1)
         return (not alice.ChannelList(Void()).channels[0].is_pending and
                 not bob.ChannelList(Void()).channels[0].is_pending and
+                not bob.ChannelList(Void()).channels[1].is_pending and
                 not charlie.ChannelList(Void()).channels[0].is_pending and
                 alice.ChannelList(Void()).channels[0].is_active and
                 bob.ChannelList(Void()).channels[0].is_active and
+                bob.ChannelList(Void()).channels[1].is_active and
                 charlie.ChannelList(Void()).channels[0].is_active)
 
     wait_until('active at both', channel_active)
 
     assert alice.ChannelList(Void()).channels[0].is_active
     assert bob.ChannelList(Void()).channels[0].is_active
-
-    # ensure we sync after the last payment
-    assert NUM_PAYMENTS % CHANNEL_BALANCE_SYNC_INTERVAL == 0
 
     for i in range(1, NUM_PAYMENTS + 1):
         print(f'Pay invoice {i}')
@@ -183,6 +185,7 @@ def run():
             assert payment.is_outbound
             assert payment.status == Payment.PaymentStatus.Succeeded, payment
         return True
+
     wait_until('check payments', check_payments)
 
     def wait_received(node_id, minimum=1):

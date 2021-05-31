@@ -42,6 +42,8 @@ use crate::signer::keys::DynKeysInterface;
 use crate::{disk, handle_ldk_events, ArcChainMonitor, ChannelManager, HTLCDirection, HTLCStatus, MilliSatoshiAmount, PaymentInfoStorage, PeerManager, SyncAccess};
 use lightning::routing::router::RouteHintHop;
 
+const FINAL_CLTV_BUFFER: u32 = 6;
+
 #[derive(Clone)]
 pub struct NodeBuildArgs {
 	pub bitcoind_rpc_username: String,
@@ -478,7 +480,7 @@ impl Node {
 		let amt_msat = amt_pico_btc.unwrap() / 10;
 
 		let payee_pubkey = invoice.recover_payee_pub_key();
-		let final_cltv = invoice.min_final_cltv_expiry() as u32;
+		let final_cltv = invoice.min_final_cltv_expiry() as u32 + FINAL_CLTV_BUFFER;
 
 		let mut payment_hash = PaymentHash([0; 32]);
 		payment_hash.0.copy_from_slice(&invoice.payment_hash().as_ref()[0..32]);
