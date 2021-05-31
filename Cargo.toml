@@ -31,6 +31,7 @@ time = "0.2"
 rand = "0.4"
 serde_json = { version = "1.0" }
 tokio = { version = "1.0", features = [ "io-util", "macros", "rt", "rt-multi-thread", "sync", "net", "time" ] }
+hyper = "=0.14.4"  # 0.14.5 depends on socket2 0.4 which requires a higher MSRV
 prost = "0.7"
 tonic = "0.4"
 clap = "3.0.0-beta.2"
@@ -48,12 +49,12 @@ features = ["allow_wallclock_use"]
 
 [dependencies.lightning-signer-core]
 git = "https://gitlab.com/lightning-signer/rust-lightning-signer.git"
-rev = "4125464e1a8ca0638985515ddeb3f2e90609f7d4"
+rev = "d6b84c0bf8f8c6b3b99b988fb64c6fc6ab2e7878"
 #path = "../rust-lightning-signer/lightning-signer-core"
 
 [dependencies.lightning-signer-server]
 git = "https://gitlab.com/lightning-signer/rust-lightning-signer.git"
-rev = "4125464e1a8ca0638985515ddeb3f2e90609f7d4"
+rev = "d6b84c0bf8f8c6b3b99b988fb64c6fc6ab2e7878"
 #path = "../rust-lightning-signer/lightning-signer-server"
 
 [build-dependencies]
