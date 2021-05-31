@@ -41,6 +41,7 @@ impl CLI {
 		let response = client.node_info(void_request).await?.into_inner();
 
 		println!("{}", hex::encode(response.node_id));
+		println!("shutdown address {}", response.shutdown_address);
 		Ok(())
 	}
 

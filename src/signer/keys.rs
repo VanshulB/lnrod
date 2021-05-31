@@ -1,34 +1,35 @@
+use std::any::Any;
 use std::collections::HashSet;
 use std::io::Read;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use anyhow::{bail, Result};
+use anyhow::{anyhow, bail, Result};
+use bitcoin::{Network, Script, SigHashType, Transaction, TxIn, TxOut};
 use bitcoin::blockdata::opcodes;
 use bitcoin::blockdata::script::Builder;
 use bitcoin::hash_types::WPubkeyHash;
+use bitcoin::hashes::{Hash, HashEngine};
 use bitcoin::hashes::sha256::Hash as Sha256;
 use bitcoin::hashes::sha256::HashEngine as Sha256State;
-use bitcoin::hashes::{Hash, HashEngine};
 use bitcoin::secp256k1;
 use bitcoin::secp256k1::{All, PublicKey, Secp256k1, SecretKey, Signature};
+use bitcoin::secp256k1::recovery::RecoverableSignature;
 use bitcoin::util::bip143;
 use bitcoin::util::bip32::{ChildNumber, ExtendedPrivKey, ExtendedPubKey};
-use bitcoin::{Network, Script, SigHashType, Transaction, TxIn, TxOut};
 use lightning::chain::keysinterface::{
 	BaseSign, DelayedPaymentOutputDescriptor, InMemorySigner, KeysInterface, Sign,
 	SpendableOutputDescriptor, StaticPaymentOutputDescriptor,
 };
 use lightning::ln::chan_utils::{
-	ChannelPublicKeys, ChannelTransactionParameters, CommitmentTransaction, HTLCOutputInCommitment,
-	HolderCommitmentTransaction,
+	ChannelPublicKeys, ChannelTransactionParameters, CommitmentTransaction, HolderCommitmentTransaction,
+	HTLCOutputInCommitment,
 };
 use lightning::ln::msgs::{DecodeError, UnsignedChannelAnnouncement};
 use lightning::util::ser::{Readable, Writeable, Writer};
+use lightning_signer::util::transaction_utils;
+use lightning_signer::util::transaction_utils::MAX_VALUE_MSAT;
 
-use crate::transaction_utils::MAX_VALUE_MSAT;
-use crate::{byte_utils, transaction_utils};
-use std::any::Any;
-use bitcoin::secp256k1::recovery::RecoverableSignature;
+use crate::byte_utils;
 
 /// Decouple creation of DynSigner from KeysManager
 pub trait SignerFactory: Sync + Send {
@@ -53,6 +54,13 @@ pub(crate) struct DynKeysInterface {
 impl DynKeysInterface {
 	pub fn new(inner: Box<dyn SpendableKeysInterface<Signer = DynSigner>>) -> Self {
 		DynKeysInterface { inner }
+	}
+
+	pub fn get_node_id(&self) -> PublicKey {
+		PublicKey::from_secret_key(
+			&Secp256k1::new(),
+			&self.get_node_secret(),
+		)
 	}
 }
 
@@ -365,7 +373,7 @@ impl<F: SignerFactory> SpendableKeysInterface for KeysManager<F> {
 			witness_weight,
 			feerate_sat_per_1000_weight,
 			change_destination_script,
-		)?;
+		).map_err(|_| anyhow!("failed to add change output"))?;
 
 		let mut keys_cache: Option<(DynSigner, [u8; 32])> = None;
 		let mut input_idx = 0;
@@ -605,11 +613,13 @@ impl Writeable for DynSigner {
 
 #[cfg(test)]
 mod tests {
+	use std::time::Duration;
+
+	use lightning::chain::keysinterface::{BaseSign, KeysInterface};
+	use lightning::util::ser::Writeable;
+
 	use crate::signer::keys::{DynKeysInterface, DynSigner};
 	use crate::signer::test_signer;
-	use std::time::Duration;
-	use lightning::util::ser::Writeable;
-	use lightning::chain::keysinterface::{KeysInterface, BaseSign};
 
 	#[test]
 	fn ser_deser_dyn_signer() {

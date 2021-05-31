@@ -16,7 +16,7 @@ use lightning::chain::chainmonitor::ChainMonitor;
 use lightning::chain::keysinterface::KeysInterface;
 use lightning::chain::Watch;
 use lightning::ln::{channelmanager, PaymentHash, PaymentPreimage, PaymentSecret};
-use lightning::ln::channelmanager::{ChainParameters, ChannelManagerReadArgs, BestBlock};
+use lightning::ln::channelmanager::{ChainParameters, ChannelManagerReadArgs, BestBlock, MIN_FINAL_CLTV_EXPIRY};
 use lightning::ln::features::InvoiceFeatures;
 use lightning::ln::peer_handler::MessageHandler;
 use lightning::routing::network_graph::{NetGraphMsgHandler, RoutingFees};
@@ -41,6 +41,9 @@ use crate::signer::get_keys_manager;
 use crate::signer::keys::DynKeysInterface;
 use crate::{disk, handle_ldk_events, ArcChainMonitor, ChannelManager, HTLCDirection, HTLCStatus, MilliSatoshiAmount, PaymentInfoStorage, PeerManager, SyncAccess};
 use lightning::routing::router::RouteHintHop;
+use crate::convert::BlockchainInfo;
+
+const FINAL_CLTV_BUFFER: u32 = 6;
 
 #[derive(Clone)]
 pub struct NodeBuildArgs {
@@ -66,6 +69,7 @@ pub(crate) struct Node {
 	pub(crate) keys_manager: Arc<DynKeysInterface>,
 	pub(crate) event_ntfn_sender: Sender<()>,
 	pub(crate) ldk_data_dir: String,
+	pub(crate) bitcoind_client: Arc<BitcoindClient>,
 	pub(crate) network: Network,
 }
 
@@ -341,7 +345,7 @@ async fn build_with_signer(
 	tokio::spawn(handle_ldk_events(
 		channel_manager_event_listener,
 		chain_monitor_event_listener,
-		bitcoind_client_arc,
+		bitcoind_client_arc.clone(),
 		keys_manager_listener,
 		payment_info_for_events,
 		network,
@@ -355,6 +359,7 @@ async fn build_with_signer(
 		keys_manager,
 		event_ntfn_sender,
 		ldk_data_dir,
+		bitcoind_client: bitcoind_client_arc,
 		network: args.network,
 	}
 }
@@ -407,7 +412,6 @@ impl Node {
 		let mut preimage = [0; 32];
 		rand::thread_rng().fill_bytes(&mut preimage);
 		let payment_hash = Sha256Hash::hash(&preimage);
-		let features = InvoiceFeatures::known();
 
 		let payment_secret =
 			self.channel_manager.create_inbound_payment_for_hash(
@@ -425,10 +429,10 @@ impl Node {
 		})
 			.payment_hash(payment_hash)
 			.payment_secret(payment_secret)
-			.description("rust-lightning-bitcoinrpc invoice".to_string())
+			.description("lnrod invoice".to_string())
 			.amount_pico_btc(amt_msat * 10)
 			.current_timestamp()
-			.features(features)
+			.min_final_cltv_expiry(MIN_FINAL_CLTV_EXPIRY as u64)
 			.payee_pub_key(our_node_pubkey);
 
 		// Add route hints to the invoice.
@@ -479,7 +483,7 @@ impl Node {
 		let amt_msat = amt_pico_btc.unwrap() / 10;
 
 		let payee_pubkey = invoice.recover_payee_pub_key();
-		let final_cltv = invoice.min_final_cltv_expiry().unwrap_or(20u64) as u32;
+		let final_cltv = invoice.min_final_cltv_expiry() as u32 + FINAL_CLTV_BUFFER;
 
 		let mut payment_hash = PaymentHash([0; 32]);
 		payment_hash.0.copy_from_slice(&invoice.payment_hash().as_ref()[0..32]);
@@ -547,5 +551,9 @@ impl Node {
 			(None, HTLCDirection::Outbound, status, MilliSatoshiAmount(Some(amt_msat))),
 		);
 		Ok(())
+	}
+
+	pub async fn blockchain_info(&self) -> BlockchainInfo {
+		self.bitcoind_client.get_blockchain_info().await
 	}
 }

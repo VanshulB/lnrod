@@ -13,17 +13,18 @@ import grpc
 from retrying import retry
 
 from admin_pb2_grpc import AdminStub
-from admin_pb2 import PingRequest, ChannelNewRequest, Void, InvoiceNewRequest, PaymentSendRequest, Payment, PeerConnectRequest
+from admin_pb2 import PingRequest, ChannelNewRequest, ChannelCloseRequest, Void, InvoiceNewRequest, PaymentSendRequest, Payment, PeerConnectRequest
 
 processes: [Popen] = []
 OUTPUT_DIR = 'test-output'
 NUM_PAYMENTS = 200
-CHANNEL_BALANCE_SYNC_INTERVAL = 100
+WAIT_TIMEOUT = 10
+CHANNEL_BALANCE_SYNC_INTERVAL = 50
 CHANNEL_VALUE_SAT = 10_000_000
 PAYMENT_MSAT = 2_000_000
 SLEEP_ON_FAIL = False
 USE_RELEASE_BINARIES = False
-SIGNER = "test"
+SIGNER = "rls"
 
 logger = logging.getLogger()
 
@@ -75,9 +76,10 @@ def node(url):
     return stub
 
 
+# retry every 0.1 seconds until WAIT_TIMEOUT seconds have passed
 def wait_until(name, func):
     logger.debug(f'wait for {name}')
-    timeout = 100  # 10 seconds
+    timeout = WAIT_TIMEOUT * 10
     exc = None
     while timeout > 0:
         try:
@@ -98,6 +100,9 @@ def wait_until(name, func):
 
 
 def run():
+    # ensure we sync after the last payment
+    assert NUM_PAYMENTS % CHANNEL_BALANCE_SYNC_INTERVAL == 0
+
     atexit.register(kill_procs)
     rmtree(OUTPUT_DIR, ignore_errors=True)
     os.mkdir(OUTPUT_DIR)
@@ -147,18 +152,24 @@ def run():
         btc.mine(1)
         return (not alice.ChannelList(Void()).channels[0].is_pending and
                 not bob.ChannelList(Void()).channels[0].is_pending and
+                not bob.ChannelList(Void()).channels[1].is_pending and
                 not charlie.ChannelList(Void()).channels[0].is_pending and
                 alice.ChannelList(Void()).channels[0].is_active and
                 bob.ChannelList(Void()).channels[0].is_active and
+                bob.ChannelList(Void()).channels[1].is_active and
                 charlie.ChannelList(Void()).channels[0].is_active)
 
     wait_until('active at both', channel_active)
 
+    def best_block_sync(node):
+        return node.NodeInfo(Void()).best_block_hash[::-1].hex() == btc.getblockchaininfo()['bestblockhash']
+
+    wait_until('alice synced', lambda: best_block_sync(alice))
+    wait_until('bob synced', lambda: best_block_sync(bob))
+    wait_until('charlie synced', lambda: best_block_sync(charlie))
+
     assert alice.ChannelList(Void()).channels[0].is_active
     assert bob.ChannelList(Void()).channels[0].is_active
-
-    # ensure we sync after the last payment
-    assert NUM_PAYMENTS % CHANNEL_BALANCE_SYNC_INTERVAL == 0
 
     for i in range(1, NUM_PAYMENTS + 1):
         print(f'Pay invoice {i}')
@@ -182,7 +193,46 @@ def run():
             assert payment.is_outbound
             assert payment.status == Payment.PaymentStatus.Succeeded, payment
         return True
+
     wait_until('check payments', check_payments)
+
+    def wait_received(node_id, minimum=1):
+        btc.mine(2)
+        label = f'sweep-{node_id.hex()}'
+        received = int(btc.getreceivedbylabel(label) * 100000000)
+        return received >= minimum
+
+    def get_swept_value(node_id):
+        return int(btc.getreceivedbylabel(f'sweep-{node_id.hex()}') * 100000000)
+
+    print('Closing alice - bob')
+    alice_channel = alice.ChannelList(Void()).channels[0]
+    alice.ChannelClose(ChannelCloseRequest(channel_id=alice_channel.channel_id))
+
+    wait_until('alice sweep', lambda: wait_received(alice_id))
+    wait_until('bob sweep', lambda: wait_received(bob_id))
+    alice_sweep = int(get_swept_value(alice_id))
+    bob_sweep = int(get_swept_value(bob_id))
+    assert_equal_delta(CHANNEL_VALUE_SAT - (NUM_PAYMENTS * PAYMENT_MSAT) / 1000 - 1000, alice_sweep)
+    assert_equal_delta((NUM_PAYMENTS * PAYMENT_MSAT) / 1000 - 1000, bob_sweep)
+
+    print('Force closing bob - charlie at charlie')
+    charlie_channel = charlie.ChannelList(Void()).channels[0]
+    charlie.ChannelClose(ChannelCloseRequest(channel_id=charlie_channel.channel_id, is_force=True))
+    wait_until('bob sweep', lambda: wait_received(bob_id, minimum=bob_sweep + 1))
+    bob_sweep = int(get_swept_value(bob_id))
+    # bob, as router, is flat except for fees
+    assert_equal_delta(CHANNEL_VALUE_SAT - 2000, bob_sweep)
+
+    # charlie should not have been able to sweep yet
+    charlie_sweep = int(get_swept_value(charlie_id))
+    assert charlie_sweep == 0
+
+    # charlie eventually sweeps their payments
+    wait_until('charlie sweep', lambda: wait_received(charlie_id))
+    charlie_sweep = int(get_swept_value(charlie_id))
+    assert_equal_delta((NUM_PAYMENTS * PAYMENT_MSAT) / 1000 - 1000, charlie_sweep)
+
     print('Done')
 
 
@@ -190,6 +240,7 @@ def assert_equal_delta(a, b):
     if a < b * 0.995 or a > b * 1.005:
         raise AssertionError(f'value out of range {a} vs {b}')
     return True
+
 
 def start_bitcoind():
     global processes

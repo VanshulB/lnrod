@@ -85,8 +85,6 @@ impl Into<ChannelHandshakeLimits> for ConfigLimitCoinChannel {
 			min_max_htlc_value_in_flight_msat: self.min_max_htlc_value_in_flight_msat.unwrap_or(0),
 			max_channel_reserve_satoshis: self.max_channel_reserve_sat.unwrap_or(u64::max_value()),
 			min_max_accepted_htlcs: self.min_max_accepted_htlcs.unwrap_or(0),
-			min_dust_limit_satoshis: self.min_dust_limit_satoshis.unwrap_or(546),
-			max_dust_limit_satoshis: self.max_dust_limit_satoshis.unwrap_or(u64::max_value()),
 			max_minimum_depth: self.max_minimum_depth.unwrap_or(144),
 			force_announced_channel_preference: self
 				.force_announced_channel_preference

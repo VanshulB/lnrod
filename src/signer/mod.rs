@@ -16,7 +16,7 @@ pub fn get_keys_manager(
 	let cur = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap();
 	let manager: Box<dyn SpendableKeysInterface<Signer = DynSigner>> = match name {
 		"test" => test_signer::make_signer(&seed, cur),
-		"rls" => rust_lightning_signer::make_signer(&seed, cur),
+		"rls" => rust_lightning_signer::make_signer(),
 		_ => anyhow::bail!("not found"),
 	};
 
