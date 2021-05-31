@@ -76,6 +76,7 @@ def node(url):
     return stub
 
 
+# retry every 0.1 seconds until WAIT_TIMEOUT seconds have passed
 def wait_until(name, func):
     logger.debug(f'wait for {name}')
     timeout = WAIT_TIMEOUT * 10
@@ -159,6 +160,13 @@ def run():
                 charlie.ChannelList(Void()).channels[0].is_active)
 
     wait_until('active at both', channel_active)
+
+    def best_block_sync(node):
+        return node.NodeInfo(Void()).best_block_hash[::-1].hex() == btc.getblockchaininfo()['bestblockhash']
+
+    wait_until('alice synced', lambda: best_block_sync(alice))
+    wait_until('bob synced', lambda: best_block_sync(bob))
+    wait_until('charlie synced', lambda: best_block_sync(charlie))
 
     assert alice.ChannelList(Void()).channels[0].is_active
     assert bob.ChannelList(Void()).channels[0].is_active

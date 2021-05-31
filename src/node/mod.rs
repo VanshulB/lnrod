@@ -41,6 +41,7 @@ use crate::signer::get_keys_manager;
 use crate::signer::keys::DynKeysInterface;
 use crate::{disk, handle_ldk_events, ArcChainMonitor, ChannelManager, HTLCDirection, HTLCStatus, MilliSatoshiAmount, PaymentInfoStorage, PeerManager, SyncAccess};
 use lightning::routing::router::RouteHintHop;
+use crate::convert::BlockchainInfo;
 
 const FINAL_CLTV_BUFFER: u32 = 6;
 
@@ -68,6 +69,7 @@ pub(crate) struct Node {
 	pub(crate) keys_manager: Arc<DynKeysInterface>,
 	pub(crate) event_ntfn_sender: Sender<()>,
 	pub(crate) ldk_data_dir: String,
+	pub(crate) bitcoind_client: Arc<BitcoindClient>,
 	pub(crate) network: Network,
 }
 
@@ -343,7 +345,7 @@ async fn build_with_signer(
 	tokio::spawn(handle_ldk_events(
 		channel_manager_event_listener,
 		chain_monitor_event_listener,
-		bitcoind_client_arc,
+		bitcoind_client_arc.clone(),
 		keys_manager_listener,
 		payment_info_for_events,
 		network,
@@ -357,6 +359,7 @@ async fn build_with_signer(
 		keys_manager,
 		event_ntfn_sender,
 		ldk_data_dir,
+		bitcoind_client: bitcoind_client_arc,
 		network: args.network,
 	}
 }
@@ -548,5 +551,9 @@ impl Node {
 			(None, HTLCDirection::Outbound, status, MilliSatoshiAmount(Some(amt_msat))),
 		);
 		Ok(())
+	}
+
+	pub async fn blockchain_info(&self) -> BlockchainInfo {
+		self.bitcoind_client.get_blockchain_info().await
 	}
 }
