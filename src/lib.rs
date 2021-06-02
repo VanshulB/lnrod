@@ -19,7 +19,7 @@ use lightning::chain::Filter;
 use lightning::ln::channelmanager::ChannelManager as RLChannelManager;
 use lightning::ln::peer_handler::PeerManager as RLPeerManager;
 use lightning::routing::network_graph::NetGraphMsgHandler;
-use lightning::util::events::{Event, EventsProvider};
+use lightning::util::events::Event;
 use lightning::util::logger::Logger;
 use lightning_persister::FilesystemPersister;
 use rand::{thread_rng, Rng};
