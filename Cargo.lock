@@ -754,7 +754,7 @@ checksum = "789da6d93f1b866ffe175afc5322a4d76c038605a1c3319bb57b06967ca98a36"
 [[package]]
 name = "lightning"
 version = "0.0.14"
-source = "git+https://github.com/rust-bitcoin/rust-lightning.git?rev=0b1f0a7edc7d836e75e69442e84038f6c4116174#0b1f0a7edc7d836e75e69442e84038f6c4116174"
+source = "git+https://github.com/rust-bitcoin/rust-lightning.git?rev=ee29bc4096897e5309a95927a287f183db300e8d#ee29bc4096897e5309a95927a287f183db300e8d"
 dependencies = [
  "bitcoin",
  "hex 0.3.2",
@@ -764,7 +764,7 @@ dependencies = [
 [[package]]
 name = "lightning-block-sync"
 version = "0.0.14"
-source = "git+https://github.com/rust-bitcoin/rust-lightning.git?rev=0b1f0a7edc7d836e75e69442e84038f6c4116174#0b1f0a7edc7d836e75e69442e84038f6c4116174"
+source = "git+https://github.com/rust-bitcoin/rust-lightning.git?rev=ee29bc4096897e5309a95927a287f183db300e8d#ee29bc4096897e5309a95927a287f183db300e8d"
 dependencies = [
  "bitcoin",
  "chunked_transfer",
@@ -777,7 +777,7 @@ dependencies = [
 [[package]]
 name = "lightning-invoice"
 version = "0.5.0"
-source = "git+https://github.com/rust-bitcoin/rust-lightning.git?rev=0b1f0a7edc7d836e75e69442e84038f6c4116174#0b1f0a7edc7d836e75e69442e84038f6c4116174"
+source = "git+https://github.com/rust-bitcoin/rust-lightning.git?rev=ee29bc4096897e5309a95927a287f183db300e8d#ee29bc4096897e5309a95927a287f183db300e8d"
 dependencies = [
  "bech32 0.7.3",
  "bitcoin_hashes",
@@ -789,7 +789,7 @@ dependencies = [
 [[package]]
 name = "lightning-persister"
 version = "0.0.14"
-source = "git+https://github.com/rust-bitcoin/rust-lightning.git?rev=0b1f0a7edc7d836e75e69442e84038f6c4116174#0b1f0a7edc7d836e75e69442e84038f6c4116174"
+source = "git+https://github.com/rust-bitcoin/rust-lightning.git?rev=ee29bc4096897e5309a95927a287f183db300e8d#ee29bc4096897e5309a95927a287f183db300e8d"
 dependencies = [
  "bitcoin",
  "libc",
@@ -800,7 +800,7 @@ dependencies = [
 [[package]]
 name = "lightning-signer-core"
 version = "0.1.0-2"
-source = "git+https://gitlab.com/lightning-signer/rust-lightning-signer.git?rev=d6b84c0bf8f8c6b3b99b988fb64c6fc6ab2e7878#d6b84c0bf8f8c6b3b99b988fb64c6fc6ab2e7878"
+source = "git+https://gitlab.com/lightning-signer/rust-lightning-signer.git?rev=5dbace7e64b8d0e3770519b4192beaa3df5bb03e#5dbace7e64b8d0e3770519b4192beaa3df5bb03e"
 dependencies = [
  "backtrace",
  "bitcoin",
@@ -814,7 +814,7 @@ dependencies = [
 [[package]]
 name = "lightning-signer-server"
 version = "0.1.0-1"
-source = "git+https://gitlab.com/lightning-signer/rust-lightning-signer.git?rev=d6b84c0bf8f8c6b3b99b988fb64c6fc6ab2e7878#d6b84c0bf8f8c6b3b99b988fb64c6fc6ab2e7878"
+source = "git+https://gitlab.com/lightning-signer/rust-lightning-signer.git?rev=5dbace7e64b8d0e3770519b4192beaa3df5bb03e#5dbace7e64b8d0e3770519b4192beaa3df5bb03e"
 dependencies = [
  "backtrace",
  "bip39",
@@ -822,6 +822,7 @@ dependencies = [
  "clap",
  "ctrlc",
  "hex 0.3.2",
+ "hyper",
  "kv",
  "lightning",
  "lightning-signer-core",
