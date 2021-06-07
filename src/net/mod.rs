@@ -23,7 +23,6 @@
 //! something occurs which may result in lightning [Events](../lightning/util/events/enum.Event.html).
 //! ```
 
-#![deny(broken_intra_doc_links)]
 #![deny(missing_docs)]
 
 use anyhow::Result;
