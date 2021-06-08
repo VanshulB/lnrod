@@ -498,7 +498,10 @@ impl Node {
 		};
 
 		let features = invoice.features().map(|f| f.clone());
-		log_debug!("Sending payment with secret {:?} features {:?}", payment_secret, features);
+		log_debug!("Sending payment with secret {:?} value {} features {:?} to {}",
+			payment_secret.map(|s| hex::encode(s.0)),
+			amt_msat,
+			features, payee_pubkey);
 
 		self.do_send_payment(
 			payee_pubkey,
