@@ -143,11 +143,11 @@ impl BitcoindClient {
 		Ok(JsonResponse(value).try_into()?)
 	}
 
-	async fn on_new_block(&self) {
+	async fn on_new_block(&self, info: &BlockchainInfo) {
 		let queue: Vec<Transaction> = {
 			self.queued_transactions.lock().await.drain(..).collect()
 		};
-		log_info!("on_new_block with {} queued txs", queue.len());
+		log_info!("on_new_block height {} with {} queued txs", info.latest_height, queue.len());
 		for tx in queue.iter() {
 			self.broadcast_transaction(tx);
 		}
@@ -226,7 +226,8 @@ impl BlockSource for BitcoindClient {
 		Box::pin(async move {
 			let info = self.get_blockchain_info().await;
 			if info.latest_blockhash != self.lastest_tip {
-				self.on_new_block().await;
+				self.on_new_block(&info).await;
+				self.lastest_tip = info.latest_blockhash;
 			}
 			Ok((info.latest_blockhash, Some(info.latest_height as u32)))
 		})

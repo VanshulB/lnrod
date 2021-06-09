@@ -38,7 +38,7 @@ lnrod --regtest
 lnrod --regtest --datadir ./data2 --rpcport 8802 --lnport 9902
 
 # get the second node ID
-node2=`lnrcli -c http://127.0.0.1:8802 node info` && echo $node2
+node2=`lnrcli -c http://127.0.0.1:8802 node info | jq -r .node_id` && echo $node2
 
 # connect the first node to the second
 lnrcli peer connect $node2 127.0.0.1:9902
