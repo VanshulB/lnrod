@@ -7,14 +7,14 @@ use lightning::chain::transaction::OutPoint;
 use lightning::util::logger::Level as LogLevel;
 use lightning::util::logger::{Logger, Record};
 use lightning::util::ser::ReadableArgs;
+use lightning_signer::signer::multi_signer::SyncLogger;
+use lightning_signer::SendSync;
 use std::collections::HashMap;
 use std::fs;
 use std::io::{Cursor, Write};
 use std::path::Path;
 use std::sync::Arc;
 use time::OffsetDateTime;
-use lightning_signer::signer::multi_signer::SyncLogger;
-use lightning_signer::SendSync;
 
 const MAX_CHANNEL_MONITOR_FILENAME_LENGTH: usize = 65;
 

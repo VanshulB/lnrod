@@ -1,6 +1,6 @@
 use crate::signer::keys::{DynSigner, InnerSign, PaymentSign, SpendableKeysInterface};
 use anyhow::Result;
-use lightning_signer::util::loopback::{LoopbackSignerKeysInterface, LoopbackChannelSigner};
+use bitcoin::secp256k1::recovery::RecoverableSignature;
 use bitcoin::secp256k1::{All, PublicKey, Secp256k1, SecretKey};
 use bitcoin::{Script, Transaction, TxOut};
 use lightning::chain::keysinterface::{
@@ -9,10 +9,10 @@ use lightning::chain::keysinterface::{
 };
 use lightning::ln::msgs::DecodeError;
 use lightning_signer::node::NodeConfig;
-use std::any::Any;
-use lightning_signer::signer::my_keys_manager::KeyDerivationStyle;
 use lightning_signer::signer::multi_signer::MultiSigner;
-use bitcoin::secp256k1::recovery::RecoverableSignature;
+use lightning_signer::signer::my_keys_manager::KeyDerivationStyle;
+use lightning_signer::util::loopback::{LoopbackChannelSigner, LoopbackSignerKeysInterface};
+use std::any::Any;
 use std::sync::Arc;
 
 struct Adapter {

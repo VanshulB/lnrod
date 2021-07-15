@@ -15,10 +15,12 @@ use lightning::chain;
 use lightning::chain::chainmonitor::ChainMonitor;
 use lightning::chain::keysinterface::KeysInterface;
 use lightning::chain::Watch;
-use lightning::ln::{channelmanager, PaymentHash, PaymentPreimage, PaymentSecret};
-use lightning::ln::channelmanager::{ChainParameters, ChannelManagerReadArgs, BestBlock, MIN_FINAL_CLTV_EXPIRY};
+use lightning::ln::channelmanager::{
+	BestBlock, ChainParameters, ChannelManagerReadArgs, MIN_FINAL_CLTV_EXPIRY,
+};
 use lightning::ln::features::InvoiceFeatures;
 use lightning::ln::peer_handler::MessageHandler;
+use lightning::ln::{channelmanager, PaymentHash, PaymentPreimage, PaymentSecret};
 use lightning::routing::network_graph::{NetGraphMsgHandler, RoutingFees};
 use lightning::routing::router;
 use lightning::util::logger::Level as LogLevel;
@@ -34,14 +36,17 @@ use tokio::sync::mpsc::Sender;
 use crate::background::BackgroundProcessor;
 use crate::bitcoind_client::BitcoindClient;
 use crate::config::Config;
+use crate::convert::BlockchainInfo;
 use crate::disk::FilesystemLogger;
 use crate::logger::{self, AbstractLogger};
 use crate::net::{setup_inbound, setup_outbound};
 use crate::signer::get_keys_manager;
 use crate::signer::keys::DynKeysInterface;
-use crate::{disk, handle_ldk_events, ArcChainMonitor, ChannelManager, HTLCDirection, HTLCStatus, MilliSatoshiAmount, PaymentInfoStorage, PeerManager, SyncAccess};
+use crate::{
+	disk, handle_ldk_events, ArcChainMonitor, ChannelManager, HTLCDirection, HTLCStatus,
+	MilliSatoshiAmount, PaymentInfoStorage, PeerManager, SyncAccess,
+};
 use lightning::routing::router::RouteHintHop;
-use crate::convert::BlockchainInfo;
 
 const FINAL_CLTV_BUFFER: u32 = 6;
 
@@ -181,12 +186,9 @@ async fn build_with_signer(
 			// We're starting a fresh node.
 			restarting_node = false;
 			let getinfo_resp = bitcoind_client.get_blockchain_info().await;
-			let best_block = BestBlock::new(getinfo_resp.latest_blockhash,
-											getinfo_resp.latest_height as u32);
-			let chain_params = ChainParameters {
-				network: args.network,
-				best_block,
-			};
+			let best_block =
+				BestBlock::new(getinfo_resp.latest_blockhash, getinfo_resp.latest_height as u32);
+			let chain_params = ChainParameters { network: args.network, best_block };
 			let fresh_channel_manager = channelmanager::ChannelManager::new(
 				fee_estimator.clone(),
 				chain_monitor.clone(),
@@ -413,12 +415,15 @@ impl Node {
 		rand::thread_rng().fill_bytes(&mut preimage);
 		let payment_hash = Sha256Hash::hash(&preimage);
 
-		let payment_secret =
-			self.channel_manager.create_inbound_payment_for_hash(
+		let payment_secret = self
+			.channel_manager
+			.create_inbound_payment_for_hash(
 				PaymentHash(payment_hash.into_inner()),
 				Some(amt_msat),
-				7200, 0)
-				.map_err(|e| format!("{:?}", e))?;
+				7200,
+				0,
+			)
+			.map_err(|e| format!("{:?}", e))?;
 
 		let our_node_pubkey = self.channel_manager.get_our_node_id();
 		let mut invoice = lightning_invoice::InvoiceBuilder::new(match self.network {
@@ -427,13 +432,13 @@ impl Node {
 			Network::Regtest => lightning_invoice::Currency::Regtest,
 			Network::Signet => lightning_invoice::Currency::Signet,
 		})
-			.payment_hash(payment_hash)
-			.payment_secret(payment_secret)
-			.description("lnrod invoice".to_string())
-			.amount_pico_btc(amt_msat * 10)
-			.current_timestamp()
-			.min_final_cltv_expiry(MIN_FINAL_CLTV_EXPIRY as u64)
-			.payee_pub_key(our_node_pubkey);
+		.payment_hash(payment_hash)
+		.payment_secret(payment_secret)
+		.description("lnrod invoice".to_string())
+		.amount_pico_btc(amt_msat * 10)
+		.current_timestamp()
+		.min_final_cltv_expiry(MIN_FINAL_CLTV_EXPIRY as u64)
+		.payee_pub_key(our_node_pubkey);
 
 		// Add route hints to the invoice.
 		let our_channels = self.channel_manager.list_usable_channels();
@@ -454,18 +459,24 @@ impl Node {
 				htlc_minimum_msat: None,
 				fees: RoutingFees {
 					base_msat: forwarding_info.fee_base_msat,
-					proportional_millionths: forwarding_info.fee_proportional_millionths
+					proportional_millionths: forwarding_info.fee_proportional_millionths,
 				},
-				htlc_maximum_msat: None
+				htlc_maximum_msat: None,
 			}]);
 		}
 
 		// Sign the invoice.
-		let invoice = invoice.build_signed(|msg_hash| {
-			secp_ctx.sign_recoverable(msg_hash, &self.keys_manager.get_node_secret())
-		}).map_err(|e| format!("{:?}", e))?;
+		let invoice = invoice
+			.build_signed(|msg_hash| {
+				secp_ctx.sign_recoverable(msg_hash, &self.keys_manager.get_node_secret())
+			})
+			.map_err(|e| format!("{:?}", e))?;
 
-		log_info!("generated invoice with hash {} secret {}", hex::encode(payment_hash), hex::encode(payment_secret.0));
+		log_info!(
+			"generated invoice with hash {} secret {}",
+			hex::encode(payment_hash),
+			hex::encode(payment_secret.0)
+		);
 		payments.insert(
 			PaymentHash(payment_hash.into_inner()),
 			(
@@ -498,10 +509,13 @@ impl Node {
 		};
 
 		let features = invoice.features().map(|f| f.clone());
-		log_debug!("Sending payment with secret {:?} value {} features {:?} to {}",
+		log_debug!(
+			"Sending payment with secret {:?} value {} features {:?} to {}",
 			payment_secret.map(|s| hex::encode(s.0)),
 			amt_msat,
-			features, payee_pubkey);
+			features,
+			payee_pubkey
+		);
 
 		self.do_send_payment(
 			payee_pubkey,

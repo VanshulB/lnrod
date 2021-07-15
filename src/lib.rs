@@ -14,10 +14,10 @@ use lightning::chain;
 use lightning::chain::chaininterface::{BroadcasterInterface, ConfirmationTarget, FeeEstimator};
 use lightning::chain::chainmonitor::ChainMonitor;
 use lightning::chain::transaction::OutPoint;
-use lightning::ln::{PaymentHash, PaymentPreimage};
 use lightning::chain::Filter;
 use lightning::ln::channelmanager::ChannelManager as RLChannelManager;
 use lightning::ln::peer_handler::PeerManager as RLPeerManager;
+use lightning::ln::{PaymentHash, PaymentPreimage};
 use lightning::routing::network_graph::NetGraphMsgHandler;
 use lightning::util::events::Event;
 use lightning::util::logger::Logger;
@@ -173,9 +173,7 @@ async fn handle_ldk_events(
 				Event::PaymentReceived { amt, payment_hash, payment_secret, .. } => {
 					let mut payments = payment_storage.lock().unwrap();
 					if let Some((Some(preimage), _, _, _)) = payments.get(&payment_hash) {
-						let success = loop_channel_manager.claim_funds(
-							preimage.clone(),
-						);
+						let success = loop_channel_manager.claim_funds(preimage.clone());
 
 						if success {
 							log_info!(

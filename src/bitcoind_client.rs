@@ -19,9 +19,9 @@ use tokio::sync::Mutex;
 
 use crate::convert::{BlockchainInfo, FundedTx, RawTx, SignedTx};
 use bitcoin::hashes::hex::ToHex;
+use jsonrpc_async::error as rpc_error;
 use jsonrpc_async::simple_http::SimpleHttpTransport;
 use jsonrpc_async::Client;
-use jsonrpc_async::error as rpc_error;
 
 #[derive(Clone)]
 pub struct BitcoindClient {
@@ -144,9 +144,7 @@ impl BitcoindClient {
 	}
 
 	async fn on_new_block(&self, info: &BlockchainInfo) {
-		let queue: Vec<Transaction> = {
-			self.queued_transactions.lock().await.drain(..).collect()
-		};
+		let queue: Vec<Transaction> = { self.queued_transactions.lock().await.drain(..).collect() };
 		log_info!("on_new_block height {} with {} queued txs", info.latest_height, queue.len());
 		for tx in queue.iter() {
 			self.broadcast_transaction(tx);

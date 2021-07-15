@@ -4,25 +4,25 @@ use std::io::Read;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use anyhow::{anyhow, bail, Result};
-use bitcoin::{Network, Script, SigHashType, Transaction, TxIn, TxOut};
 use bitcoin::blockdata::opcodes;
 use bitcoin::blockdata::script::Builder;
 use bitcoin::hash_types::WPubkeyHash;
-use bitcoin::hashes::{Hash, HashEngine};
 use bitcoin::hashes::sha256::Hash as Sha256;
 use bitcoin::hashes::sha256::HashEngine as Sha256State;
+use bitcoin::hashes::{Hash, HashEngine};
 use bitcoin::secp256k1;
-use bitcoin::secp256k1::{All, PublicKey, Secp256k1, SecretKey, Signature};
 use bitcoin::secp256k1::recovery::RecoverableSignature;
+use bitcoin::secp256k1::{All, PublicKey, Secp256k1, SecretKey, Signature};
 use bitcoin::util::bip143;
 use bitcoin::util::bip32::{ChildNumber, ExtendedPrivKey, ExtendedPubKey};
+use bitcoin::{Network, Script, SigHashType, Transaction, TxIn, TxOut};
 use lightning::chain::keysinterface::{
 	BaseSign, DelayedPaymentOutputDescriptor, InMemorySigner, KeysInterface, Sign,
 	SpendableOutputDescriptor, StaticPaymentOutputDescriptor,
 };
 use lightning::ln::chan_utils::{
-	ChannelPublicKeys, ChannelTransactionParameters, CommitmentTransaction, HolderCommitmentTransaction,
-	HTLCOutputInCommitment,
+	ChannelPublicKeys, ChannelTransactionParameters, CommitmentTransaction, HTLCOutputInCommitment,
+	HolderCommitmentTransaction,
 };
 use lightning::ln::msgs::{DecodeError, UnsignedChannelAnnouncement};
 use lightning::util::ser::{Readable, Writeable, Writer};
@@ -57,10 +57,7 @@ impl DynKeysInterface {
 	}
 
 	pub fn get_node_id(&self) -> PublicKey {
-		PublicKey::from_secret_key(
-			&Secp256k1::new(),
-			&self.get_node_secret(),
-		)
+		PublicKey::from_secret_key(&Secp256k1::new(), &self.get_node_secret())
 	}
 }
 
@@ -373,7 +370,8 @@ impl<F: SignerFactory> SpendableKeysInterface for KeysManager<F> {
 			witness_weight,
 			feerate_sat_per_1000_weight,
 			change_destination_script,
-		).map_err(|_| anyhow!("failed to add change output"))?;
+		)
+		.map_err(|_| anyhow!("failed to add change output"))?;
 
 		let mut keys_cache: Option<(DynSigner, [u8; 32])> = None;
 		let mut input_idx = 0;
@@ -553,16 +551,37 @@ impl BaseSign for DynSigner {
 		self.inner.sign_holder_commitment_and_htlcs(commitment_tx, secp_ctx)
 	}
 
-	fn unsafe_sign_holder_commitment_and_htlcs(&self, commitment_tx: &HolderCommitmentTransaction, secp_ctx: &Secp256k1<All>) -> Result<(Signature, Vec<Signature>), ()> {
+	fn unsafe_sign_holder_commitment_and_htlcs(
+		&self, commitment_tx: &HolderCommitmentTransaction, secp_ctx: &Secp256k1<All>,
+	) -> Result<(Signature, Vec<Signature>), ()> {
 		self.inner.unsafe_sign_holder_commitment_and_htlcs(commitment_tx, secp_ctx)
 	}
 
-	fn sign_justice_revoked_output(&self, justice_tx: &Transaction, input: usize, amount: u64, per_commitment_key: &SecretKey, secp_ctx: &Secp256k1<All>) -> Result<Signature, ()> {
-		self.inner.sign_justice_revoked_output(justice_tx, input, amount, per_commitment_key, secp_ctx)
+	fn sign_justice_revoked_output(
+		&self, justice_tx: &Transaction, input: usize, amount: u64, per_commitment_key: &SecretKey,
+		secp_ctx: &Secp256k1<All>,
+	) -> Result<Signature, ()> {
+		self.inner.sign_justice_revoked_output(
+			justice_tx,
+			input,
+			amount,
+			per_commitment_key,
+			secp_ctx,
+		)
 	}
 
-	fn sign_justice_revoked_htlc(&self, justice_tx: &Transaction, input: usize, amount: u64, per_commitment_key: &SecretKey, htlc: &HTLCOutputInCommitment, secp_ctx: &Secp256k1<All>) -> Result<Signature, ()> {
-		self.inner.sign_justice_revoked_htlc(justice_tx, input, amount, per_commitment_key, htlc, secp_ctx)
+	fn sign_justice_revoked_htlc(
+		&self, justice_tx: &Transaction, input: usize, amount: u64, per_commitment_key: &SecretKey,
+		htlc: &HTLCOutputInCommitment, secp_ctx: &Secp256k1<All>,
+	) -> Result<Signature, ()> {
+		self.inner.sign_justice_revoked_htlc(
+			justice_tx,
+			input,
+			amount,
+			per_commitment_key,
+			htlc,
+			secp_ctx,
+		)
 	}
 
 	fn sign_counterparty_htlc_transaction(
@@ -625,6 +644,6 @@ mod tests {
 		let mut buf = Vec::new();
 		signer.write(&mut buf).unwrap();
 		let signer_deser = keys_manager.read_chan_signer(&mut buf).unwrap();
-		assert_eq!(signer.pubkeys().funding_pubkey,  signer_deser.pubkeys().funding_pubkey);
+		assert_eq!(signer.pubkeys().funding_pubkey, signer_deser.pubkeys().funding_pubkey);
 	}
 }

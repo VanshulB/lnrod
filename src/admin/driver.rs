@@ -58,13 +58,14 @@ impl Admin for AdminHandler {
 		);
 		let shutdown_pubkey = self.node.keys_manager.get_shutdown_pubkey();
 		let bitcoin_pubkey = BitcoinPublicKey { compressed: true, key: shutdown_pubkey };
-		let shutdown_address = Address::p2wpkh(&bitcoin_pubkey, self.node.network).unwrap().to_string();
+		let shutdown_address =
+			Address::p2wpkh(&bitcoin_pubkey, self.node.network).unwrap().to_string();
 		let chain_info = self.node.blockchain_info().await;
 		let reply = NodeInfoReply {
 			node_id: node_pubkey.serialize().to_vec(),
 			shutdown_address,
 			best_block_hash: chain_info.latest_blockhash.to_vec(),
-			num_blocks: chain_info.latest_height as u32
+			num_blocks: chain_info.latest_height as u32,
 		};
 		log_debug!("{}", type_and_value!(&reply));
 		log_info!("REPLY node_info");
