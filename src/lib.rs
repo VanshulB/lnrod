@@ -4,6 +4,8 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use std::{fmt, io};
 
+use log::{debug, error, info};
+
 use bitcoin::consensus::encode;
 use bitcoin::hashes::sha256::Hash as Sha256;
 use bitcoin::hashes::Hash;
@@ -20,18 +22,14 @@ use lightning::ln::peer_handler::PeerManager as RLPeerManager;
 use lightning::ln::{PaymentHash, PaymentPreimage};
 use lightning::routing::network_graph::NetGraphMsgHandler;
 use lightning::util::events::Event;
-use lightning::util::logger::Logger;
 use lightning_persister::FilesystemPersister;
 use rand::{thread_rng, Rng};
 
 use signer::keys::{DynKeysInterface, DynSigner, SpendableKeysInterface};
 
 use crate::bitcoind_client::BitcoindClient;
-use crate::logger::AbstractLogger;
+use crate::logadapter::LoggerAdapter;
 use crate::net::SocketDescriptor;
-
-#[macro_use]
-pub mod macro_utils;
 
 #[macro_use]
 #[allow(unused_macros)]
@@ -44,8 +42,10 @@ mod byte_utils;
 pub mod config;
 mod convert;
 mod disk;
+mod fslogger;
 mod hex_utils;
-pub mod logger;
+pub mod log_utils;
+mod logadapter;
 pub mod net;
 pub mod node;
 pub mod signer;
@@ -92,12 +92,11 @@ type ArcChainMonitor = ChainMonitor<
 	Arc<dyn SyncFilter>,
 	Arc<BitcoindClient>,
 	Arc<BitcoindClient>,
-	Arc<AbstractLogger>,
+	Arc<LoggerAdapter>,
 	Arc<FilesystemPersister>,
 >;
 
-pub(crate) type PeerManager =
-	SimpleArcPeerManager<SocketDescriptor, dyn SyncAccess, AbstractLogger>;
+pub(crate) type PeerManager = SimpleArcPeerManager<SocketDescriptor, dyn SyncAccess, LoggerAdapter>;
 
 pub(crate) type SimpleArcPeerManager<SD, C, L> =
 	RLPeerManager<SD, Arc<ChannelManager>, Arc<NetGraphMsgHandler<Arc<C>, Arc<L>>>, Arc<L>>;
@@ -108,7 +107,7 @@ pub(crate) type ChannelManager = RLChannelManager<
 	Arc<BitcoindClient>,
 	Arc<DynKeysInterface>,
 	Arc<BitcoindClient>,
-	Arc<AbstractLogger>,
+	Arc<LoggerAdapter>,
 >;
 
 async fn handle_ldk_events(
@@ -129,7 +128,7 @@ async fn handle_ldk_events(
 					output_script,
 					..
 				} => {
-					log_info!("EVENT: funding generation ready");
+					info!("EVENT: funding generation ready");
 					// Construct the raw transaction with one output, that is paid the amount of the
 					// channel.
 					let addr = WitnessProgram::from_scriptpubkey(
@@ -145,7 +144,7 @@ async fn handle_ldk_events(
 					.to_address();
 					let mut outputs = HashMap::with_capacity(1);
 					outputs.insert(addr, channel_value_satoshis);
-					log_debug!("create_raw_transaction {:?}", outputs);
+					debug!("create_raw_transaction {:?}", outputs);
 					let raw_tx = bitcoind_client.create_raw_transaction(outputs).await;
 
 					// Have your wallet put the inputs into the transaction such that the output is
@@ -176,7 +175,7 @@ async fn handle_ldk_events(
 						let success = loop_channel_manager.claim_funds(preimage.clone());
 
 						if success {
-							log_info!(
+							info!(
 								"EVENT: received payment from payment_hash {} of {} satoshis",
 								hex_utils::hex_str(&payment_hash.0),
 								amt / 1000
@@ -186,7 +185,7 @@ async fn handle_ldk_events(
 								payments.get_mut(&payment_hash).unwrap();
 							*status = HTLCStatus::Succeeded;
 						} else {
-							log_error!(
+							error!(
 								"EVENT: failed to claim payment with {} msat, preimage {}",
 								amt,
 								hex::encode(preimage.0)
@@ -194,7 +193,7 @@ async fn handle_ldk_events(
 							hex::encode(payment_secret.0);
 						}
 					} else {
-						log_error!("ERROR: we received a payment but didn't know the preimage");
+						error!("ERROR: we received a payment but didn't know the preimage");
 						io::stdout().flush().unwrap();
 						loop_channel_manager.fail_htlc_backwards(&payment_hash);
 						payments.insert(
@@ -216,7 +215,7 @@ async fn handle_ldk_events(
 						if *payment_hash == hashed {
 							*preimage_option = Some(payment_preimage);
 							*status = HTLCStatus::Succeeded;
-							log_info!(
+							info!(
 								"EVENT: successfully sent payment of {} satoshis from \
                                          payment hash {:?} with preimage {:?}",
 								amt_sat,
@@ -228,14 +227,14 @@ async fn handle_ldk_events(
 					}
 				}
 				Event::PaymentFailed { payment_hash, rejected_by_dest } => {
-					log_error!(
+					error!(
 						"EVENT: Failed to send payment to payment hash {:?}: ",
 						hex_utils::hex_str(&payment_hash.0)
 					);
 					if rejected_by_dest {
-						log_error!("rejected by destination node");
+						error!("rejected by destination node");
 					} else {
-						log_error!("route failed");
+						error!("route failed");
 					}
 					io::stdout().flush().unwrap();
 
@@ -246,7 +245,7 @@ async fn handle_ldk_events(
 					}
 				}
 				Event::PendingHTLCsForwardable { time_forwardable } => {
-					log_info!("EVENT: HTLCs available for forwarding");
+					info!("EVENT: HTLCs available for forwarding");
 					let forwarding_channel_manager = loop_channel_manager.clone();
 					tokio::spawn(async move {
 						let min = time_forwardable.as_millis() as u64;
@@ -258,7 +257,7 @@ async fn handle_ldk_events(
 					});
 				}
 				Event::SpendableOutputs { outputs } => {
-					log_info!("EVENT: got spendable outputs {:?}", outputs);
+					info!("EVENT: got spendable outputs {:?}", outputs);
 					let label = format!("sweep-{}", keys_manager.get_node_id().to_string());
 					let destination_address = bitcoind_client.get_new_address(label).await;
 					let output_descriptors = &outputs.iter().map(|a| a).collect::<Vec<_>>();

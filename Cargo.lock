@@ -857,6 +857,7 @@ dependencies = [
  "lightning-persister",
  "lightning-signer-core",
  "lightning-signer-server",
+ "log",
  "once_cell",
  "prost",
  "rand 0.4.6",

@@ -5,13 +5,14 @@ use std::str::FromStr;
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Arc;
 
+use log::{error, info, warn};
+
 use anyhow::{anyhow, Result};
 use bitcoin::blockdata::transaction::Transaction;
 use bitcoin::util::address::Address;
 use bitcoin::util::psbt::serialize::Serialize;
 use bitcoin::{Amount, Block, BlockHash};
 use lightning::chain::chaininterface::{BroadcasterInterface, ConfirmationTarget, FeeEstimator};
-use lightning::util::logger::Logger;
 use lightning_block_sync::http::JsonResponse;
 use lightning_block_sync::{AsyncBlockSourceResult, BlockHeaderData, BlockSource};
 use serde_json::{json, Value};
@@ -145,7 +146,7 @@ impl BitcoindClient {
 
 	async fn on_new_block(&self, info: &BlockchainInfo) {
 		let queue: Vec<Transaction> = { self.queued_transactions.lock().await.drain(..).collect() };
-		log_info!("on_new_block height {} with {} queued txs", info.latest_height, queue.len());
+		info!("on_new_block height {} with {} queued txs", info.latest_height, queue.len());
 		for tx in queue.iter() {
 			self.broadcast_transaction(tx);
 		}
@@ -171,7 +172,7 @@ impl FeeEstimator for BitcoindClient {
 impl BroadcasterInterface for BitcoindClient {
 	fn broadcast_transaction(&self, tx_ref: &Transaction) {
 		let tx = tx_ref.clone();
-		log_info!("before broadcast {}", tx.txid());
+		info!("before broadcast {}", tx.txid());
 		let rpc = Arc::clone(&self.rpc);
 		let queue = Arc::clone(&self.queued_transactions);
 		let ser = hex::encode(tx.serialize());
@@ -185,18 +186,18 @@ impl BroadcasterInterface for BitcoindClient {
 
 			match result {
 				Ok(txid) => {
-					log_info!("broadcast {}", txid);
+					info!("broadcast {}", txid);
 				}
 				Err(rpc_error::Error::Rpc(e)) => {
 					if e.code == -26 {
-						log_warn!("non-final, will retry, for {}", ser);
+						warn!("non-final, will retry, for {}", ser);
 						queue.lock().await.push(tx.clone());
 					} else {
-						log_error!("RPC error on broadcast: {:?} for {}", e, ser)
+						error!("RPC error on broadcast: {:?} for {}", e, ser)
 					}
 				}
 				Err(e) => {
-					log_error!("could not broadcast: {} for {}", e, ser)
+					error!("could not broadcast: {} for {}", e, ser)
 				}
 			}
 		});

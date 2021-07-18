@@ -1,5 +1,6 @@
 use std::fs::read_to_string;
 use std::path::Path;
+use std::str::FromStr;
 
 use anyhow::Result;
 use bitcoin::Network;
@@ -8,10 +9,9 @@ use url::Url;
 
 use lnrod::admin;
 use lnrod::config::Config;
-use lnrod::logger::{parse_log_level, LOG_LEVEL_NAMES};
+use lnrod::log_utils::{parse_log_level_filter, LOG_LEVEL_FILTER_NAMES};
 use lnrod::node::NodeBuildArgs;
 use lnrod::signer::SIGNER_NAMES;
-use std::str::FromStr;
 
 fn main() -> Result<()> {
 	let app = App::new("lnrod")
@@ -64,7 +64,7 @@ fn main() -> Result<()> {
 				.about("logging level to disk")
 				.short('v')
 				.long("log-level-disk")
-				.possible_values(&LOG_LEVEL_NAMES)
+				.possible_values(&LOG_LEVEL_FILTER_NAMES)
 				.default_value("TRACE")
 				.takes_value(true),
 		)
@@ -73,7 +73,7 @@ fn main() -> Result<()> {
 				.about("logging level to console")
 				.short('V')
 				.long("log-level-console")
-				.possible_values(&LOG_LEVEL_NAMES)
+				.possible_values(&LOG_LEVEL_FILTER_NAMES)
 				.default_value("INFO")
 				.takes_value(true),
 		)
@@ -113,15 +113,18 @@ fn main() -> Result<()> {
 		Network::Testnet
 	};
 
-	let console_log_level = parse_log_level(arg_value_or_config(
+	let console_log_level = parse_log_level_filter(arg_value_or_config(
 		"loglevelconsole",
 		&matches,
 		&config.log_level_console,
 	))
 	.expect("log-level-console");
-	let disk_log_level =
-		parse_log_level(arg_value_or_config("logleveldisk", &matches, &config.log_level_disk))
-			.expect("log-level-disk");
+	let disk_log_level = parse_log_level_filter(arg_value_or_config(
+		"logleveldisk",
+		&matches,
+		&config.log_level_disk,
+	))
+	.expect("log-level-disk");
 
 	let peer_listening_port = arg_value_or_config("lnport", &matches, &config.ln_port);
 	let rpc_port = arg_value_or_config("rpcport", &matches, &config.rpc_port);

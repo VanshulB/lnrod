@@ -5,6 +5,8 @@
 #![deny(missing_docs)]
 #![deny(unsafe_code)]
 
+use log::trace;
+
 use anyhow::Result;
 use lightning::chain;
 use lightning::chain::chaininterface::{BroadcasterInterface, FeeEstimator};
@@ -64,21 +66,32 @@ impl BackgroundProcessor {
 	/// [`ChannelManager`]: lightning::ln::channelmanager::ChannelManager
 	/// [`ChannelManager::write`]: lightning::ln::channelmanager::ChannelManager#impl-Writeable
 	/// [`FilesystemPersister::persist_manager`]: lightning_persister::FilesystemPersister::persist_manager
-	pub async fn start<PM, Signer, M, T, K, F, L, Descriptor: 'static + SocketDescriptor + Send, CM, RM>(
+	pub async fn start<
+		PM,
+		Signer,
+		M,
+		T,
+		K,
+		F,
+		L,
+		Descriptor: 'static + SocketDescriptor + Send,
+		CM,
+		RM,
+	>(
 		persist_channel_manager: PM,
 		channel_manager: Arc<ChannelManager<Signer, Arc<M>, Arc<T>, Arc<K>, Arc<F>, Arc<L>>>,
 		peer_manager: Arc<PeerManager<Descriptor, Arc<CM>, Arc<RM>, Arc<L>>>,
 	) -> Self
-		where
-			Signer: 'static + Sign + Send + Sync,
-			M: 'static + chain::Watch<Signer> + Send + Sync,
-			T: 'static + BroadcasterInterface + Send + Sync,
-			K: 'static + KeysInterface<Signer = Signer> + Send + Sync,
-			F: 'static + FeeEstimator + Send + Sync,
-			L: 'static + Logger + Send + Sync,
-			CM: 'static + ChannelMessageHandler + Send + Sync,
-			RM: 'static + RoutingMessageHandler + Send + Sync,
-			PM: 'static
+	where
+		Signer: 'static + Sign + Send + Sync,
+		M: 'static + chain::Watch<Signer> + Send + Sync,
+		T: 'static + BroadcasterInterface + Send + Sync,
+		K: 'static + KeysInterface<Signer = Signer> + Send + Sync,
+		F: 'static + FeeEstimator + Send + Sync,
+		L: 'static + Logger + Send + Sync,
+		CM: 'static + ChannelMessageHandler + Send + Sync,
+		RM: 'static + RoutingMessageHandler + Send + Sync,
+		PM: 'static
 			+ Send
 			+ Fn(
 				&ChannelManager<Signer, Arc<M>, Arc<T>, Arc<K>, Arc<F>, Arc<L>>,
@@ -102,11 +115,11 @@ impl BackgroundProcessor {
 				}
 				// Exit the loop if the background processor was requested to stop.
 				if stop_thread.load(Ordering::Acquire) == true {
-					log_trace!("Terminating background processor.");
+					trace!("Terminating background processor.");
 					return Ok(());
 				}
 				if current_time.elapsed().as_secs() > FRESHNESS_TIMER {
-					log_trace!("Calling ChannelManager's and PeerManager's timer_tick_occurred");
+					trace!("Calling ChannelManager's and PeerManager's timer_tick_occurred");
 					channel_manager.timer_tick_occurred();
 					peer_manager.timer_tick_occurred();
 					current_time = Instant::now();
