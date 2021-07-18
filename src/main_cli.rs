@@ -2,6 +2,7 @@ use anyhow::Result;
 use clap::{App, Arg, ArgMatches};
 
 use lnrod::admin::cli::CLI;
+use lnrod::log_utils::{parse_log_level_filter, ConsoleLogger, LOG_LEVEL_FILTER_NAMES};
 
 fn make_node_subapp() -> App<'static> {
 	App::new("node")
@@ -172,6 +173,8 @@ fn payment_subcommand(cli: &CLI, matches: &ArgMatches) -> Result<(), Box<dyn std
 	Ok(())
 }
 
+static CONSOLE_LOGGER: ConsoleLogger = ConsoleLogger;
+
 fn main() -> Result<(), Box<dyn std::error::Error>> {
 	let mut app = App::new("client")
 		.about("a CLI utility which communicates with a running Lightning Signer server via gRPC")
@@ -183,6 +186,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 				.about("Connect to an RPC address")
 				.takes_value(true),
 		)
+		.arg(
+			Arg::new("loglevelconsole")
+				.about("logging level to console")
+				.short('V')
+				.long("log-level-console")
+				.possible_values(&LOG_LEVEL_FILTER_NAMES)
+				.default_value("OFF")
+				.takes_value(true),
+		)
 		.subcommand(App::new("ping"))
 		.subcommand(make_node_subapp())
 		.subcommand(make_channel_subapp())
@@ -190,6 +202,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 		.subcommand(make_invoice_subapp())
 		.subcommand(make_payment_subapp());
 	let matches = app.clone().get_matches();
+	log::set_logger(&CONSOLE_LOGGER)
+		.map(|()| {
+			log::set_max_level(
+				parse_log_level_filter(matches.value_of_t("loglevelconsole").unwrap())
+					.expect("loglevel"),
+			);
+		})
+		.expect("set_logger");
 	let cli = CLI::new(matches.value_of("rpc").unwrap().to_string());
 	match matches.subcommand() {
 		None => app.print_help()?,

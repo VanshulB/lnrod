@@ -25,6 +25,8 @@
 
 #![deny(missing_docs)]
 
+use log::{error, info};
+
 use anyhow::Result;
 
 use bitcoin::secp256k1::key::PublicKey;
@@ -122,7 +124,7 @@ impl Connection {
 		let disconnect_type = loop {
 			macro_rules! shutdown_socket {
 				($err: expr, $need_disconnect: expr) => {{
-					log_info!("Disconnecting peer due to {}!", $err);
+					info!("Disconnecting peer due to {}!", $err);
 					break $need_disconnect;
 				}};
 			}
@@ -263,7 +265,7 @@ where
 		});
 		return Ok(handle);
 	} else {
-		log_info!("ERROR: peer_manager rejected connection");
+		info!("ERROR: peer_manager rejected connection");
 		return Err(());
 	}
 }
@@ -310,7 +312,7 @@ where
 							// schedule_read prior to any relevant calls into RL.
 						}
 						_ => {
-							log_error!("Failed to write first full message to socket!");
+							error!("Failed to write first full message to socket!");
 							peer_manager
 								.socket_disconnected(&SocketDescriptor::new(Arc::clone(&us)));
 							break Err(());
@@ -532,25 +534,10 @@ mod tests {
 	use std::sync::{Arc, Mutex};
 	use std::time::Duration;
 
-	use crate::logger::{self, AbstractLogger};
-	use lightning_signer::signer::multi_signer::SyncLogger;
-	use lightning_signer::SendSync;
+	use crate::log_utils::ConsoleLogger;
+	use crate::logadapter::LoggerAdapter;
 
-	pub struct TestLogger();
-	impl lightning::util::logger::Logger for TestLogger {
-		fn log(&self, record: &lightning::util::logger::Record) {
-			println!(
-				"{:<5} [{} : {}, {}] {}",
-				record.level.to_string(),
-				record.module_path,
-				record.file,
-				record.line,
-				record.args
-			);
-		}
-	}
-	impl SendSync for TestLogger {}
-	impl SyncLogger for TestLogger {}
+	static TEST_LOGGER: ConsoleLogger = ConsoleLogger;
 
 	struct MsgHandler {
 		expected_pubkey: PublicKey,
@@ -687,7 +674,7 @@ mod tests {
 			},
 			a_key.clone(),
 			&[1; 32],
-			logger::get(),
+			Arc::new(LoggerAdapter::new()),
 		));
 
 		let (b_connected_sender, mut b_connected) = mpsc::channel(1);
@@ -706,7 +693,7 @@ mod tests {
 			},
 			b_key.clone(),
 			&[2; 32],
-			logger::get(),
+			Arc::new(LoggerAdapter::new()),
 		));
 
 		// We bind on localhost, hoping the environment is properly configured with a local
@@ -759,7 +746,8 @@ mod tests {
 
 	#[tokio::test(flavor = "multi_thread")]
 	async fn basic_threaded_connection_test() {
-		logger::set(Arc::new(AbstractLogger::new(Box::new(TestLogger()))));
+		log::set_logger(&TEST_LOGGER).unwrap();
+		log::set_max_level(log::LevelFilter::Trace);
 		do_basic_connection_test().await;
 	}
 	#[tokio::test]
