@@ -9,9 +9,9 @@ use serde_json::json;
 use tonic::{transport::Server, Request, Response, Status};
 
 use bitcoin::secp256k1::{PublicKey, Secp256k1};
-use bitcoin::PublicKey as BitcoinPublicKey;
 use lightning::chain::keysinterface::KeysInterface;
 use lightning::util::config::UserConfig;
+use lightning_signer::lightning;
 use lightning_invoice::Invoice;
 
 use crate::admin::admin_api::{
@@ -57,10 +57,9 @@ impl Admin for AdminHandler {
 			&Secp256k1::new(),
 			&self.node.keys_manager.get_node_secret(),
 		);
-		let shutdown_pubkey = self.node.keys_manager.get_shutdown_pubkey();
-		let bitcoin_pubkey = BitcoinPublicKey { compressed: true, key: shutdown_pubkey };
+		let shutdown_scriptpubkey = self.node.keys_manager.get_shutdown_scriptpubkey();
 		let shutdown_address =
-			Address::p2wpkh(&bitcoin_pubkey, self.node.network).unwrap().to_string();
+			Address::from_script(&shutdown_scriptpubkey.into(), self.node.network).unwrap().to_string();
 		let chain_info = self.node.blockchain_info().await;
 		let reply = NodeInfoReply {
 			node_id: node_pubkey.serialize().to_vec(),
@@ -80,7 +79,7 @@ impl Admin for AdminHandler {
 		let mut channels = Vec::new();
 		for details in self.node.channel_manager.list_channels() {
 			let channel = Channel {
-				peer_node_id: details.remote_network_id.serialize().to_vec(),
+				peer_node_id: details.counterparty.node_id.serialize().to_vec(),
 				channel_id: details.channel_id.to_vec(),
 				is_pending: details.short_channel_id.is_none(),
 				value_sat: details.channel_value_satoshis,
@@ -139,7 +138,6 @@ impl Admin for AdminHandler {
 			node_id,
 			peer_addr,
 			self.node.peer_manager.clone(),
-			self.node.event_ntfn_sender.clone(),
 		)
 		.await
 		.map_err(|_| Status::aborted("could not connect to peer"))?;

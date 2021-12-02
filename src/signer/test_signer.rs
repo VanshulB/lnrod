@@ -5,10 +5,11 @@ use bitcoin::hashes::sha256::Hash as Sha256;
 use bitcoin::hashes::{Hash, HashEngine};
 use bitcoin::secp256k1::{All, Secp256k1, SecretKey};
 use bitcoin::util::bip32::{ChildNumber, ExtendedPrivKey};
-use bitcoin::Transaction;
+use bitcoin::{Network, Transaction};
 use lightning::chain::keysinterface::{
 	DelayedPaymentOutputDescriptor, InMemorySigner, StaticPaymentOutputDescriptor,
 };
+use lightning_signer::lightning;
 
 use crate::byte_utils;
 use crate::signer::keys::{
@@ -121,6 +122,7 @@ impl SignerFactory for InMemorySignerFactory {
 
 pub(crate) fn make_signer(
 	seed: &[u8; 32], cur: Duration,
+	_network: Network,
 ) -> Box<dyn SpendableKeysInterface<Signer = DynSigner>> {
 	let manager = KeysManager::new(
 		&seed,

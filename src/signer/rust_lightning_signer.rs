@@ -1,19 +1,23 @@
 use crate::signer::keys::{DynSigner, InnerSign, PaymentSign, SpendableKeysInterface};
 use anyhow::Result;
 use bitcoin::secp256k1::recovery::RecoverableSignature;
-use bitcoin::secp256k1::{All, PublicKey, Secp256k1, SecretKey};
-use bitcoin::{Script, Transaction, TxOut};
+use bitcoin::secp256k1::{All, Secp256k1, SecretKey};
+use bitcoin::{Address, Network, Script, Transaction, TxOut};
 use lightning::chain::keysinterface::{
 	DelayedPaymentOutputDescriptor, KeysInterface, SpendableOutputDescriptor,
 	StaticPaymentOutputDescriptor,
 };
 use lightning::ln::msgs::DecodeError;
+use lightning_signer::lightning;
 use lightning_signer::node::NodeConfig;
 use lightning_signer::signer::multi_signer::MultiSigner;
 use lightning_signer::signer::my_keys_manager::KeyDerivationStyle;
 use lightning_signer::util::loopback::{LoopbackChannelSigner, LoopbackSignerKeysInterface};
 use std::any::Any;
 use std::sync::Arc;
+use log::info;
+use crate::hex_utils;
+use crate::lightning::ln::script::ShutdownScript;
 
 struct Adapter {
 	inner: LoopbackSignerKeysInterface,
@@ -64,8 +68,8 @@ impl KeysInterface for Adapter {
 		self.inner.get_destination_script()
 	}
 
-	fn get_shutdown_pubkey(&self) -> PublicKey {
-		self.inner.get_shutdown_pubkey()
+	fn get_shutdown_scriptpubkey(&self) -> ShutdownScript {
+		self.inner.get_shutdown_scriptpubkey()
 	}
 
 	fn get_channel_signer(&self, inbound: bool, channel_value_satoshis: u64) -> Self::Signer {
@@ -115,12 +119,21 @@ impl SpendableKeysInterface for Adapter {
 	}
 }
 
-pub(crate) fn make_signer() -> Box<dyn SpendableKeysInterface<Signer = DynSigner>> {
+pub(crate) fn make_signer(network: Network) -> Box<dyn SpendableKeysInterface<Signer = DynSigner>> {
 	// FIXME used Node directly
 	let signer = MultiSigner::new();
-	let node_config = NodeConfig { key_derivation_style: KeyDerivationStyle::Native };
+	let node_config = NodeConfig {
+		network,
+		key_derivation_style: KeyDerivationStyle::Native
+	};
 	let node_id = signer.new_node(node_config);
 
+	let node = signer.get_node(&node_id).unwrap();
 	let manager = LoopbackSignerKeysInterface { node_id, signer: Arc::new(signer) };
+	let shutdown_scriptpubkey = manager.get_shutdown_scriptpubkey().into();
+	let shutdown_address = Address::from_script(&shutdown_scriptpubkey, network)
+		.expect("shutdown script must be convertible to address");
+	info!("adding shutdown address {} to allowlist for {}", shutdown_address, hex_utils::hex_str(&node_id.serialize()));
+	node.add_allowlist(&vec![shutdown_address.to_string()]).expect("add to allowlist");
 	Box::new(Adapter { inner: manager })
 }

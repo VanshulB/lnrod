@@ -1,6 +1,7 @@
 use lightning::util::config::{
 	ChannelConfig, ChannelHandshakeConfig, ChannelHandshakeLimits, UserConfig,
 };
+use lightning_signer::lightning;
 use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize, Debug, Default, Clone)]
@@ -42,6 +43,8 @@ impl Into<UserConfig> for ConfigCoinChannel {
 			own_channel_config: self.propose.unwrap_or(Default::default()).into(),
 			peer_channel_config_limits: self.limit.unwrap_or(Default::default()).into(),
 			channel_options: self.default.unwrap_or(Default::default()).into(),
+			accept_forwards_to_priv_channels: true,
+			accept_inbound_channels: true,
 		}
 	}
 }
@@ -105,10 +108,13 @@ pub struct DefaultCoinChannelConfig {
 impl Into<ChannelConfig> for DefaultCoinChannelConfig {
 	fn into(self) -> ChannelConfig {
 		ChannelConfig {
-			fee_proportional_millionths: self.fee_proportional_millionths.unwrap_or(0),
+			forwarding_fee_proportional_millionths: self.fee_proportional_millionths.unwrap_or(0),
+			forwarding_fee_base_msat: 0,
 			cltv_expiry_delta: self.cltv_expiry_delta.unwrap_or(10),
 			announced_channel: self.announced_channel.unwrap_or(false),
 			commit_upfront_shutdown_pubkey: self.commit_upfront_shutdown_pubkey.unwrap_or(true),
+			max_dust_htlc_exposure_msat: 1000000, // FIXME
+			force_close_avoidance_max_fee_satoshis: 1000000 // FIXME
 		}
 	}
 }

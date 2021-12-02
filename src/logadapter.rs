@@ -1,19 +1,19 @@
 use log;
 
 use lightning::util::logger;
+use lightning_signer::{lightning, SendSync};
 
-use lightning_signer::signer::multi_signer::SyncLogger;
-use lightning_signer::SendSync;
+use lightning_signer::node::SyncLogger;
 
 // Convert an LDK log level to log::Level.
 pub fn convert_to_log_level(lvl: logger::Level) -> log::Level {
 	match lvl {
-		logger::Level::Off => log::Level::Error, // no log::Level::Off, shouldn't occur
 		logger::Level::Error => log::Level::Error,
 		logger::Level::Warn => log::Level::Warn,
 		logger::Level::Info => log::Level::Info,
 		logger::Level::Debug => log::Level::Debug,
 		logger::Level::Trace => log::Level::Trace,
+		logger::Level::Gossip => log::Level::Trace,
 	}
 }
 

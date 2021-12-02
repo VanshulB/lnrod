@@ -26,10 +26,13 @@ use lightning::ln::chan_utils::{
 };
 use lightning::ln::msgs::{DecodeError, UnsignedChannelAnnouncement};
 use lightning::util::ser::{Readable, Writeable, Writer};
+use lightning_signer::lightning;
+use lightning_signer::lightning::ln::script::ShutdownScript;
 use lightning_signer::util::transaction_utils;
 use lightning_signer::util::transaction_utils::MAX_VALUE_MSAT;
 
 use crate::byte_utils;
+use crate::lightning::ln::chan_utils::ClosingTransaction;
 
 /// Decouple creation of DynSigner from KeysManager
 pub trait SignerFactory: Sync + Send {
@@ -72,8 +75,8 @@ impl KeysInterface for DynKeysInterface {
 		self.inner.get_destination_script()
 	}
 
-	fn get_shutdown_pubkey(&self) -> PublicKey {
-		self.inner.get_shutdown_pubkey()
+	fn get_shutdown_scriptpubkey(&self) -> ShutdownScript {
+		self.inner.get_shutdown_scriptpubkey()
 	}
 
 	fn get_channel_signer(&self, inbound: bool, channel_value_satoshis: u64) -> Self::Signer {
@@ -251,8 +254,8 @@ impl<F: SignerFactory> KeysInterface for KeysManager<F> {
 		self.destination_script.clone()
 	}
 
-	fn get_shutdown_pubkey(&self) -> PublicKey {
-		self.shutdown_pubkey.clone()
+	fn get_shutdown_scriptpubkey(&self) -> ShutdownScript {
+		ShutdownScript::new_p2wpkh(&WPubkeyHash::hash(&self.shutdown_pubkey.serialize()))
 	}
 
 	fn get_channel_signer(&self, _inbound: bool, channel_value_satoshis: u64) -> Self::Signer {
@@ -531,6 +534,10 @@ impl BaseSign for DynSigner {
 		self.inner.release_commitment_secret(idx)
 	}
 
+	fn validate_holder_commitment(&self, holder_tx: &HolderCommitmentTransaction) -> Result<(), ()> {
+		self.inner.validate_holder_commitment(holder_tx)
+	}
+
 	fn pubkeys(&self) -> &ChannelPublicKeys {
 		self.inner.pubkeys()
 	}
@@ -543,6 +550,10 @@ impl BaseSign for DynSigner {
 		&self, commitment_tx: &CommitmentTransaction, secp_ctx: &Secp256k1<secp256k1::All>,
 	) -> Result<(Signature, Vec<Signature>), ()> {
 		self.inner.sign_counterparty_commitment(commitment_tx, secp_ctx)
+	}
+
+	fn validate_counterparty_revocation(&self, idx: u64, secret: &SecretKey) -> Result<(), ()> {
+		self.inner.validate_counterparty_revocation(idx, secret)
 	}
 
 	fn sign_holder_commitment_and_htlcs(
@@ -599,7 +610,7 @@ impl BaseSign for DynSigner {
 	}
 
 	fn sign_closing_transaction(
-		&self, closing_tx: &Transaction, secp_ctx: &Secp256k1<secp256k1::All>,
+		&self, closing_tx: &ClosingTransaction, secp_ctx: &Secp256k1<secp256k1::All>,
 	) -> Result<Signature, ()> {
 		self.inner.sign_closing_transaction(closing_tx, secp_ctx)
 	}
@@ -627,9 +638,11 @@ impl Writeable for DynSigner {
 #[cfg(test)]
 mod tests {
 	use std::time::Duration;
+	use bitcoin::Network;
 
 	use lightning::chain::keysinterface::{BaseSign, KeysInterface};
 	use lightning::util::ser::Writeable;
+	use lightning_signer::lightning;
 
 	use crate::signer::keys::{DynKeysInterface, DynSigner};
 	use crate::signer::test_signer;
@@ -638,7 +651,7 @@ mod tests {
 	fn ser_deser_dyn_signer() {
 		let seed = [0x33_u8; 32];
 		let cur = Duration::new(0, 0);
-		let manager = test_signer::make_signer(&seed, cur);
+		let manager = test_signer::make_signer(&seed, cur, Network::Testnet);
 		let keys_manager = DynKeysInterface::new(manager);
 		let signer: DynSigner = keys_manager.get_channel_signer(false, 1234);
 		let mut buf = Vec::new();
