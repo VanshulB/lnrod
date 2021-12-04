@@ -5,7 +5,7 @@ use std::str::FromStr;
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Arc;
 
-use log::{error, info, warn};
+use log::{error, info, warn, debug};
 
 use anyhow::{anyhow, Result};
 use bitcoin::blockdata::transaction::Transaction;
@@ -13,6 +13,7 @@ use bitcoin::util::address::Address;
 use bitcoin::util::psbt::serialize::Serialize;
 use bitcoin::{Amount, Block, BlockHash};
 use lightning::chain::chaininterface::{BroadcasterInterface, ConfirmationTarget, FeeEstimator};
+use lightning_signer::lightning;
 use lightning_block_sync::http::JsonResponse;
 use lightning_block_sync::{AsyncBlockSourceResult, BlockHeaderData, BlockSource};
 use serde_json::{json, Value};
@@ -172,7 +173,8 @@ impl FeeEstimator for BitcoindClient {
 impl BroadcasterInterface for BitcoindClient {
 	fn broadcast_transaction(&self, tx_ref: &Transaction) {
 		let tx = tx_ref.clone();
-		info!("before broadcast {}", tx.txid());
+		info!("before broadcast txid {}", tx.txid());
+		debug!("before broadcast tx {:?}", tx);
 		let rpc = Arc::clone(&self.rpc);
 		let queue = Arc::clone(&self.queued_transactions);
 		let ser = hex::encode(tx.serialize());

@@ -9,9 +9,9 @@ use serde_json::json;
 use tonic::{transport::Server, Request, Response, Status};
 
 use bitcoin::secp256k1::{PublicKey, Secp256k1};
-use bitcoin::PublicKey as BitcoinPublicKey;
 use lightning::chain::keysinterface::KeysInterface;
 use lightning::util::config::UserConfig;
+use lightning_signer::lightning;
 use lightning_invoice::Invoice;
 
 use crate::admin::admin_api::{
@@ -25,6 +25,7 @@ use crate::HTLCDirection;
 use super::admin_api::admin_server::{Admin, AdminServer};
 use super::admin_api::{ChannelListReply, NodeInfoReply, PingReply, PingRequest, Void};
 use bitcoin::Address;
+use lightning_signer::lightning::chain::channelmonitor::Balance;
 
 struct AdminHandler {
 	node: Node,
@@ -57,10 +58,9 @@ impl Admin for AdminHandler {
 			&Secp256k1::new(),
 			&self.node.keys_manager.get_node_secret(),
 		);
-		let shutdown_pubkey = self.node.keys_manager.get_shutdown_pubkey();
-		let bitcoin_pubkey = BitcoinPublicKey { compressed: true, key: shutdown_pubkey };
+		let shutdown_scriptpubkey = self.node.keys_manager.get_shutdown_scriptpubkey();
 		let shutdown_address =
-			Address::p2wpkh(&bitcoin_pubkey, self.node.network).unwrap().to_string();
+			Address::from_script(&shutdown_scriptpubkey.into(), self.node.network).unwrap().to_string();
 		let chain_info = self.node.blockchain_info().await;
 		let reply = NodeInfoReply {
 			node_id: node_pubkey.serialize().to_vec(),
@@ -79,13 +79,33 @@ impl Admin for AdminHandler {
 		info!("ENTER channel_list");
 		let mut channels = Vec::new();
 		for details in self.node.channel_manager.list_channels() {
+			let monitor_balance: Option<u64> = if let Some(funding_txo) = details.funding_txo {
+				let monitor_opt =
+					self.node.chain_monitor.get_monitor(funding_txo);
+				if let Ok(monitor) = monitor_opt {
+					let balances = monitor.get_claimable_balances();
+					Some(balances.into_iter().map(|b| {
+						match b {
+							Balance::ClaimableOnChannelClose { claimable_amount_satoshis, .. } => claimable_amount_satoshis,
+							Balance::ClaimableAwaitingConfirmations { claimable_amount_satoshis, .. } => claimable_amount_satoshis,
+							Balance::ContentiousClaimable { .. } => 0,
+							Balance::MaybeClaimableHTLCAwaitingTimeout { .. } => 0,
+						}
+					}).sum())
+				} else {
+					None
+				}
+			} else {
+				None
+			};
+			let balance = monitor_balance.unwrap_or(0) * 1000;
 			let channel = Channel {
-				peer_node_id: details.remote_network_id.serialize().to_vec(),
+				peer_node_id: details.counterparty.node_id.serialize().to_vec(),
 				channel_id: details.channel_id.to_vec(),
 				is_pending: details.short_channel_id.is_none(),
 				value_sat: details.channel_value_satoshis,
 				is_active: details.is_usable,
-				outbound_msat: details.outbound_capacity_msat,
+				outbound_msat: balance,
 			};
 			channels.push(channel);
 		}
@@ -139,7 +159,6 @@ impl Admin for AdminHandler {
 			node_id,
 			peer_addr,
 			self.node.peer_manager.clone(),
-			self.node.event_ntfn_sender.clone(),
 		)
 		.await
 		.map_err(|_| Status::aborted("could not connect to peer"))?;

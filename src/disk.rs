@@ -5,6 +5,7 @@ use bitcoin::{BlockHash, Txid};
 use lightning::chain::channelmonitor::ChannelMonitor;
 use lightning::chain::transaction::OutPoint;
 use lightning::util::ser::ReadableArgs;
+use lightning_signer::lightning;
 use std::collections::HashMap;
 use std::fs;
 use std::io::Cursor;

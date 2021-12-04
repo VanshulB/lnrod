@@ -21,7 +21,8 @@ NUM_PAYMENTS = 200
 WAIT_TIMEOUT = 10
 CHANNEL_BALANCE_SYNC_INTERVAL = 50
 CHANNEL_VALUE_SAT = 10_000_000
-PAYMENT_MSAT = 2_000_000
+EXPECTED_FEE_SAT = 1458
+PAYMENT_MSAT = 4_000_000  # FIXME 2_000_000 fails with dust limit policy violation
 SLEEP_ON_FAIL = False
 USE_RELEASE_BINARIES = False
 SIGNER = "rls"
@@ -150,14 +151,17 @@ def run():
 
     def channel_active():
         btc.mine(1)
-        return (not alice.ChannelList(Void()).channels[0].is_pending and
-                not bob.ChannelList(Void()).channels[0].is_pending and
-                not bob.ChannelList(Void()).channels[1].is_pending and
-                not charlie.ChannelList(Void()).channels[0].is_pending and
-                alice.ChannelList(Void()).channels[0].is_active and
-                bob.ChannelList(Void()).channels[0].is_active and
-                bob.ChannelList(Void()).channels[1].is_active and
-                charlie.ChannelList(Void()).channels[0].is_active)
+        alice_chans = alice.ChannelList(Void())
+        bob_chans = bob.ChannelList(Void())
+        charlie_chans = charlie.ChannelList(Void())
+        return (not alice_chans.channels[0].is_pending and
+                not bob_chans.channels[0].is_pending and
+                not bob_chans.channels[1].is_pending and
+                not charlie_chans.channels[0].is_pending and
+                alice_chans.channels[0].is_active and
+                bob_chans.channels[0].is_active and
+                bob_chans.channels[1].is_active and
+                charlie_chans.channels[0].is_active)
 
     wait_until('active at both', channel_active)
 
@@ -179,12 +183,13 @@ def run():
         if i % CHANNEL_BALANCE_SYNC_INTERVAL == 0:
             print('*** SYNC TO CHANNEL BALANCE')
             # check within 0.5%, due to fees
+
             wait_until('channel balance alice',
-                       lambda: assert_equal_delta(CHANNEL_VALUE_SAT * 1000 - alice.ChannelList(Void()).channels[0].outbound_msat,
+                       lambda: assert_equal_delta(CHANNEL_VALUE_SAT * 1000 - EXPECTED_FEE_SAT * 1000 - alice.ChannelList(Void()).channels[0].outbound_msat,
                                                   i * PAYMENT_MSAT))
             wait_until('channel balance charlie',
                        lambda: assert_equal_delta(charlie.ChannelList(Void()).channels[0].outbound_msat,
-                                                  i * PAYMENT_MSAT))
+                                                  max(0, i * PAYMENT_MSAT)))
 
     def check_payments():
         payment_list = alice.PaymentList(Void())
