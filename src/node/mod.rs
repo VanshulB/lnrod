@@ -114,6 +114,7 @@ pub(crate) struct Node {
 	pub(crate) bitcoind_client: Arc<BitcoindClient>,
 	pub(crate) network: Network,
 	pub(crate) background_processor: BackgroundProcessor,
+	pub(crate) chain_monitor: Arc<ArcChainMonitor>,
 }
 
 pub(crate) async fn build_node(args: NodeBuildArgs) -> Node {
@@ -416,6 +417,7 @@ async fn build_with_signer(
 		bitcoind_client: bitcoind_client_arc,
 		network: args.network,
 		background_processor,
+		chain_monitor,
 	}
 }
 

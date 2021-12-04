@@ -25,6 +25,7 @@ use crate::HTLCDirection;
 use super::admin_api::admin_server::{Admin, AdminServer};
 use super::admin_api::{ChannelListReply, NodeInfoReply, PingReply, PingRequest, Void};
 use bitcoin::Address;
+use lightning_signer::lightning::chain::channelmonitor::Balance;
 
 struct AdminHandler {
 	node: Node,
@@ -78,13 +79,33 @@ impl Admin for AdminHandler {
 		info!("ENTER channel_list");
 		let mut channels = Vec::new();
 		for details in self.node.channel_manager.list_channels() {
+			let monitor_balance: Option<u64> = if let Some(funding_txo) = details.funding_txo {
+				let monitor_opt =
+					self.node.chain_monitor.get_monitor(funding_txo);
+				if let Ok(monitor) = monitor_opt {
+					let balances = monitor.get_claimable_balances();
+					Some(balances.into_iter().map(|b| {
+						match b {
+							Balance::ClaimableOnChannelClose { claimable_amount_satoshis, .. } => claimable_amount_satoshis,
+							Balance::ClaimableAwaitingConfirmations { claimable_amount_satoshis, .. } => claimable_amount_satoshis,
+							Balance::ContentiousClaimable { .. } => 0,
+							Balance::MaybeClaimableHTLCAwaitingTimeout { .. } => 0,
+						}
+					}).sum())
+				} else {
+					None
+				}
+			} else {
+				None
+			};
+			let balance = monitor_balance.unwrap_or(0) * 1000;
 			let channel = Channel {
 				peer_node_id: details.counterparty.node_id.serialize().to_vec(),
 				channel_id: details.channel_id.to_vec(),
 				is_pending: details.short_channel_id.is_none(),
 				value_sat: details.channel_value_satoshis,
 				is_active: details.is_usable,
-				outbound_msat: details.outbound_capacity_msat,
+				outbound_msat: balance,
 			};
 			channels.push(channel);
 		}

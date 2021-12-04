@@ -21,8 +21,7 @@ NUM_PAYMENTS = 200
 WAIT_TIMEOUT = 10
 CHANNEL_BALANCE_SYNC_INTERVAL = 50
 CHANNEL_VALUE_SAT = 10_000_000
-CHANNEL_VALUE_RESERVE_SAT = 100_000
-CHANNEL_CAPACITY_SAT = CHANNEL_VALUE_SAT - CHANNEL_VALUE_RESERVE_SAT
+EXPECTED_FEE_SAT = 1458
 PAYMENT_MSAT = 4_000_000  # FIXME 2_000_000 fails with dust limit policy violation
 SLEEP_ON_FAIL = False
 USE_RELEASE_BINARIES = False
@@ -186,11 +185,11 @@ def run():
             # check within 0.5%, due to fees
 
             wait_until('channel balance alice',
-                       lambda: assert_equal_delta(CHANNEL_CAPACITY_SAT * 1000 - alice.ChannelList(Void()).channels[0].outbound_msat,
+                       lambda: assert_equal_delta(CHANNEL_VALUE_SAT * 1000 - EXPECTED_FEE_SAT * 1000 - alice.ChannelList(Void()).channels[0].outbound_msat,
                                                   i * PAYMENT_MSAT))
             wait_until('channel balance charlie',
                        lambda: assert_equal_delta(charlie.ChannelList(Void()).channels[0].outbound_msat,
-                                                  max(0, i * PAYMENT_MSAT - CHANNEL_VALUE_RESERVE_SAT * 1000)))
+                                                  max(0, i * PAYMENT_MSAT)))
 
     def check_payments():
         payment_list = alice.PaymentList(Void())
