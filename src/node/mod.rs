@@ -30,7 +30,7 @@ use lightning::chain::BestBlock;
 use lightning::routing::router::RouteHintHop;
 use lightning::routing::network_graph::NetworkGraph;
 use lightning::routing::scoring::Scorer;
-use lightning::util::events::EventHandler;
+use lightning::util::events::{Event, EventHandler};
 use lightning_background_processor::BackgroundProcessor;
 use lightning_signer::lightning;
 use lightning_block_sync::{init, poll, SpvClient, UnboundedCache};
@@ -39,7 +39,6 @@ use lightning_invoice::payment::PaymentError;
 use lightning_invoice::utils::DefaultRouter;
 use lightning_net_tokio::{connect_outbound, setup_inbound};
 use lightning_persister::FilesystemPersister;
-use lightning_signer::lightning::util::events::Event;
 use rand::{thread_rng, Rng};
 use tokio::runtime::Handle;
 

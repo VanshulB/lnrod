@@ -25,9 +25,9 @@ use lightning::ln::chan_utils::{
 	HolderCommitmentTransaction,
 };
 use lightning::ln::msgs::{DecodeError, UnsignedChannelAnnouncement};
+use lightning::ln::script::ShutdownScript;
 use lightning::util::ser::{Readable, Writeable, Writer};
 use lightning_signer::lightning;
-use lightning_signer::lightning::ln::script::ShutdownScript;
 use lightning_signer::util::transaction_utils;
 use lightning_signer::util::transaction_utils::MAX_VALUE_MSAT;
 

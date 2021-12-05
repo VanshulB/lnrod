@@ -10,6 +10,7 @@ use tonic::{transport::Server, Request, Response, Status};
 
 use bitcoin::secp256k1::{PublicKey, Secp256k1};
 use lightning::chain::keysinterface::KeysInterface;
+use lightning::chain::channelmonitor::Balance;
 use lightning::util::config::UserConfig;
 use lightning_signer::lightning;
 use lightning_invoice::Invoice;
@@ -25,7 +26,6 @@ use crate::HTLCDirection;
 use super::admin_api::admin_server::{Admin, AdminServer};
 use super::admin_api::{ChannelListReply, NodeInfoReply, PingReply, PingRequest, Void};
 use bitcoin::Address;
-use lightning_signer::lightning::chain::channelmonitor::Balance;
 
 struct AdminHandler {
 	node: Node,
