@@ -3,6 +3,7 @@ use std::collections::HashMap;
 use std::fs;
 use std::fs::File;
 use std::net::SocketAddr;
+use std::path::Path;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -292,14 +293,17 @@ async fn build_with_signer(
 	// Step 13: Optional: Initialize the NetGraphMsgHandler
 	// XXX persist routing data
 	let genesis_hash = genesis_block(args.network).header.block_hash();
+	let network_graph_path = format!("{}/network_graph", ldk_data_dir.clone());
+	let network_graph =
+		Arc::new(disk::read_network(Path::new(&network_graph_path), genesis_hash));
 
-	let network_graph = Arc::new(NetworkGraph::new(genesis_hash));
 	let network_gossip = Arc::new(NetGraphMsgHandler::new(
 		Arc::clone(&network_graph),
 		None,
 		logadapter.clone(),
 	));
 
+	disk::start_network_graph_persister(network_graph_path, &network_graph);
 
 	// Step 14: Initialize the PeerManager
 	let channel_manager: Arc<ChannelManager> = Arc::new(channel_manager);

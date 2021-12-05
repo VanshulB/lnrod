@@ -4,13 +4,17 @@ use bitcoin::hashes::hex::FromHex;
 use bitcoin::{BlockHash, Txid};
 use lightning::chain::channelmonitor::ChannelMonitor;
 use lightning::chain::transaction::OutPoint;
-use lightning::util::ser::ReadableArgs;
+use lightning::util::ser::{Readable, Writeable, ReadableArgs};
 use lightning_signer::lightning;
 use std::collections::HashMap;
 use std::fs;
-use std::io::Cursor;
+use std::fs::File;
+use std::io::{BufReader, BufWriter, Cursor};
 use std::path::Path;
 use std::sync::Arc;
+use std::time::Duration;
+use log::error;
+use crate::NetworkGraph;
 
 const MAX_CHANNEL_MONITOR_FILENAME_LENGTH: usize = 65;
 
@@ -70,4 +74,41 @@ pub(crate) fn read_channelmonitors(
 		}
 	}
 	Ok(outpoint_to_channelmonitor)
+}
+
+pub(crate) fn read_network(path: &Path, genesis_hash: BlockHash) -> NetworkGraph {
+	if let Ok(file) = File::open(path) {
+		if let Ok(graph) = NetworkGraph::read(&mut BufReader::new(file)) {
+			return graph;
+		}
+	}
+	NetworkGraph::new(genesis_hash)
+}
+
+pub(crate) fn persist_network(path: &Path, network_graph: &NetworkGraph) -> std::io::Result<()> {
+	let mut tmp_path = path.to_path_buf().into_os_string();
+	tmp_path.push(".tmp");
+	let file = fs::OpenOptions::new().write(true).create(true).open(&tmp_path)?;
+	let write_res = network_graph.write(&mut BufWriter::new(file));
+	if let Err(e) = write_res.and_then(|_| fs::rename(&tmp_path, path)) {
+		let _ = fs::remove_file(&tmp_path);
+		Err(e)
+	} else {
+		Ok(())
+	}
+}
+
+pub(crate) fn start_network_graph_persister(network_graph_path: String, network_graph: &Arc<NetworkGraph>) {
+	let network_graph_persist = Arc::clone(&network_graph);
+	tokio::spawn(async move {
+		let mut interval = tokio::time::interval(Duration::from_secs(600));
+		loop {
+			interval.tick().await;
+			if persist_network(Path::new(&network_graph_path), &network_graph_persist)
+				.is_err()
+			{
+				error!("Warning: Failed to persist network graph, check your disk and permissions");
+			}
+		}
+	});
 }
