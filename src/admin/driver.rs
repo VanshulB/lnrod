@@ -20,7 +20,7 @@ use crate::admin::admin_api::{
 	InvoiceNewRequest, Payment, PaymentListReply, PaymentSendReply, PaymentSendRequest, Peer,
 	PeerConnectReply, PeerConnectRequest, PeerListReply, PeerListRequest,
 };
-use crate::node::{build_node, connect_peer_if_necessary, Node, NodeBuildArgs};
+use crate::node::{build_node, Node, NodeBuildArgs};
 use crate::HTLCDirection;
 
 use super::admin_api::admin_server::{Admin, AdminServer};
@@ -155,7 +155,7 @@ impl Admin for AdminHandler {
 			req.address.parse().map_err(|_| Status::invalid_argument("address parse"))?;
 		let node_id = PublicKey::from_slice(req.node_id.as_slice())
 			.map_err(|_| Status::invalid_argument("failed to parse node_id"))?;
-		connect_peer_if_necessary(
+		self.node.connect_peer_if_necessary(
 			node_id,
 			peer_addr,
 			self.node.peer_manager.clone(),

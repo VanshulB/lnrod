@@ -7,7 +7,7 @@ use std::path::Path;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use log::{self, error, info};
+use log::{self, error, info, warn};
 
 use anyhow::Result;
 use bitcoin::blockdata::constants::genesis_block;
@@ -402,6 +402,7 @@ async fn build_with_signer(
 		logadapter.clone(),
 	);
 
+
 	let peer_manager_processor = peer_manager.clone();
 	tokio::spawn(async move {
 		loop {
@@ -410,7 +411,11 @@ async fn build_with_signer(
 		}
 	});
 
-	Node {
+	let connect_cm = Arc::clone(&channel_manager);
+	let connect_pm = Arc::clone(&peer_manager);
+	let peer_data_path = format!("{}/channel_peer_data", ldk_data_dir.clone());
+
+	let node = Node {
 		peer_manager,
 		channel_manager,
 		payer: invoice_payer,
@@ -421,43 +426,39 @@ async fn build_with_signer(
 		network: args.network,
 		background_processor,
 		chain_monitor,
-	}
-}
+	};
 
-pub(crate) async fn connect_peer_if_necessary(
-	pubkey: PublicKey, peer_addr: SocketAddr, peer_manager: Arc<PeerManager>,
-) -> Result<(), ()> {
-	for node_pubkey in peer_manager.get_peer_node_ids() {
-		if node_pubkey == pubkey {
-			return Ok(());
-		}
-	}
-
-	match connect_outbound(Arc::clone(&peer_manager), pubkey, peer_addr).await
-	{
-		Some(connection_closed_future) => {
-			let mut connection_closed_future = Box::pin(connection_closed_future);
-			loop {
-				match futures::poll!(&mut connection_closed_future) {
-					std::task::Poll::Ready(_) => {
-						println!("ERROR: Peer disconnected before we finished the handshake");
-						return Err(());
+	tokio::spawn(async move {
+		let mut interval = tokio::time::interval(Duration::from_secs(1));
+		loop {
+			interval.tick().await;
+			match disk::read_channel_peer_data(Path::new(&peer_data_path)) {
+				Ok(info) => {
+					let peers = connect_pm.get_peer_node_ids();
+					for node_id in connect_cm
+						.list_channels()
+						.iter()
+						.map(|chan| chan.counterparty.node_id)
+						.filter(|id| !peers.contains(id))
+					{
+						for (pubkey, peer_addr) in info.iter() {
+							if *pubkey == node_id {
+								// ignore errors, we'll retry later and there's logging in do_connect_peer
+								let _ = Node::do_connect_peer(
+									*pubkey,
+									peer_addr.clone(),
+									Arc::clone(&connect_pm),
+								).await;
+							}
+						}
 					}
-					std::task::Poll::Pending => {}
 				}
-				// Avoid blocking the tokio context by sleeping a bit
-				match peer_manager.get_peer_node_ids().iter().find(|id| **id == pubkey) {
-					Some(_) => break,
-					None => tokio::time::sleep(Duration::from_millis(10)).await,
-				}
+				Err(e) => println!("ERROR: errored reading channel peer info from disk: {:?}", e),
 			}
 		}
-		None => {
-			println!("ERROR: failed to connect to peer");
-			return Err(());
-		}
-	}
-	Ok(())
+	});
+
+	node
 }
 
 impl Node {
@@ -485,13 +486,13 @@ impl Node {
 			Network::Regtest => lightning_invoice::Currency::Regtest,
 			Network::Signet => lightning_invoice::Currency::Signet,
 		})
-		.payment_hash(payment_hash)
-		.payment_secret(payment_secret)
-		.description("lnrod invoice".to_string())
-		.amount_milli_satoshis(amt_msat)
-		.current_timestamp()
-		.min_final_cltv_expiry(MIN_FINAL_CLTV_EXPIRY as u64)
-		.payee_pub_key(our_node_pubkey);
+			.payment_hash(payment_hash)
+			.payment_secret(payment_secret)
+			.description("lnrod invoice".to_string())
+			.amount_milli_satoshis(amt_msat)
+			.current_timestamp()
+			.min_final_cltv_expiry(MIN_FINAL_CLTV_EXPIRY as u64)
+			.payee_pub_key(our_node_pubkey);
 
 		// Add route hints to the invoice.
 		let our_channels = self.channel_manager.list_usable_channels();
@@ -573,5 +574,57 @@ impl Node {
 
 	pub async fn blockchain_info(&self) -> BlockchainInfo {
 		self.bitcoind_client.get_blockchain_info().await
+	}
+
+	pub(crate) async fn connect_peer_if_necessary(
+		&self,
+		pubkey: PublicKey,
+		peer_addr: SocketAddr,
+		peer_manager: Arc<PeerManager>,
+	) -> Result<(), ()> {
+		for node_pubkey in peer_manager.get_peer_node_ids() {
+			if node_pubkey == pubkey {
+				return Ok(());
+			}
+		}
+
+		Self::do_connect_peer(pubkey, peer_addr, peer_manager).await?;
+
+		let peer_data_path = format!("{}/channel_peer_data", self.ldk_data_dir);
+		disk::persist_channel_peer(
+			Path::new(&peer_data_path),
+			pubkey,
+			peer_addr
+		).expect("disk write error");
+
+		Ok(())
+	}
+
+	async fn do_connect_peer(pubkey: PublicKey, peer_addr: SocketAddr, peer_manager: Arc<PeerManager>) -> Result<(), ()> {
+		match connect_outbound(Arc::clone(&peer_manager), pubkey, peer_addr).await
+		{
+			Some(connection_closed_future) => {
+				let mut connection_closed_future = Box::pin(connection_closed_future);
+				loop {
+					match futures::poll!(&mut connection_closed_future) {
+						std::task::Poll::Ready(_) => {
+							println!("ERROR: Peer disconnected before we finished the handshake");
+							return Err(());
+						}
+						std::task::Poll::Pending => {}
+					}
+					// Avoid blocking the tokio context by sleeping a bit
+					match peer_manager.get_peer_node_ids().iter().find(|id| **id == pubkey) {
+						Some(_) => break,
+						None => tokio::time::sleep(Duration::from_millis(10)).await,
+					}
+				}
+			}
+			None => {
+				warn!("failed to connect to peer {}", peer_addr);
+				return Err(());
+			}
+		}
+		Ok(())
 	}
 }
