@@ -1,7 +1,6 @@
 use std::cmp;
 use std::collections::HashMap;
 use std::fs;
-use std::fs::File;
 use std::net::SocketAddr;
 use std::path::Path;
 use std::sync::{Arc, Mutex};
@@ -25,7 +24,7 @@ use lightning::ln::channelmanager::{
 use lightning::ln::peer_handler::MessageHandler;
 use lightning::ln::{channelmanager, PaymentHash, PaymentPreimage};
 use lightning::routing::network_graph::{NetGraphMsgHandler, RoutingFees};
-use lightning::util::ser::{ReadableArgs, Writer};
+use lightning::util::ser::{ReadableArgs};
 use lightning::chain::BestBlock;
 use lightning::routing::router::RouteHintHop;
 use lightning::routing::network_graph::NetworkGraph;
@@ -39,7 +38,7 @@ use lightning_invoice::payment::PaymentError;
 use lightning_invoice::utils::DefaultRouter;
 use lightning_net_tokio::{connect_outbound, setup_inbound};
 use lightning_persister::FilesystemPersister;
-use rand::{thread_rng, Rng};
+use rand::Rng;
 use tokio::runtime::Handle;
 
 use crate::bitcoind_client::BitcoindClient;
@@ -136,24 +135,8 @@ pub(crate) async fn build_node(args: NodeBuildArgs) -> Node {
 
 	// Initialize the KeysManager
 
-	// The key seed that we use to derive the node privkey (that corresponds to the node pubkey) and
-	// other secret key material.
-	let keys_seed_path = format!("{}/keys_seed", ldk_data_dir.clone());
-	let keys_seed = if let Ok(seed) = fs::read(keys_seed_path.clone()) {
-		assert_eq!(seed.len(), 32);
-		let mut key = [0; 32];
-		key.copy_from_slice(&seed);
-		key
-	} else {
-		let mut key = [0; 32];
-		thread_rng().fill_bytes(&mut key);
-		let mut f = File::create(keys_seed_path).unwrap();
-		f.write_all(&key).expect("Failed to write node keys seed to disk");
-		f.sync_all().expect("Failed to sync node keys seed to disk");
-		key
-	};
-
-	let manager = get_keys_manager(args.signer_name.as_str(), &keys_seed, args.network).unwrap();
+	let manager =
+		get_keys_manager(args.signer_name.as_str(), args.network, ldk_data_dir.clone()).unwrap();
 	let keys_manager = Arc::new(DynKeysInterface::new(manager));
 
 	build_with_signer(keys_manager, args, ldk_data_dir).await

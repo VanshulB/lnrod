@@ -637,26 +637,4 @@ impl Writeable for DynSigner {
 
 #[cfg(test)]
 mod tests {
-	use std::time::Duration;
-	use bitcoin::Network;
-
-	use lightning::chain::keysinterface::{BaseSign, KeysInterface};
-	use lightning::util::ser::Writeable;
-	use lightning_signer::lightning;
-
-	use crate::signer::keys::{DynKeysInterface, DynSigner};
-	use crate::signer::test_signer;
-
-	#[test]
-	fn ser_deser_dyn_signer() {
-		let seed = [0x33_u8; 32];
-		let cur = Duration::new(0, 0);
-		let manager = test_signer::make_signer(&seed, cur, Network::Testnet);
-		let keys_manager = DynKeysInterface::new(manager);
-		let signer: DynSigner = keys_manager.get_channel_signer(false, 1234);
-		let mut buf = Vec::new();
-		signer.write(&mut buf).unwrap();
-		let signer_deser = keys_manager.read_chan_signer(&mut buf).unwrap();
-		assert_eq!(signer.pubkeys().funding_pubkey, signer_deser.pubkeys().funding_pubkey);
-	}
 }
