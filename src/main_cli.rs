@@ -164,6 +164,12 @@ fn make_payment_subapp() -> App<'static> {
 				.about("Pay invoice")
 				.arg(Arg::new("invoice").about("serialized invoice").required(true)),
 		)
+		.subcommand(
+			App::new("keysend")
+				.about("Pay to node_id")
+				.arg(Arg::new("nodeid").about("the node ID").required(true))
+				.arg(Arg::new("value").about("the amount in milli sat").required(true)),
+		)
 		.subcommand(App::new("list").about("List incoming and outgoing payments"))
 }
 
@@ -172,6 +178,13 @@ fn payment_subcommand(cli: &CLI, matches: &ArgMatches) -> Result<(), Box<dyn std
 		Some(("send", submatches)) => {
 			let invoice: String = submatches.value_of_t("invoice")?;
 			cli.payment_send(invoice)?
+		}
+		Some(("keysend", submatches)) => {
+			let node_id_hex: String = submatches.value_of_t("nodeid")?;
+			let node_id = hex::decode(node_id_hex).expect("hex");
+			let value_msat_str: String = submatches.value_of_t("value")?;
+			let value_msat = value_msat_str.parse()?;
+			cli.payment_keysend(node_id, value_msat)?
 		}
 		Some(("list", _)) => cli.payment_list()?,
 		Some((name, _)) => panic!("unimplemented command {}", name),

@@ -19,6 +19,7 @@ use crate::admin::admin_api::{
 	Channel, ChannelCloseRequest, ChannelNewReply, ChannelNewRequest, InvoiceNewReply,
 	InvoiceNewRequest, Payment, PaymentListReply, PaymentSendReply, PaymentSendRequest, Peer,
 	PeerConnectReply, PeerConnectRequest, PeerListReply, PeerListRequest,
+	PaymentKeysendRequest
 };
 use crate::node::{build_node, Node, NodeBuildArgs};
 use crate::HTLCDirection;
@@ -214,6 +215,22 @@ impl Admin for AdminHandler {
 		let reply = PaymentSendReply {};
 		debug!("{}", type_and_value!(&reply));
 		info!("REPLY payment_send");
+		Ok(Response::new(reply))
+	}
+
+	async fn payment_keysend(
+		&self, request: Request<PaymentKeysendRequest>,
+	) -> Result<Response<PaymentSendReply>, Status> {
+		let req = request.into_inner();
+		info!("ENTER payment_keysend");
+		debug!("{}", type_and_value!(&req));
+		let node_id = PublicKey::from_slice(req.node_id.as_slice())
+			.map_err(|_| Status::invalid_argument("failed to parse node_id"))?;
+		let value = req.value_msat;
+		self.node.keysend_payment(node_id, value).map_err(|e| Status::invalid_argument(e))?;
+		let reply = PaymentSendReply {};
+		debug!("{}", type_and_value!(&reply));
+		info!("REPLY payment_keysend");
 		Ok(Response::new(reply))
 	}
 

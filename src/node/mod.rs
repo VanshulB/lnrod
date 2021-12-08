@@ -38,7 +38,7 @@ use lightning_invoice::payment::PaymentError;
 use lightning_invoice::utils::DefaultRouter;
 use lightning_net_tokio::{connect_outbound, setup_inbound};
 use lightning_persister::FilesystemPersister;
-use rand::Rng;
+use rand::{Rng, thread_rng};
 use tokio::runtime::Handle;
 
 use crate::bitcoind_client::BitcoindClient;
@@ -48,7 +48,7 @@ use crate::fslogger::FilesystemLogger;
 use crate::logadapter::LoggerAdapter;
 use crate::signer::get_keys_manager;
 use crate::signer::keys::DynKeysInterface;
-use crate::{disk, handle_ldk_events, ArcChainMonitor, ChannelManager, HTLCDirection, HTLCStatus, MilliSatoshiAmount, PaymentInfoStorage, PeerManager, IgnoringMessageHandler};
+use crate::{disk, handle_ldk_events, ArcChainMonitor, ChannelManager, HTLCDirection, HTLCStatus, MilliSatoshiAmount, PaymentInfoStorage, PeerManager, IgnoringMessageHandler, Sha256};
 use crate::lightning::routing::router::RouteHint;
 
 #[derive(Clone)]
@@ -532,7 +532,7 @@ impl Node {
 			Ok(_payment_id) => {
 				let payee_pubkey = invoice.recover_payee_pub_key();
 				let amt_msat = invoice.amount_milli_satoshis().unwrap();
-				error!("EVENT: initiated sending {} msats to {}", amt_msat, payee_pubkey);
+				info!("EVENT: initiated sending {} msats to {}", amt_msat, payee_pubkey);
 				HTLCStatus::Pending
 			}
 			Err(PaymentError::Invoice(e)) => {
@@ -551,6 +551,34 @@ impl Node {
 		payments.insert(
 			payment_hash,
 			(None, HTLCDirection::Outbound, status, MilliSatoshiAmount(Some(invoice.amount_milli_satoshis().unwrap()))),
+		);
+		Ok(())
+	}
+
+	pub fn keysend_payment(&self, node_id: PublicKey, value_msat: u64) -> Result<(), String> {
+		let mut payment_preimage = PaymentPreimage([0; 32]);
+		thread_rng().fill_bytes(&mut payment_preimage.0);
+		let payment_hash = PaymentHash(Sha256::hash(&payment_preimage.0).into_inner());
+		let status = match self.payer.pay_pubkey(node_id, payment_preimage, value_msat, MIN_FINAL_CLTV_EXPIRY) {
+			Ok(_payment_id) => {
+				info!("initiated keysend of {} msat to {}", value_msat, node_id);
+				HTLCStatus::Pending
+			}
+			Err(PaymentError::Invoice(e)) => {
+				return Err(format!("ERROR: invalid invoice: {}", e));
+			}
+			Err(PaymentError::Routing(e)) => {
+				return Err(format!("ERROR: failed to find route: {:?}", e));
+			}
+			Err(PaymentError::Sending(e)) => {
+				error!("ERROR: failed to send payment: {:?}", e);
+				HTLCStatus::Failed
+			}
+		};
+		let mut payments = self.payment_info.lock().unwrap();
+		payments.insert(
+			payment_hash,
+			(None, HTLCDirection::Outbound, status, MilliSatoshiAmount(Some(value_msat))),
 		);
 		Ok(())
 	}
