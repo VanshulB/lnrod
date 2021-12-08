@@ -49,12 +49,12 @@ serde = { version = "1.0.105", features = ["derive"] }
 
 [dependencies.lightning-signer-core]
 git = "https://gitlab.com/lightning-signer/rust-lightning-signer.git"
-rev = "350bd5d33b4bd54a3317f9abd457f3a6343ed6f2"
+rev = "dad9ffd05e5bfff416b4ce02db4c41d9531f9f81"
 #path = "../rust-lightning-signer/lightning-signer-core"
 
 [dependencies.lightning-signer-server]
 git = "https://gitlab.com/lightning-signer/rust-lightning-signer.git"
-rev = "350bd5d33b4bd54a3317f9abd457f3a6343ed6f2"
+rev = "dad9ffd05e5bfff416b4ce02db4c41d9531f9f81"
 #path = "../rust-lightning-signer/lightning-signer-server"
 
 [build-dependencies]

@@ -857,7 +857,7 @@ dependencies = [
 [[package]]
 name = "lightning-signer-core"
 version = "0.1.0-4"
-source = "git+https://gitlab.com/lightning-signer/rust-lightning-signer.git?rev=350bd5d33b4bd54a3317f9abd457f3a6343ed6f2#350bd5d33b4bd54a3317f9abd457f3a6343ed6f2"
+source = "git+https://gitlab.com/lightning-signer/rust-lightning-signer.git?rev=dad9ffd05e5bfff416b4ce02db4c41d9531f9f81#dad9ffd05e5bfff416b4ce02db4c41d9531f9f81"
 dependencies = [
  "anyhow",
  "backtrace",
@@ -875,7 +875,7 @@ dependencies = [
 [[package]]
 name = "lightning-signer-server"
 version = "0.1.0-3"
-source = "git+https://gitlab.com/lightning-signer/rust-lightning-signer.git?rev=350bd5d33b4bd54a3317f9abd457f3a6343ed6f2#350bd5d33b4bd54a3317f9abd457f3a6343ed6f2"
+source = "git+https://gitlab.com/lightning-signer/rust-lightning-signer.git?rev=dad9ffd05e5bfff416b4ce02db4c41d9531f9f81#dad9ffd05e5bfff416b4ce02db4c41d9531f9f81"
 dependencies = [
  "anyhow",
  "backtrace",

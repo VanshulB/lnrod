@@ -21,6 +21,7 @@ use lightning_signer_server::persist::persist_json::KVJsonPersister;
 use log::info;
 use crate::hex_utils;
 use crate::lightning::ln::script::ShutdownScript;
+use crate::lightning::util::ser::Writeable;
 
 struct Adapter {
 	inner: LoopbackSignerKeysInterface,
@@ -53,10 +54,8 @@ impl InnerSign for LoopbackChannelSigner {
 		self
 	}
 
-	fn vwrite(&self, _writer: &mut Vec<u8>) -> Result<(), std::io::Error> {
-		//self.write(writer)
-		// Do nothing for now, we'll have our own persistence strategy
-		Ok(())
+	fn vwrite(&self, writer: &mut Vec<u8>) -> Result<(), std::io::Error> {
+		self.write(writer)
 	}
 }
 
@@ -84,8 +83,10 @@ impl KeysInterface for Adapter {
 		self.inner.get_secure_random_bytes()
 	}
 
-	fn read_chan_signer(&self, _reader: &[u8]) -> Result<Self::Signer, DecodeError> {
-		unimplemented!()
+	fn read_chan_signer(&self, reader: &[u8]) -> Result<Self::Signer, DecodeError> {
+		let inner = self.inner.read_chan_signer(reader)?;
+
+		Ok(DynSigner { inner: Box::new(inner)})
 	}
 
 	fn sign_invoice(&self, _invoice_preimage: Vec<u8>) -> Result<RecoverableSignature, ()> {
