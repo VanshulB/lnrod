@@ -65,7 +65,7 @@ fn main() -> Result<()> {
 				.short('v')
 				.long("log-level-disk")
 				.possible_values(&LOG_LEVEL_FILTER_NAMES)
-				.default_value("TRACE")
+				.default_value("DEBUG")
 				.takes_value(true),
 		)
 		.arg(
