@@ -10,6 +10,7 @@ use tonic::{transport::Server, Request, Response, Status};
 
 use bitcoin::secp256k1::{PublicKey, Secp256k1};
 use lightning::chain::keysinterface::KeysInterface;
+use lightning::chain::channelmonitor::Balance;
 use lightning::util::config::UserConfig;
 use lightning_signer::lightning;
 use lightning_invoice::Invoice;
@@ -18,14 +19,14 @@ use crate::admin::admin_api::{
 	Channel, ChannelCloseRequest, ChannelNewReply, ChannelNewRequest, InvoiceNewReply,
 	InvoiceNewRequest, Payment, PaymentListReply, PaymentSendReply, PaymentSendRequest, Peer,
 	PeerConnectReply, PeerConnectRequest, PeerListReply, PeerListRequest,
+	PaymentKeysendRequest
 };
-use crate::node::{build_node, connect_peer_if_necessary, Node, NodeBuildArgs};
+use crate::node::{build_node, Node, NodeBuildArgs};
 use crate::HTLCDirection;
 
 use super::admin_api::admin_server::{Admin, AdminServer};
 use super::admin_api::{ChannelListReply, NodeInfoReply, PingReply, PingRequest, Void};
 use bitcoin::Address;
-use lightning_signer::lightning::chain::channelmonitor::Balance;
 
 struct AdminHandler {
 	node: Node,
@@ -155,7 +156,7 @@ impl Admin for AdminHandler {
 			req.address.parse().map_err(|_| Status::invalid_argument("address parse"))?;
 		let node_id = PublicKey::from_slice(req.node_id.as_slice())
 			.map_err(|_| Status::invalid_argument("failed to parse node_id"))?;
-		connect_peer_if_necessary(
+		self.node.connect_peer_if_necessary(
 			node_id,
 			peer_addr,
 			self.node.peer_manager.clone(),
@@ -214,6 +215,22 @@ impl Admin for AdminHandler {
 		let reply = PaymentSendReply {};
 		debug!("{}", type_and_value!(&reply));
 		info!("REPLY payment_send");
+		Ok(Response::new(reply))
+	}
+
+	async fn payment_keysend(
+		&self, request: Request<PaymentKeysendRequest>,
+	) -> Result<Response<PaymentSendReply>, Status> {
+		let req = request.into_inner();
+		info!("ENTER payment_keysend");
+		debug!("{}", type_and_value!(&req));
+		let node_id = PublicKey::from_slice(req.node_id.as_slice())
+			.map_err(|_| Status::invalid_argument("failed to parse node_id"))?;
+		let value = req.value_msat;
+		self.node.keysend_payment(node_id, value).map_err(|e| Status::invalid_argument(e))?;
+		let reply = PaymentSendReply {};
+		debug!("{}", type_and_value!(&reply));
+		info!("REPLY payment_keysend");
 		Ok(Response::new(reply))
 	}
 

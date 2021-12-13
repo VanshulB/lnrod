@@ -6,6 +6,7 @@ use super::admin_api::admin_client::AdminClient;
 use super::admin_api::{ChannelNewRequest, PingRequest, Void};
 use crate::admin::admin_api::{
 	ChannelCloseRequest, InvoiceNewRequest, PaymentSendRequest, PeerConnectRequest, PeerListRequest,
+	PaymentKeysendRequest
 };
 use serde::Serialize;
 
@@ -111,6 +112,15 @@ impl CLI {
 		let mut client = self.connect().await?;
 		let request = Request::new(PaymentSendRequest { invoice });
 		let response = client.payment_send(request).await?.into_inner();
+		CLI::dump_response(&response);
+		Ok(())
+	}
+
+	#[tokio::main]
+	pub async fn payment_keysend(&self, node_id: Vec<u8>, value_msat: u64) -> Result<(), Box<dyn std::error::Error>> {
+		let mut client = self.connect().await?;
+		let request = Request::new(PaymentKeysendRequest { node_id, value_msat });
+		let response = client.payment_keysend(request).await?.into_inner();
 		CLI::dump_response(&response);
 		Ok(())
 	}

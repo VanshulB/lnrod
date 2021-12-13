@@ -1,7 +1,7 @@
 use crate::signer::keys::{DynSigner, InnerSign, PaymentSign, SpendableKeysInterface};
 use anyhow::Result;
 use bitcoin::secp256k1::recovery::RecoverableSignature;
-use bitcoin::secp256k1::{All, Secp256k1, SecretKey};
+use bitcoin::secp256k1::{All, PublicKey, Secp256k1, SecretKey};
 use bitcoin::{Address, Network, Script, Transaction, TxOut};
 use lightning::chain::keysinterface::{
 	DelayedPaymentOutputDescriptor, KeysInterface, SpendableOutputDescriptor,
@@ -14,10 +14,14 @@ use lightning_signer::signer::multi_signer::MultiSigner;
 use lightning_signer::signer::my_keys_manager::KeyDerivationStyle;
 use lightning_signer::util::loopback::{LoopbackChannelSigner, LoopbackSignerKeysInterface};
 use std::any::Any;
+use std::fs;
+use std::str::FromStr;
 use std::sync::Arc;
+use lightning_signer_server::persist::persist_json::KVJsonPersister;
 use log::info;
 use crate::hex_utils;
 use crate::lightning::ln::script::ShutdownScript;
+use crate::lightning::util::ser::Writeable;
 
 struct Adapter {
 	inner: LoopbackSignerKeysInterface,
@@ -50,10 +54,8 @@ impl InnerSign for LoopbackChannelSigner {
 		self
 	}
 
-	fn vwrite(&self, _writer: &mut Vec<u8>) -> Result<(), std::io::Error> {
-		//self.write(writer)
-		// Do nothing for now, we'll have our own persistence strategy
-		Ok(())
+	fn vwrite(&self, writer: &mut Vec<u8>) -> Result<(), std::io::Error> {
+		self.write(writer)
 	}
 }
 
@@ -81,8 +83,10 @@ impl KeysInterface for Adapter {
 		self.inner.get_secure_random_bytes()
 	}
 
-	fn read_chan_signer(&self, _reader: &[u8]) -> Result<Self::Signer, DecodeError> {
-		unimplemented!()
+	fn read_chan_signer(&self, reader: &[u8]) -> Result<Self::Signer, DecodeError> {
+		let inner = self.inner.read_chan_signer(reader)?;
+
+		Ok(DynSigner { inner: Box::new(inner)})
 	}
 
 	fn sign_invoice(&self, _invoice_preimage: Vec<u8>) -> Result<RecoverableSignature, ()> {
@@ -119,21 +123,35 @@ impl SpendableKeysInterface for Adapter {
 	}
 }
 
-pub(crate) fn make_signer(network: Network) -> Box<dyn SpendableKeysInterface<Signer = DynSigner>> {
-	// FIXME used Node directly
-	let signer = MultiSigner::new();
-	let node_config = NodeConfig {
-		network,
-		key_derivation_style: KeyDerivationStyle::Native
-	};
-	let node_id = signer.new_node(node_config);
+pub(crate) fn make_signer(network: Network, ldk_data_dir: String) -> Box<dyn SpendableKeysInterface<Signer = DynSigner>> {
+	let node_id_path = format!("{}/node_id", ldk_data_dir);
+	let signer_path = format!("{}/signer", ldk_data_dir);
+	let persister = Arc::new(KVJsonPersister::new(&signer_path));
+	// FIXME use Node directly - requires rework of LoopbackSignerKeysInterface in the rls crate
+	let signer = MultiSigner::new_with_persister(persister, false, vec![]);
+	if let Ok(node_id_hex) = fs::read_to_string(node_id_path.clone()) {
+		let node_id = PublicKey::from_str(&node_id_hex).unwrap();
+		assert!(signer.get_node(&node_id).is_ok());
 
-	let node = signer.get_node(&node_id).unwrap();
-	let manager = LoopbackSignerKeysInterface { node_id, signer: Arc::new(signer) };
-	let shutdown_scriptpubkey = manager.get_shutdown_scriptpubkey().into();
-	let shutdown_address = Address::from_script(&shutdown_scriptpubkey, network)
-		.expect("shutdown script must be convertible to address");
-	info!("adding shutdown address {} to allowlist for {}", shutdown_address, hex_utils::hex_str(&node_id.serialize()));
-	node.add_allowlist(&vec![shutdown_address.to_string()]).expect("add to allowlist");
-	Box::new(Adapter { inner: manager })
+		let manager = LoopbackSignerKeysInterface { node_id, signer: Arc::new(signer) };
+		Box::new(Adapter { inner: manager })
+	} else {
+		let node_config = NodeConfig {
+			network,
+			key_derivation_style: KeyDerivationStyle::Native
+		};
+		let node_id = signer.new_node(node_config);
+		fs::write(node_id_path, node_id.to_string()).expect("write node_id");
+		let node = signer.get_node(&node_id).unwrap();
+
+		let manager = LoopbackSignerKeysInterface { node_id, signer: Arc::new(signer) };
+
+		let shutdown_scriptpubkey = manager.get_shutdown_scriptpubkey().into();
+		let shutdown_address = Address::from_script(&shutdown_scriptpubkey, network)
+			.expect("shutdown script must be convertible to address");
+		info!("adding shutdown address {} to allowlist for {}", shutdown_address, hex_utils::hex_str(&node_id.serialize()));
+		node.add_allowlist(&vec![shutdown_address.to_string()]).expect("add to allowlist");
+
+		Box::new(Adapter { inner: manager })
+	}
 }

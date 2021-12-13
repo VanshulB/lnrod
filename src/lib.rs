@@ -206,15 +206,15 @@ async fn handle_ldk_events(
 		Event::PaymentSent { payment_preimage, .. } => {
 			let hashed = PaymentHash(Sha256::hash(&payment_preimage.0).into_inner());
 			let mut payments = payment_storage.lock().unwrap();
-			for (payment_hash, (preimage_option, _, status, amt_sat)) in payments.iter_mut()
+			for (payment_hash, (preimage_option, _, status, amt_msat)) in payments.iter_mut()
 			{
 				if *payment_hash == hashed {
 					*preimage_option = Some(payment_preimage);
 					*status = HTLCStatus::Succeeded;
 					info!(
-								"EVENT: successfully sent payment of {} satoshis from \
+								"EVENT: successfully sent payment of {} milli-satoshis from \
                                          payment hash {:?} with preimage {:?}",
-								amt_sat,
+								amt_msat,
 								hex_utils::hex_str(&payment_hash.0),
 								hex_utils::hex_str(&payment_preimage.0)
 							);

@@ -22,6 +22,8 @@ service Admin {
       returns (InvoiceNewReply);
   rpc PaymentSend(PaymentSendRequest)
       returns (PaymentSendReply);
+  rpc PaymentKeysend(PaymentKeysendRequest)
+      returns (PaymentSendReply);
   rpc PaymentList(Void)
       returns (PaymentListReply);
 }
@@ -102,6 +104,11 @@ message InvoiceNewReply {
 
 message PaymentSendRequest {
   string invoice = 1;
+}
+
+message PaymentKeysendRequest {
+  bytes node_id = 1;
+  uint64 value_msat = 2;
 }
 
 message PaymentSendReply {

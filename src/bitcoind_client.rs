@@ -28,7 +28,10 @@ use jsonrpc_async::Client;
 #[derive(Clone)]
 pub struct BitcoindClient {
 	rpc: Arc<Mutex<Client>>,
+	// Currently unused, for implementing reconnection
+	#[allow(unused)]
 	host: String,
+	#[allow(unused)]
 	port: u16,
 	fees: Arc<HashMap<Target, AtomicU32>>,
 	queued_transactions: Arc<Mutex<Vec<Transaction>>>,

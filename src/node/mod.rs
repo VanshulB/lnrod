@@ -1,12 +1,12 @@
 use std::cmp;
 use std::collections::HashMap;
 use std::fs;
-use std::fs::File;
 use std::net::SocketAddr;
+use std::path::Path;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use log::{self, error, info};
+use log::{self, error, info, warn};
 
 use anyhow::Result;
 use bitcoin::blockdata::constants::genesis_block;
@@ -24,12 +24,12 @@ use lightning::ln::channelmanager::{
 use lightning::ln::peer_handler::MessageHandler;
 use lightning::ln::{channelmanager, PaymentHash, PaymentPreimage};
 use lightning::routing::network_graph::{NetGraphMsgHandler, RoutingFees};
-use lightning::util::ser::{ReadableArgs, Writer};
+use lightning::util::ser::{ReadableArgs};
 use lightning::chain::BestBlock;
 use lightning::routing::router::RouteHintHop;
 use lightning::routing::network_graph::NetworkGraph;
 use lightning::routing::scoring::Scorer;
-use lightning::util::events::EventHandler;
+use lightning::util::events::{Event, EventHandler};
 use lightning_background_processor::BackgroundProcessor;
 use lightning_signer::lightning;
 use lightning_block_sync::{init, poll, SpvClient, UnboundedCache};
@@ -38,8 +38,7 @@ use lightning_invoice::payment::PaymentError;
 use lightning_invoice::utils::DefaultRouter;
 use lightning_net_tokio::{connect_outbound, setup_inbound};
 use lightning_persister::FilesystemPersister;
-use lightning_signer::lightning::util::events::Event;
-use rand::{thread_rng, Rng};
+use rand::{Rng, thread_rng};
 use tokio::runtime::Handle;
 
 use crate::bitcoind_client::BitcoindClient;
@@ -49,7 +48,7 @@ use crate::fslogger::FilesystemLogger;
 use crate::logadapter::LoggerAdapter;
 use crate::signer::get_keys_manager;
 use crate::signer::keys::DynKeysInterface;
-use crate::{disk, handle_ldk_events, ArcChainMonitor, ChannelManager, HTLCDirection, HTLCStatus, MilliSatoshiAmount, PaymentInfoStorage, PeerManager, IgnoringMessageHandler};
+use crate::{disk, handle_ldk_events, ArcChainMonitor, ChannelManager, HTLCDirection, HTLCStatus, MilliSatoshiAmount, PaymentInfoStorage, PeerManager, IgnoringMessageHandler, Sha256};
 use crate::lightning::routing::router::RouteHint;
 
 #[derive(Clone)]
@@ -136,24 +135,8 @@ pub(crate) async fn build_node(args: NodeBuildArgs) -> Node {
 
 	// Initialize the KeysManager
 
-	// The key seed that we use to derive the node privkey (that corresponds to the node pubkey) and
-	// other secret key material.
-	let keys_seed_path = format!("{}/keys_seed", ldk_data_dir.clone());
-	let keys_seed = if let Ok(seed) = fs::read(keys_seed_path.clone()) {
-		assert_eq!(seed.len(), 32);
-		let mut key = [0; 32];
-		key.copy_from_slice(&seed);
-		key
-	} else {
-		let mut key = [0; 32];
-		thread_rng().fill_bytes(&mut key);
-		let mut f = File::create(keys_seed_path).unwrap();
-		f.write_all(&key).expect("Failed to write node keys seed to disk");
-		f.sync_all().expect("Failed to sync node keys seed to disk");
-		key
-	};
-
-	let manager = get_keys_manager(args.signer_name.as_str(), &keys_seed, args.network).unwrap();
+	let manager =
+		get_keys_manager(args.signer_name.as_str(), args.network, ldk_data_dir.clone()).unwrap();
 	let keys_manager = Arc::new(DynKeysInterface::new(manager));
 
 	build_with_signer(keys_manager, args, ldk_data_dir).await
@@ -292,14 +275,17 @@ async fn build_with_signer(
 	// Step 13: Optional: Initialize the NetGraphMsgHandler
 	// XXX persist routing data
 	let genesis_hash = genesis_block(args.network).header.block_hash();
+	let network_graph_path = format!("{}/network_graph", ldk_data_dir.clone());
+	let network_graph =
+		Arc::new(disk::read_network(Path::new(&network_graph_path), genesis_hash));
 
-	let network_graph = Arc::new(NetworkGraph::new(genesis_hash));
 	let network_gossip = Arc::new(NetGraphMsgHandler::new(
 		Arc::clone(&network_graph),
 		None,
 		logadapter.clone(),
 	));
 
+	disk::start_network_graph_persister(network_graph_path, &network_graph);
 
 	// Step 14: Initialize the PeerManager
 	let channel_manager: Arc<ChannelManager> = Arc::new(channel_manager);
@@ -399,6 +385,7 @@ async fn build_with_signer(
 		logadapter.clone(),
 	);
 
+
 	let peer_manager_processor = peer_manager.clone();
 	tokio::spawn(async move {
 		loop {
@@ -407,7 +394,11 @@ async fn build_with_signer(
 		}
 	});
 
-	Node {
+	let connect_cm = Arc::clone(&channel_manager);
+	let connect_pm = Arc::clone(&peer_manager);
+	let peer_data_path = format!("{}/channel_peer_data", ldk_data_dir.clone());
+
+	let node = Node {
 		peer_manager,
 		channel_manager,
 		payer: invoice_payer,
@@ -418,43 +409,39 @@ async fn build_with_signer(
 		network: args.network,
 		background_processor,
 		chain_monitor,
-	}
-}
+	};
 
-pub(crate) async fn connect_peer_if_necessary(
-	pubkey: PublicKey, peer_addr: SocketAddr, peer_manager: Arc<PeerManager>,
-) -> Result<(), ()> {
-	for node_pubkey in peer_manager.get_peer_node_ids() {
-		if node_pubkey == pubkey {
-			return Ok(());
-		}
-	}
-
-	match connect_outbound(Arc::clone(&peer_manager), pubkey, peer_addr).await
-	{
-		Some(connection_closed_future) => {
-			let mut connection_closed_future = Box::pin(connection_closed_future);
-			loop {
-				match futures::poll!(&mut connection_closed_future) {
-					std::task::Poll::Ready(_) => {
-						println!("ERROR: Peer disconnected before we finished the handshake");
-						return Err(());
+	tokio::spawn(async move {
+		let mut interval = tokio::time::interval(Duration::from_secs(1));
+		loop {
+			interval.tick().await;
+			match disk::read_channel_peer_data(Path::new(&peer_data_path)) {
+				Ok(info) => {
+					let peers = connect_pm.get_peer_node_ids();
+					for node_id in connect_cm
+						.list_channels()
+						.iter()
+						.map(|chan| chan.counterparty.node_id)
+						.filter(|id| !peers.contains(id))
+					{
+						for (pubkey, peer_addr) in info.iter() {
+							if *pubkey == node_id {
+								// ignore errors, we'll retry later and there's logging in do_connect_peer
+								let _ = Node::do_connect_peer(
+									*pubkey,
+									peer_addr.clone(),
+									Arc::clone(&connect_pm),
+								).await;
+							}
+						}
 					}
-					std::task::Poll::Pending => {}
 				}
-				// Avoid blocking the tokio context by sleeping a bit
-				match peer_manager.get_peer_node_ids().iter().find(|id| **id == pubkey) {
-					Some(_) => break,
-					None => tokio::time::sleep(Duration::from_millis(10)).await,
-				}
+				Err(e) => println!("ERROR: errored reading channel peer info from disk: {:?}", e),
 			}
 		}
-		None => {
-			println!("ERROR: failed to connect to peer");
-			return Err(());
-		}
-	}
-	Ok(())
+	});
+
+	node
 }
 
 impl Node {
@@ -482,13 +469,13 @@ impl Node {
 			Network::Regtest => lightning_invoice::Currency::Regtest,
 			Network::Signet => lightning_invoice::Currency::Signet,
 		})
-		.payment_hash(payment_hash)
-		.payment_secret(payment_secret)
-		.description("lnrod invoice".to_string())
-		.amount_milli_satoshis(amt_msat)
-		.current_timestamp()
-		.min_final_cltv_expiry(MIN_FINAL_CLTV_EXPIRY as u64)
-		.payee_pub_key(our_node_pubkey);
+			.payment_hash(payment_hash)
+			.payment_secret(payment_secret)
+			.description("lnrod invoice".to_string())
+			.amount_milli_satoshis(amt_msat)
+			.current_timestamp()
+			.min_final_cltv_expiry(MIN_FINAL_CLTV_EXPIRY as u64)
+			.payee_pub_key(our_node_pubkey);
 
 		// Add route hints to the invoice.
 		let our_channels = self.channel_manager.list_usable_channels();
@@ -545,7 +532,7 @@ impl Node {
 			Ok(_payment_id) => {
 				let payee_pubkey = invoice.recover_payee_pub_key();
 				let amt_msat = invoice.amount_milli_satoshis().unwrap();
-				error!("EVENT: initiated sending {} msats to {}", amt_msat, payee_pubkey);
+				info!("EVENT: initiated sending {} msats to {}", amt_msat, payee_pubkey);
 				HTLCStatus::Pending
 			}
 			Err(PaymentError::Invoice(e)) => {
@@ -568,7 +555,87 @@ impl Node {
 		Ok(())
 	}
 
+	pub fn keysend_payment(&self, node_id: PublicKey, value_msat: u64) -> Result<(), String> {
+		let mut payment_preimage = PaymentPreimage([0; 32]);
+		thread_rng().fill_bytes(&mut payment_preimage.0);
+		let payment_hash = PaymentHash(Sha256::hash(&payment_preimage.0).into_inner());
+		let status = match self.payer.pay_pubkey(node_id, payment_preimage, value_msat, MIN_FINAL_CLTV_EXPIRY) {
+			Ok(_payment_id) => {
+				info!("initiated keysend of {} msat to {}", value_msat, node_id);
+				HTLCStatus::Pending
+			}
+			Err(PaymentError::Invoice(e)) => {
+				return Err(format!("ERROR: invalid invoice: {}", e));
+			}
+			Err(PaymentError::Routing(e)) => {
+				return Err(format!("ERROR: failed to find route: {:?}", e));
+			}
+			Err(PaymentError::Sending(e)) => {
+				error!("ERROR: failed to send payment: {:?}", e);
+				HTLCStatus::Failed
+			}
+		};
+		let mut payments = self.payment_info.lock().unwrap();
+		payments.insert(
+			payment_hash,
+			(None, HTLCDirection::Outbound, status, MilliSatoshiAmount(Some(value_msat))),
+		);
+		Ok(())
+	}
+
 	pub async fn blockchain_info(&self) -> BlockchainInfo {
 		self.bitcoind_client.get_blockchain_info().await
+	}
+
+	pub(crate) async fn connect_peer_if_necessary(
+		&self,
+		pubkey: PublicKey,
+		peer_addr: SocketAddr,
+		peer_manager: Arc<PeerManager>,
+	) -> Result<(), ()> {
+		for node_pubkey in peer_manager.get_peer_node_ids() {
+			if node_pubkey == pubkey {
+				return Ok(());
+			}
+		}
+
+		Self::do_connect_peer(pubkey, peer_addr, peer_manager).await?;
+
+		let peer_data_path = format!("{}/channel_peer_data", self.ldk_data_dir);
+		disk::persist_channel_peer(
+			Path::new(&peer_data_path),
+			pubkey,
+			peer_addr
+		).expect("disk write error");
+
+		Ok(())
+	}
+
+	async fn do_connect_peer(pubkey: PublicKey, peer_addr: SocketAddr, peer_manager: Arc<PeerManager>) -> Result<(), ()> {
+		match connect_outbound(Arc::clone(&peer_manager), pubkey, peer_addr).await
+		{
+			Some(connection_closed_future) => {
+				let mut connection_closed_future = Box::pin(connection_closed_future);
+				loop {
+					match futures::poll!(&mut connection_closed_future) {
+						std::task::Poll::Ready(_) => {
+							println!("ERROR: Peer disconnected before we finished the handshake");
+							return Err(());
+						}
+						std::task::Poll::Pending => {}
+					}
+					// Avoid blocking the tokio context by sleeping a bit
+					match peer_manager.get_peer_node_ids().iter().find(|id| **id == pubkey) {
+						Some(_) => break,
+						None => tokio::time::sleep(Duration::from_millis(10)).await,
+					}
+				}
+			}
+			None => {
+				warn!("failed to connect to peer {}", peer_addr);
+				return Err(());
+			}
+		}
+		Ok(())
 	}
 }

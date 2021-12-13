@@ -1,4 +1,7 @@
 use std::any::Any;
+use std::fs;
+use std::fs::File;
+use std::io::Write;
 
 use anyhow::Result;
 use bitcoin::hashes::sha256::Hash as Sha256;
@@ -16,7 +19,8 @@ use crate::signer::keys::{
 	DynSigner, InnerSign, KeysManager, PaymentSign, SignerFactory, SpendableKeysInterface,
 };
 use lightning::util::ser::Writeable;
-use std::time::Duration;
+use std::time::SystemTime;
+use rand::{Rng, thread_rng};
 
 pub struct InMemorySignerFactory {
 	seed: [u8; 32],
@@ -121,14 +125,32 @@ impl SignerFactory for InMemorySignerFactory {
 }
 
 pub(crate) fn make_signer(
-	seed: &[u8; 32], cur: Duration,
 	_network: Network,
+	ldk_data_dir: String,
 ) -> Box<dyn SpendableKeysInterface<Signer = DynSigner>> {
+	// The key seed that we use to derive the node privkey (that corresponds to the node pubkey) and
+	// other secret key material.
+	let cur = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap();
+	let keys_seed_path = format!("{}/keys_seed", ldk_data_dir.clone());
+	let seed = if let Ok(seed) = fs::read(keys_seed_path.clone()) {
+		assert_eq!(seed.len(), 32);
+		let mut key = [0; 32];
+		key.copy_from_slice(&seed);
+		key
+	} else {
+		let mut key = [0; 32];
+		thread_rng().fill_bytes(&mut key);
+		let mut f = File::create(keys_seed_path).unwrap();
+		f.write_all(&key).expect("Failed to write node keys seed to disk");
+		f.sync_all().expect("Failed to sync node keys seed to disk");
+		key
+	};
+
 	let manager = KeysManager::new(
 		&seed,
 		cur.as_secs(),
 		cur.subsec_nanos(),
-		InMemorySignerFactory::new(seed),
+		InMemorySignerFactory::new(&seed),
 	);
 	Box::new(manager)
 }
