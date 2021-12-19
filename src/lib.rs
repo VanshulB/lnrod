@@ -52,6 +52,7 @@ pub mod node;
 pub mod signer;
 pub mod util;
 pub mod tor;
+pub mod net;
 
 #[derive(PartialEq)]
 pub(crate) enum HTLCDirection {

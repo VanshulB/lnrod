@@ -49,6 +49,8 @@ jsonrpc-async = "2.0.1"
 serde = { version = "1.0.105", features = ["derive"] }
 torut = { version = "0.2.1", optional = true, default-features = false, features = ["control", "v3"] }
 tokio-socks = { version = "0.5.1", optional = true }
+# sub-dep of torut - 1.4 increases MSRV
+zeroize = { version = "=1.3.0", optional = true }
 regex = { version = "1.5.4", optional = true }
 
 [dependencies.lightning-signer-core]

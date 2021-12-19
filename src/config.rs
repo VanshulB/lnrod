@@ -15,6 +15,7 @@ pub struct Config {
 	pub log_level_console: Option<String>,
 	pub log_level_disk: Option<String>,
 	pub signer: Option<String>,
+	pub tor: Option<bool>,
 
 	pub channel: Option<ConfigChannel>,
 }

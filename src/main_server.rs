@@ -59,6 +59,7 @@ fn main() -> Result<()> {
 		)
 		.arg(Arg::new("regtest").long("regtest"))
 		.arg(Arg::new("signet").long("signet"))
+		.arg(Arg::new("tor").long("tor"))
 		.arg(
 			Arg::new("logleveldisk")
 				.about("logging level to disk")

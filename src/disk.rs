@@ -7,15 +7,19 @@ use lightning::chain::transaction::OutPoint;
 use lightning::util::ser::{Readable, Writeable, ReadableArgs};
 use lightning_signer::lightning;
 use std::collections::HashMap;
+use std::convert::TryInto;
+use std::fmt::{Display, Formatter};
 use std::fs;
 use std::fs::File;
 use std::io::{BufRead, BufReader, BufWriter, Cursor, Write};
-use std::net::{SocketAddr, ToSocketAddrs};
+use std::net::{IpAddr, SocketAddr};
 use std::path::Path;
+use std::str::FromStr;
 use std::sync::Arc;
 use std::time::Duration;
 use bitcoin::secp256k1::PublicKey;
 use log::error;
+use regex::Regex;
 use crate::{hex_utils, NetworkGraph};
 
 const MAX_CHANNEL_MONITOR_FILENAME_LENGTH: usize = 65;
@@ -117,26 +121,17 @@ pub(crate) fn start_network_graph_persister(network_graph_path: String, network_
 
 pub(crate) fn parse_peer_info(
 	peer_pubkey_and_ip_addr: String,
-) -> Result<(PublicKey, SocketAddr), std::io::Error> {
-	let mut pubkey_and_addr = peer_pubkey_and_ip_addr.split("@");
-	let pubkey = pubkey_and_addr.next();
-	let peer_addr_str = pubkey_and_addr.next();
-	if peer_addr_str.is_none() || peer_addr_str.is_none() {
-		return Err(std::io::Error::new(
+) -> Result<(PublicKey, HostAndPort), std::io::Error> {
+	let regex = Regex::new(r"^(.*)@(.*):(.*)$").expect("regex");
+	let caps = regex.captures(&peer_pubkey_and_ip_addr)
+		.ok_or(std::io::Error::new(
 			std::io::ErrorKind::Other,
 			"ERROR: incorrectly formatted peer info. Should be formatted as: `pubkey@host:port`",
-		));
-	}
-
-	let peer_addr = peer_addr_str.unwrap().to_socket_addrs().map(|mut r| r.next());
-	if peer_addr.is_err() || peer_addr.as_ref().unwrap().is_none() {
-		return Err(std::io::Error::new(
-			std::io::ErrorKind::Other,
-			"ERROR: couldn't parse pubkey@host:port into a socket address",
-		));
-	}
-
-	let pubkey = hex_utils::to_compressed_pubkey(pubkey.unwrap());
+		))?;
+	let pubkey_str = caps.get(1).expect("capture 1").as_str();
+	let host = caps.get(2).expect("capture 2").as_str();
+	let port = caps.get(3).expect("capture 3").as_str().parse().expect("port integer");
+	let pubkey = hex_utils::to_compressed_pubkey(pubkey_str);
 	if pubkey.is_none() {
 		return Err(std::io::Error::new(
 			std::io::ErrorKind::Other,
@@ -144,17 +139,53 @@ pub(crate) fn parse_peer_info(
 		));
 	}
 
-	Ok((pubkey.unwrap(), peer_addr.unwrap().unwrap()))
+	Ok((pubkey.unwrap(), HostAndPort(host.to_string(), port)))
 }
 
-pub(crate) fn persist_channel_peer(path: &Path, pubkey: PublicKey, addr: SocketAddr) -> std::io::Result<()> {
+pub(crate) fn persist_channel_peer(path: &Path, pubkey: PublicKey, addr: HostAndPort) -> std::io::Result<()> {
 	let mut file = fs::OpenOptions::new().create(true).append(true).open(path)?;
-	file.write_all(format!("{}@{}\n", pubkey, addr).as_bytes())
+	file.write_all(format!("{}@{}:{}\n", pubkey, addr.0, addr.1).as_bytes())
+}
+
+#[derive(Clone)]
+pub struct HostAndPort(pub String, pub u16);
+
+impl Display for HostAndPort {
+	fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+		f.write_str(&self.0)?;
+		f.write_str(":")?;
+		f.write_str(&self.1.to_string())?;
+		Ok(())
+	}
+}
+
+impl FromStr for HostAndPort {
+	type Err = std::io::Error;
+
+	fn from_str(s: &str) -> core::result::Result<Self, Self::Err> {
+		let regex = Regex::new(r"^(.*):(.*)$").expect("regex");
+		let captures = regex.captures(s)
+			.ok_or(std::io::Error::new(std::io::ErrorKind::Other, "invalid host:port"))?;
+
+		let host = captures.get(1).unwrap().as_str().to_string();
+		let port = captures.get(2).unwrap().as_str().parse().expect("port numeric");
+		Ok(HostAndPort(host, port))
+	}
+}
+
+impl TryInto<SocketAddr> for HostAndPort {
+	type Error = std::io::Error;
+
+	fn try_into(self) -> core::result::Result<SocketAddr, Self::Error> {
+		let ip: IpAddr = self.0.parse()
+			.map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+		Ok(SocketAddr::from((ip, self.1)))
+	}
 }
 
 pub(crate) fn read_channel_peer_data(
 	path: &Path,
-) -> Result<HashMap<PublicKey, SocketAddr>, std::io::Error> {
+) -> Result<HashMap<PublicKey, HostAndPort>, std::io::Error> {
 	let mut peer_data = HashMap::new();
 	if !Path::new(&path).exists() {
 		return Ok(HashMap::new());
