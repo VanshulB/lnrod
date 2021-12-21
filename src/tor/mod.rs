@@ -40,6 +40,12 @@ pub struct TorManager {
 }
 
 impl TorManager {
+	/// Whether tor was ever used with this node
+	pub fn is_configured(data_dir_prefix: &Path) -> bool {
+		let data_dir = data_dir_prefix.join("tor");
+		data_dir.exists()
+	}
+
 	pub async fn start(data_dir_prefix: &Path) -> Self {
 		let data_dir = data_dir_prefix.join("tor");
 

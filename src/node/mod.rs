@@ -407,12 +407,16 @@ async fn build_with_signer(
 	});
 
 	let (connector, network_controller) = if args.tor {
+		info!("Starting Tor");
 		let tor_manager = TorManager::start(Path::new(&ldk_data_dir)).await;
 		let connector = Arc::new(Connector { tor: Some(tor_manager.get_connector()) });
 		(connector, NetworkController {
 			tor: Some(tor_manager)
 		})
 	} else {
+		if TorManager::is_configured(Path::new(&ldk_data_dir)) {
+			panic!("Tor was previously configured, refusing to start without --tor.  Remove the `tor` directory in {} if you really want to expose your IP.", ldk_data_dir);
+		}
 		(Arc::new(Connector { tor: None }), NetworkController { tor: None })
 	};
 
