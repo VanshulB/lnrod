@@ -282,7 +282,7 @@ impl Admin for AdminHandler {
 
 #[tokio::main]
 pub async fn start(rpc_port: u16, args: NodeBuildArgs) -> Result<(), Box<dyn std::error::Error>> {
-	let node = build_node(args.clone()).await;
+	let (node, _network_controller) = build_node(args.clone()).await;
 	let node_id =
 		PublicKey::from_secret_key(&Secp256k1::new(), &node.keys_manager.get_node_secret());
 
@@ -295,5 +295,6 @@ pub async fn start(rpc_port: u16, args: NodeBuildArgs) -> Result<(), Box<dyn std
 	let handler = AdminHandler::new(node);
 	info!("starting server");
 	Server::builder().add_service(AdminServer::new(handler)).serve(addr).await?;
+	info!("stopping server");
 	Ok(())
 }

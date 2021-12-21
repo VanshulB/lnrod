@@ -1,12 +1,11 @@
 use std::cmp;
 use std::collections::HashMap;
 use std::fs;
-use std::net::SocketAddr;
 use std::path::Path;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use log::{self, error, info, warn};
+use log::{self, error, info};
 
 use anyhow::Result;
 use bitcoin::blockdata::constants::genesis_block;
@@ -36,7 +35,7 @@ use lightning_block_sync::{init, poll, SpvClient, UnboundedCache};
 use lightning_invoice::{Invoice, payment};
 use lightning_invoice::payment::PaymentError;
 use lightning_invoice::utils::DefaultRouter;
-use lightning_net_tokio::{connect_outbound, setup_inbound};
+use lightning_net_tokio::setup_inbound;
 use lightning_persister::FilesystemPersister;
 use rand::{Rng, thread_rng};
 use tokio::runtime::Handle;
@@ -49,7 +48,10 @@ use crate::logadapter::LoggerAdapter;
 use crate::signer::get_keys_manager;
 use crate::signer::keys::DynKeysInterface;
 use crate::{disk, handle_ldk_events, ArcChainMonitor, ChannelManager, HTLCDirection, HTLCStatus, MilliSatoshiAmount, PaymentInfoStorage, PeerManager, IgnoringMessageHandler, Sha256};
+use crate::disk::HostAndPort;
 use crate::lightning::routing::router::RouteHint;
+use crate::net::Connector;
+use crate::tor::TorManager;
 
 #[derive(Clone)]
 pub struct NodeBuildArgs {
@@ -63,6 +65,10 @@ pub struct NodeBuildArgs {
 	pub disk_log_level: log::LevelFilter,
 	pub console_log_level: log::LevelFilter,
 	pub signer_name: String,
+	/// Whether to turn on Tor support
+	pub tor: bool,
+	/// p2p announcement name for this node
+	pub name: Option<String>,
 	pub config: Config,
 }
 
@@ -114,9 +120,15 @@ pub(crate) struct Node {
 	pub(crate) network: Network,
 	pub(crate) background_processor: BackgroundProcessor,
 	pub(crate) chain_monitor: Arc<ArcChainMonitor>,
+	pub(crate) connector: Arc<Connector>,
 }
 
-pub(crate) async fn build_node(args: NodeBuildArgs) -> Node {
+pub(crate) struct NetworkController {
+	#[allow(unused)]
+	tor: Option<TorManager>
+}
+
+pub(crate) async fn build_node(args: NodeBuildArgs) -> (Node, NetworkController) {
 	// Initialize the LDK data directory if necessary.
 	let ldk_data_dir = args.storage_dir_path.clone();
 	fs::create_dir_all(ldk_data_dir.clone()).unwrap();
@@ -144,7 +156,7 @@ pub(crate) async fn build_node(args: NodeBuildArgs) -> Node {
 
 async fn build_with_signer(
 	keys_manager: Arc<DynKeysInterface>, args: NodeBuildArgs, ldk_data_dir: String,
-) -> Node {
+) -> (Node, NetworkController) {
 	// Initialize our bitcoind client.
 	let mut bitcoind_client = BitcoindClient::new(
 		args.bitcoind_rpc_host.clone(),
@@ -394,8 +406,25 @@ async fn build_with_signer(
 		}
 	});
 
+	let (connector, network_controller) = if args.tor {
+		info!("Starting Tor");
+		let tor_manager = TorManager::start(Path::new(&ldk_data_dir)).await;
+		let connector = Arc::new(Connector { tor: Some(tor_manager.get_connector()) });
+		(connector, NetworkController {
+			tor: Some(tor_manager)
+		})
+	} else {
+		if TorManager::is_configured(Path::new(&ldk_data_dir)) {
+			panic!("Tor was previously configured, refusing to start without --tor.  Remove the `tor` directory in {} if you really want to expose your IP.", ldk_data_dir);
+		}
+		(Arc::new(Connector { tor: None }), NetworkController { tor: None })
+	};
+
+	// These are clones for the reconnect thread below
 	let connect_cm = Arc::clone(&channel_manager);
 	let connect_pm = Arc::clone(&peer_manager);
+	let connect_connector = Arc::clone(&connector);
+
 	let peer_data_path = format!("{}/channel_peer_data", ldk_data_dir.clone());
 
 	let node = Node {
@@ -409,10 +438,11 @@ async fn build_with_signer(
 		network: args.network,
 		background_processor,
 		chain_monitor,
+		connector,
 	};
 
 	tokio::spawn(async move {
-		let mut interval = tokio::time::interval(Duration::from_secs(1));
+		let mut interval = tokio::time::interval(Duration::from_secs(5));
 		loop {
 			interval.tick().await;
 			match disk::read_channel_peer_data(Path::new(&peer_data_path)) {
@@ -427,7 +457,7 @@ async fn build_with_signer(
 						for (pubkey, peer_addr) in info.iter() {
 							if *pubkey == node_id {
 								// ignore errors, we'll retry later and there's logging in do_connect_peer
-								let _ = Node::do_connect_peer(
+								let _ = connect_connector.do_connect_peer(
 									*pubkey,
 									peer_addr.clone(),
 									Arc::clone(&connect_pm),
@@ -441,7 +471,7 @@ async fn build_with_signer(
 		}
 	});
 
-	node
+	(node, network_controller)
 }
 
 impl Node {
@@ -590,7 +620,7 @@ impl Node {
 	pub(crate) async fn connect_peer_if_necessary(
 		&self,
 		pubkey: PublicKey,
-		peer_addr: SocketAddr,
+		peer_addr: HostAndPort,
 		peer_manager: Arc<PeerManager>,
 	) -> Result<(), ()> {
 		for node_pubkey in peer_manager.get_peer_node_ids() {
@@ -599,7 +629,7 @@ impl Node {
 			}
 		}
 
-		Self::do_connect_peer(pubkey, peer_addr, peer_manager).await?;
+		self.connector.do_connect_peer(pubkey, peer_addr.clone(), peer_manager).await?;
 
 		let peer_data_path = format!("{}/channel_peer_data", self.ldk_data_dir);
 		disk::persist_channel_peer(
@@ -608,34 +638,6 @@ impl Node {
 			peer_addr
 		).expect("disk write error");
 
-		Ok(())
-	}
-
-	async fn do_connect_peer(pubkey: PublicKey, peer_addr: SocketAddr, peer_manager: Arc<PeerManager>) -> Result<(), ()> {
-		match connect_outbound(Arc::clone(&peer_manager), pubkey, peer_addr).await
-		{
-			Some(connection_closed_future) => {
-				let mut connection_closed_future = Box::pin(connection_closed_future);
-				loop {
-					match futures::poll!(&mut connection_closed_future) {
-						std::task::Poll::Ready(_) => {
-							println!("ERROR: Peer disconnected before we finished the handshake");
-							return Err(());
-						}
-						std::task::Poll::Pending => {}
-					}
-					// Avoid blocking the tokio context by sleeping a bit
-					match peer_manager.get_peer_node_ids().iter().find(|id| **id == pubkey) {
-						Some(_) => break,
-						None => tokio::time::sleep(Duration::from_millis(10)).await,
-					}
-				}
-			}
-			None => {
-				warn!("failed to connect to peer {}", peer_addr);
-				return Err(());
-			}
-		}
 		Ok(())
 	}
 }
