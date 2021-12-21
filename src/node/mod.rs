@@ -65,6 +65,10 @@ pub struct NodeBuildArgs {
 	pub disk_log_level: log::LevelFilter,
 	pub console_log_level: log::LevelFilter,
 	pub signer_name: String,
+	/// Whether to turn on Tor support
+	pub tor: bool,
+	/// p2p announcement name for this node
+	pub name: Option<String>,
 	pub config: Config,
 }
 
@@ -402,7 +406,7 @@ async fn build_with_signer(
 		}
 	});
 
-	let (connector, network_controller) = if args.config.tor.unwrap_or(false) {
+	let (connector, network_controller) = if args.tor {
 		let tor_manager = TorManager::start(Path::new(&ldk_data_dir)).await;
 		let connector = Arc::new(Connector { tor: Some(tor_manager.get_connector()) });
 		(connector, NetworkController {

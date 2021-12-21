@@ -60,6 +60,10 @@ fn main() -> Result<()> {
 		.arg(Arg::new("regtest").long("regtest"))
 		.arg(Arg::new("signet").long("signet"))
 		.arg(Arg::new("tor").long("tor"))
+		.arg(Arg::new("name").long("name").takes_value(true)
+			.about("node name for p2p announcements, up to 32 bytes")
+			.validator(|v| if v.len() <= 32 { Ok(()) } else { Err("more than 32 bytes long") })
+		)
 		.arg(
 			Arg::new("logleveldisk")
 				.about("logging level to disk")
@@ -132,6 +136,9 @@ fn main() -> Result<()> {
 
 	let signer_name = arg_value_or_config("signer", &matches, &config.signer);
 
+	let tor = arg_value_or_config_bool("tor", &matches, &config.tor);
+	let name = maybe_arg_value_or_config("name", &matches, &config.name);
+
 	let args = NodeBuildArgs {
 		bitcoind_rpc_username: bitcoin_url.username().to_string(),
 		bitcoind_rpc_password: bitcoin_url.password().expect("password").to_string(),
@@ -143,6 +150,8 @@ fn main() -> Result<()> {
 		disk_log_level,
 		console_log_level,
 		signer_name,
+		tor,
+		name,
 		config,
 	};
 
@@ -157,11 +166,32 @@ where
 	<T as FromStr>::Err: std::fmt::Display,
 {
 	let arg = matches.value_of_t_or_exit(name);
-	if matches.occurrences_of("datadir") > 0 {
+	if matches.occurrences_of(name) > 0 {
 		arg
 	} else {
 		config_value.clone().unwrap_or(arg)
 	}
+}
+
+fn arg_value_or_config_bool(
+	name: &str, matches: &ArgMatches, config_value: &Option<bool>,
+) -> bool
+{
+	if matches.occurrences_of(name) > 0 {
+		true
+	} else {
+		config_value.clone().unwrap_or(false)
+	}
+}
+
+fn maybe_arg_value_or_config<T: Clone + FromStr>(
+	name: &str, matches: &ArgMatches, config_value: &Option<T>,
+) -> Option<T>
+	where
+		<T as FromStr>::Err: std::fmt::Display,
+{
+	matches.value_of_t(name).ok()
+		.or_else(|| config_value.clone())
 }
 
 fn get_config(matches: &ArgMatches, config_path: &String) -> Config {
