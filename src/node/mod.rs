@@ -5,7 +5,7 @@ use std::path::Path;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use log::{self, error, info};
+use log::{self, *};
 
 use anyhow::Result;
 use bitcoin::blockdata::constants::genesis_block;
@@ -17,6 +17,7 @@ use lightning::chain;
 use lightning::chain::chainmonitor::ChainMonitor;
 use lightning::chain::keysinterface::KeysInterface;
 use lightning::chain::Watch;
+use lightning::ln::msgs::NetAddress;
 use lightning::ln::channelmanager::{
 	ChainParameters, ChannelManagerReadArgs, MIN_FINAL_CLTV_EXPIRY,
 };
@@ -29,6 +30,7 @@ use lightning::routing::router::RouteHintHop;
 use lightning::routing::network_graph::NetworkGraph;
 use lightning::routing::scoring::Scorer;
 use lightning::util::events::{Event, EventHandler};
+use lightning::routing::router::RouteHint;
 use lightning_background_processor::BackgroundProcessor;
 use lightning_signer::lightning;
 use lightning_block_sync::{init, poll, SpvClient, UnboundedCache};
@@ -49,7 +51,6 @@ use crate::signer::get_keys_manager;
 use crate::signer::keys::DynKeysInterface;
 use crate::{disk, handle_ldk_events, ArcChainMonitor, ChannelManager, HTLCDirection, HTLCStatus, MilliSatoshiAmount, PaymentInfoStorage, PeerManager, IgnoringMessageHandler, Sha256};
 use crate::disk::HostAndPort;
-use crate::lightning::routing::router::RouteHint;
 use crate::net::Connector;
 use crate::tor::TorManager;
 
@@ -408,11 +409,7 @@ async fn build_with_signer(
 
 	let (connector, network_controller) = if args.tor {
 		info!("Starting Tor");
-		let tor_manager = TorManager::start(Path::new(&ldk_data_dir)).await;
-		let connector = Arc::new(Connector { tor: Some(tor_manager.get_connector()) });
-		(connector, NetworkController {
-			tor: Some(tor_manager)
-		})
+		setup_tor(&ldk_data_dir, args.name, listening_port, Arc::clone(&channel_manager)).await
 	} else {
 		if TorManager::is_configured(Path::new(&ldk_data_dir)) {
 			panic!("Tor was previously configured, refusing to start without --tor.  Remove the `tor` directory in {} if you really want to expose your IP.", ldk_data_dir);
@@ -472,6 +469,57 @@ async fn build_with_signer(
 	});
 
 	(node, network_controller)
+}
+
+async fn setup_tor(ldk_data_dir: &String, node_name_opt: Option<String>, listening_port: u16, channel_manager: Arc<ChannelManager>) -> (Arc<Connector>, NetworkController) {
+	let tor_manager = TorManager::start(Path::new(&ldk_data_dir)).await;
+	let connector = Arc::new(Connector { tor: Some(tor_manager.get_connector()) });
+
+	if let Some(node_name) = node_name_opt {
+		let onion_address = tor_manager.init_service(listening_port).await;
+
+		// TODO: consider LDK comment replicated below:
+		// In a production environment, this should occur only after the announcement of new channels
+		// to avoid churn in the global network graph.
+		let chan_manager = Arc::clone(&channel_manager);
+		tokio::spawn(async move {
+			let mut interval = tokio::time::interval(Duration::from_secs(60));
+			let mut alias = [0; 32];
+			alias[..node_name.len()].copy_from_slice(node_name.as_bytes());
+
+			let raw_address = onion_address.get_raw_bytes();
+			let mut pubkey = [0u8; 32];
+			let mut checksum = [0u8; 2];
+			pubkey.clone_from_slice(&raw_address[0..32]);
+			checksum.clone_from_slice(&raw_address[32..34]);
+			let version = raw_address[34];
+			assert_eq!(version, 3);
+
+			let ldk_onion_address =
+				NetAddress::OnionV3 {
+					ed25519_pubkey: pubkey,
+					checksum: u16::from_be_bytes(checksum),
+					version: 3,
+					port: listening_port
+				};
+
+			loop {
+				interval.tick().await;
+				info!("broadcasting node announcement as {} with {}:{}", node_name, onion_address, listening_port);
+				chan_manager.broadcast_node_announcement(
+					[0; 3],
+					alias,
+					vec![ldk_onion_address.clone()],
+				);
+			}
+		});
+	}
+
+	let network_controller = NetworkController {
+		tor: Some(tor_manager)
+	};
+
+	(connector, network_controller)
 }
 
 impl Node {
