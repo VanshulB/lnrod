@@ -141,7 +141,7 @@ fn main() -> Result<()> {
 
 	let args = NodeBuildArgs {
 		bitcoind_rpc_username: bitcoin_url.username().to_string(),
-		bitcoind_rpc_password: bitcoin_url.password().expect("password").to_string(),
+		bitcoind_rpc_password: bitcoin_url.password().unwrap_or("").to_string(),
 		bitcoind_rpc_host: bitcoin_url.host_str().expect("host").to_string(),
 		bitcoind_rpc_port: bitcoin_url.port().expect("port"),
 		storage_dir_path: data_dir,

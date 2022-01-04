@@ -1,7 +1,8 @@
-use std::cmp;
+use std::{cmp, env};
 use std::collections::HashMap;
 use std::fs;
-use std::path::Path;
+use std::fs::read_to_string;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -155,15 +156,42 @@ pub(crate) async fn build_node(args: NodeBuildArgs) -> (Node, NetworkController)
 	build_with_signer(keys_manager, args, ldk_data_dir).await
 }
 
+fn bitcoin_network_path(base_path: PathBuf, network: Network) -> PathBuf {
+	match network {
+		Network::Bitcoin => base_path,
+		Network::Testnet => base_path.join("testnet3"),
+		Network::Signet => base_path.join("signet"),
+		Network::Regtest => base_path.join("regtest"),
+	}
+}
+
+fn bitcoin_rpc_cookie(network: Network) -> (String, String) {
+	let home = env::var("HOME").expect("cannot get cookie file if HOME is not set");
+	let bitcoin_path = Path::new(&home).join(".bitcoin");
+	let bitcoin_net_path = bitcoin_network_path(bitcoin_path, network);
+	let cookie_path = bitcoin_net_path.join("cookie");
+	info!("auth to bitcoind via cookie {}", cookie_path.to_string_lossy());
+	let cookie_contents = read_to_string(cookie_path).expect("cookie file read");
+	let mut iter = cookie_contents.splitn(2, ":");
+	(iter.next().expect("cookie user").to_string(), iter.next().expect("cookie pass").to_string())
+}
+
 async fn build_with_signer(
 	keys_manager: Arc<DynKeysInterface>, args: NodeBuildArgs, ldk_data_dir: String,
 ) -> (Node, NetworkController) {
 	// Initialize our bitcoind client.
+	let (user, pass) =
+		if args.bitcoind_rpc_username.is_empty() {
+			// try to get from cookie file
+			bitcoin_rpc_cookie(args.network)
+		} else {
+			(args.bitcoind_rpc_username.clone(), args.bitcoind_rpc_password.clone())
+		};
 	let mut bitcoind_client = BitcoindClient::new(
 		args.bitcoind_rpc_host.clone(),
 		args.bitcoind_rpc_port,
-		args.bitcoind_rpc_username.clone(),
-		args.bitcoind_rpc_password.clone(),
+		user,
+		pass,
 	)
 	.await
 	.unwrap_or_else(|e| panic!("Failed to connect to bitcoind client: {}", e));
