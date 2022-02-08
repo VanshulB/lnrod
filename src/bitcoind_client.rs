@@ -92,6 +92,8 @@ impl BitcoindClient {
 			queued_transactions: Arc::new(Mutex::new(Vec::new())),
 			lastest_tip: BlockHash::default(),
 		};
+		// Fast fail if any connectivity issue
+		client.get_blockchain_info().await;
 		Ok(client)
 	}
 
