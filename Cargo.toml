@@ -45,7 +45,7 @@ clap = "3.0.0-beta.2"
 toml = "0.5.8"
 url = "2.2"
 
-jsonrpc-async = "2.0.1"
+jsonrpc-async = "2.0.2"
 serde = { version = "1.0.105", features = ["derive"] }
 torut = { version = "0.2.1", optional = true, default-features = false, features = ["control", "v3"] }
 tokio-socks = { version = "0.5.1", optional = true }
