@@ -43,6 +43,7 @@ use lightning_persister::FilesystemPersister;
 use rand::{Rng, thread_rng};
 use tokio::runtime::Handle;
 
+use crate::lightning_invoice;
 use crate::bitcoind_client::BitcoindClient;
 use crate::config::Config;
 use crate::convert::BlockchainInfo;

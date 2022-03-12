@@ -8,6 +8,8 @@ use lightning::chain::keysinterface::{
 	StaticPaymentOutputDescriptor,
 };
 use lightning::ln::msgs::DecodeError;
+use lightning::ln::script::ShutdownScript;
+use lightning::util::ser::Writeable;
 use lightning_signer::lightning;
 use lightning_signer::node::NodeConfig;
 use lightning_signer::signer::multi_signer::MultiSigner;
@@ -17,11 +19,12 @@ use std::any::Any;
 use std::fs;
 use std::str::FromStr;
 use std::sync::Arc;
+use bitcoin::bech32::u5;
+use lightning_signer::policy::simple_validator::SimpleValidatorFactory;
 use lightning_signer_server::persist::persist_json::KVJsonPersister;
 use log::info;
+use crate::chain::keysinterface::KeyMaterial;
 use crate::hex_utils;
-use crate::lightning::ln::script::ShutdownScript;
-use crate::lightning::util::ser::Writeable;
 
 struct Adapter {
 	inner: LoopbackSignerKeysInterface,
@@ -89,8 +92,12 @@ impl KeysInterface for Adapter {
 		Ok(DynSigner { inner: Box::new(inner)})
 	}
 
-	fn sign_invoice(&self, _invoice_preimage: Vec<u8>) -> Result<RecoverableSignature, ()> {
-		unimplemented!()
+	fn sign_invoice(&self, hrp_bytes: &[u8], invoice_data: &[u5]) -> Result<RecoverableSignature, ()> {
+		self.inner.sign_invoice(hrp_bytes, invoice_data)
+	}
+
+	fn get_inbound_payment_key_material(&self) -> KeyMaterial {
+		self.inner.get_inbound_payment_key_material()
 	}
 }
 
@@ -128,7 +135,8 @@ pub(crate) fn make_signer(network: Network, ldk_data_dir: String) -> Box<dyn Spe
 	let signer_path = format!("{}/signer", ldk_data_dir);
 	let persister = Arc::new(KVJsonPersister::new(&signer_path));
 	// FIXME use Node directly - requires rework of LoopbackSignerKeysInterface in the rls crate
-	let signer = MultiSigner::new_with_persister(persister, false, vec![]);
+	let validator_factory = Arc::new(SimpleValidatorFactory::new());
+	let signer = MultiSigner::new_with_persister(persister, false, vec![], validator_factory);
 	if let Ok(node_id_hex) = fs::read_to_string(node_id_path.clone()) {
 		let node_id = PublicKey::from_str(&node_id_hex).unwrap();
 		assert!(signer.get_node(&node_id).is_ok());

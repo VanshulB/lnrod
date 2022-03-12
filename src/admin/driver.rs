@@ -14,6 +14,7 @@ use lightning::chain::channelmonitor::Balance;
 use lightning::util::config::UserConfig;
 use lightning_signer::lightning;
 use lightning_invoice::Invoice;
+use crate::lightning_invoice;
 
 use crate::admin::admin_api::{
 	Channel, ChannelCloseRequest, ChannelNewReply, ChannelNewRequest, InvoiceNewReply,

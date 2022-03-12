@@ -20,19 +20,20 @@ use lightning::chain::Filter;
 use lightning::ln::channelmanager::ChannelManager as RLChannelManager;
 use lightning::ln::peer_handler::PeerManager as RLPeerManager;
 use lightning::ln::{PaymentHash, PaymentPreimage};
+use lightning::ln::peer_handler::IgnoringMessageHandler;
+use lightning::routing::network_graph::NetworkGraph;
 use lightning::routing::network_graph::NetGraphMsgHandler;
 use lightning::util::events::Event;
 use lightning_net_tokio::SocketDescriptor;
 use lightning_persister::FilesystemPersister;
 use lightning_signer::lightning;
+use lightning_signer::lightning_invoice;
 use rand::{thread_rng, Rng};
 
 use signer::keys::{DynKeysInterface, DynSigner, SpendableKeysInterface};
 
-use crate::bitcoind_client::BitcoindClient;
-use crate::lightning::ln::peer_handler::IgnoringMessageHandler;
-use crate::lightning::routing::network_graph::NetworkGraph;
-use crate::logadapter::LoggerAdapter;
+use bitcoind_client::BitcoindClient;
+use logadapter::LoggerAdapter;
 
 #[macro_use]
 #[allow(unused_macros)]
@@ -288,7 +289,17 @@ async fn handle_ldk_events(
 		Event::ChannelClosed { channel_id, reason, .. } => {
 			info!("EVENT: Channel {} closed due to {}", hex_utils::hex_str(&channel_id), reason);
 		}
-		Event::DiscardFunding { .. } => {}
+		Event::DiscardFunding { .. } => {
+			info!("EVENT: discard funding")
+		}
+		Event::PaymentFailed { payment_hash, .. } => {
+			error!("EVENT: payment failed to payment hash {:?}",
+				hex_utils::hex_str(&payment_hash.0));
+		}
+		Event::PaymentPathSuccessful { payment_hash, .. } => {
+			info!("EVENT: payment path successful for payment hash {:?}",
+				payment_hash.map(|p| hex_utils::hex_str(&p.0)));
+		}
 	}
 }
 

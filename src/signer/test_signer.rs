@@ -25,12 +25,7 @@ use rand::{Rng, thread_rng};
 pub struct InMemorySignerFactory {
 	seed: [u8; 32],
 	secp_ctx: Secp256k1<All>,
-}
-
-impl InMemorySignerFactory {
-	pub fn new(seed: &[u8; 32]) -> Self {
-		InMemorySignerFactory { seed: seed.clone(), secp_ctx: Secp256k1::new() }
-	}
+	node_secret: SecretKey,
 }
 
 impl PaymentSign for InMemorySigner {
@@ -110,6 +105,7 @@ impl SignerFactory for InMemorySignerFactory {
 
 		let signer = InMemorySigner::new(
 			&self.secp_ctx,
+			self.node_secret,
 			funding_key,
 			revocation_base_key,
 			payment_key,
@@ -121,6 +117,10 @@ impl SignerFactory for InMemorySignerFactory {
 		);
 
 		DynSigner { inner: Box::new(signer) }
+	}
+
+	fn new(seed: &[u8; 32], node_secret: SecretKey) -> Self {
+		InMemorySignerFactory { seed: seed.clone(), secp_ctx: Secp256k1::new(), node_secret }
 	}
 }
 
@@ -146,11 +146,10 @@ pub(crate) fn make_signer(
 		key
 	};
 
-	let manager = KeysManager::new(
+	let manager: KeysManager<InMemorySignerFactory> = KeysManager::new(
 		&seed,
 		cur.as_secs(),
-		cur.subsec_nanos(),
-		InMemorySignerFactory::new(&seed),
+		cur.subsec_nanos()
 	);
 	Box::new(manager)
 }
