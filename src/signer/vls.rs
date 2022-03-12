@@ -1,3 +1,5 @@
+//! Validating Lightning Signer integration
+
 use crate::signer::keys::{DynSigner, InnerSign, PaymentSign, SpendableKeysInterface};
 use anyhow::Result;
 use bitcoin::secp256k1::recovery::RecoverableSignature;
