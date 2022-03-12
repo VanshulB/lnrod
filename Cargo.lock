@@ -228,7 +228,6 @@ dependencies = [
 [[package]]
 name = "bitcoind-client"
 version = "0.1.0-5"
-source = "git+https://gitlab.com/lightning-signer/validating-lightning-signer.git?rev=d0619a22b5170b6c2709fa788cb3655769d6925f#d0619a22b5170b6c2709fa788cb3655769d6925f"
 dependencies = [
  "async-trait",
  "bitcoin",
@@ -1040,7 +1039,6 @@ dependencies = [
 [[package]]
 name = "lightning-signer-core"
 version = "0.1.0-5"
-source = "git+https://gitlab.com/lightning-signer/validating-lightning-signer.git?rev=d0619a22b5170b6c2709fa788cb3655769d6925f#d0619a22b5170b6c2709fa788cb3655769d6925f"
 dependencies = [
  "anyhow",
  "backtrace",
@@ -1059,7 +1057,6 @@ dependencies = [
 [[package]]
 name = "lightning-signer-server"
 version = "0.1.0-5"
-source = "git+https://gitlab.com/lightning-signer/validating-lightning-signer.git?rev=d0619a22b5170b6c2709fa788cb3655769d6925f#d0619a22b5170b6c2709fa788cb3655769d6925f"
 dependencies = [
  "anyhow",
  "backtrace",

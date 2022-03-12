@@ -25,7 +25,7 @@ EXPECTED_FEE_SAT = 1458
 PAYMENT_MSAT = 4_000_000  # FIXME 2_000_000 fails with dust limit policy violation
 SLEEP_ON_FAIL = False
 USE_RELEASE_BINARIES = False
-SIGNER = "vls"
+SIGNER = "vls-local"
 
 logger = logging.getLogger()
 

@@ -84,7 +84,7 @@ fn main() -> Result<()> {
 		)
 		.arg(
 			Arg::new("signer")
-				.about("signer name")
+				.about("signer name - use vls for a remote Validating Lightning Signer")
 				.long("signer")
 				.possible_values(&SIGNER_NAMES)
 				.default_value(SIGNER_NAMES[0])

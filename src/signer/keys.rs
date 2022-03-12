@@ -515,6 +515,12 @@ pub struct DynSigner {
 	pub inner: Box<dyn InnerSign>,
 }
 
+impl DynSigner {
+	pub(crate) fn new<S: InnerSign + 'static>(inner: S) -> Self {
+		DynSigner { inner: Box::new(inner) }
+	}
+}
+
 impl Sign for DynSigner {}
 
 impl Clone for DynSigner {
