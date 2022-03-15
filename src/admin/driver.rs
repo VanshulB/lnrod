@@ -281,7 +281,8 @@ impl Admin for AdminHandler {
 	}
 }
 
-#[tokio::main]
+// A small number of threads for debugging
+#[tokio::main(flavor = "multi_thread", worker_threads = 2)]
 pub async fn start(rpc_port: u16, args: NodeBuildArgs) -> Result<(), Box<dyn std::error::Error>> {
 	let (node, _network_controller) = build_node(args.clone()).await;
 	let node_id =
