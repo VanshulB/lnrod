@@ -10,6 +10,7 @@ pub struct Config {
 	pub signet: Option<bool>,
 	pub ln_port: Option<u16>,
 	pub rpc_port: Option<u16>,
+	pub vls_port: Option<u16>,
 	pub bitcoin_rpc: Option<String>,
 	pub data_dir: Option<String>,
 	pub log_level_console: Option<String>,

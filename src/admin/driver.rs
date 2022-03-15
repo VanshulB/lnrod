@@ -290,8 +290,8 @@ pub async fn start(rpc_port: u16, args: NodeBuildArgs) -> Result<(), Box<dyn std
 
 	info!("p2p {} 127.0.0.1:{}", node_id, args.peer_listening_port);
 	info!(
-		"admin port {}, datadir {}, signer {}",
-		rpc_port, args.storage_dir_path, args.signer_name
+		"admin port {}, datadir {}, signer {}, vls port {}",
+		rpc_port, args.storage_dir_path, args.signer_name, args.vls_port,
 	);
 	let addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), rpc_port);
 	let handler = AdminHandler::new(node);

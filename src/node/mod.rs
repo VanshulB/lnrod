@@ -73,6 +73,7 @@ pub struct NodeBuildArgs {
 	/// p2p announcement name for this node
 	pub name: Option<String>,
 	pub config: Config,
+	pub vls_port: u16,
 }
 
 type Router = DefaultRouter<Arc<NetworkGraph>, Arc<LoggerAdapter>>;
@@ -151,7 +152,7 @@ pub(crate) async fn build_node(args: NodeBuildArgs) -> (Node, NetworkController)
 	// Initialize the KeysManager
 
 	let manager =
-		get_keys_manager(args.signer_name.as_str(), args.network, ldk_data_dir.clone()).await.unwrap();
+		get_keys_manager(args.signer_name.as_str(), args.vls_port, args.network, ldk_data_dir.clone()).await.unwrap();
 	let keys_manager = Arc::new(DynKeysInterface::new(manager));
 
 	build_with_signer(keys_manager, args, ldk_data_dir).await

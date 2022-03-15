@@ -532,7 +532,12 @@ impl ClientSigner {
 	}
 }
 
-pub(crate) async fn make_remote_signer(network: Network, ldk_data_dir: String) -> Box<dyn SpendableKeysInterface<Signer = DynSigner>> {
+pub async fn connect(vls_port: u16) -> Result<SignerClient<transport::Channel>, Box<dyn std::error::Error>> {
+	let endpoint = format!("http://127.0.0.1:{}", vls_port);
+	Ok(SignerClient::connect(endpoint).await?)
+}
+
+pub(crate) async fn make_remote_signer(vls_port: u16, network: Network, ldk_data_dir: String) -> Box<dyn SpendableKeysInterface<Signer = DynSigner>> {
 	let node_id_path = format!("{}/node_id", ldk_data_dir);
 	let node_secret_path = format!("{}/node_secret", ldk_data_dir);
 
@@ -540,11 +545,11 @@ pub(crate) async fn make_remote_signer(network: Network, ldk_data_dir: String) -
 		let node_id = PublicKey::from_str(&node_id_hex).unwrap();
 		let node_secret_hex = fs::read_to_string(node_secret_path.clone()).expect("node secret");
 		let node_secret = SecretKey::from_str(&node_secret_hex).expect("node secret hex");
-		let client = connect().await.expect("connect");
+		let client = connect(vls_port).await.expect("connect");
 		let adapter = ClientAdapter::new(client, node_id, node_secret).await;
 		Box::new(adapter)
 	} else {
-		let mut client = connect().await.expect("connect VLS");
+		let mut client = connect(vls_port).await.expect("connect VLS");
 		let init_request = Request::new(InitRequest {
 			node_config: Some(NodeConfig { key_derivation_style: KeyDerivationStyle::Native as i32 }),
 			chainparams: Some(ChainParams { network_name: network.to_string() }),
