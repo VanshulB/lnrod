@@ -28,6 +28,7 @@ use crate::HTLCDirection;
 use super::admin_api::admin_server::{Admin, AdminServer};
 use super::admin_api::{ChannelListReply, NodeInfoReply, PingReply, PingRequest, Void};
 use bitcoin::Address;
+use tokio::runtime::Builder;
 
 struct AdminHandler {
 	node: Node,
@@ -282,8 +283,17 @@ impl Admin for AdminHandler {
 }
 
 // A small number of threads for debugging
-#[tokio::main(flavor = "multi_thread", worker_threads = 2)]
-pub async fn start(rpc_port: u16, args: NodeBuildArgs) -> Result<(), Box<dyn std::error::Error>> {
+pub fn start(rpc_port: u16, args: NodeBuildArgs) -> Result<(), Box<dyn std::error::Error>> {
+	let runtime = std::thread::spawn(|| {
+		Builder::new_multi_thread().enable_all()
+			.thread_name("main")
+			.worker_threads(2) // for debugging
+			.build()
+	}).join().expect("runtime join").expect("runtime");
+	runtime.block_on(do_start(rpc_port, args))
+}
+
+pub async fn do_start(rpc_port: u16, args: NodeBuildArgs) -> Result<(), Box<dyn std::error::Error>> {
 	let (node, _network_controller) = build_node(args.clone()).await;
 	let node_id =
 		PublicKey::from_secret_key(&Secp256k1::new(), &node.keys_manager.get_node_secret());

@@ -4,6 +4,8 @@ import logging
 import os
 import signal
 import subprocess
+
+import sys
 import time
 from shutil import rmtree
 from subprocess import Popen

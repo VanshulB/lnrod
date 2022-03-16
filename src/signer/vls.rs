@@ -2,9 +2,9 @@
 
 use crate::signer::keys::{DynSigner, InnerSign, PaymentSign, SpendableKeysInterface};
 use anyhow::Result;
-use bitcoin::secp256k1::recovery::{RecoverableSignature, RecoveryId};
+use bitcoin::secp256k1::recovery::RecoverableSignature;
 use bitcoin::secp256k1::{All, PublicKey, Secp256k1, SecretKey, Signature};
-use bitcoin::{Address, Network, Script, Transaction, TxOut, WPubkeyHash};
+use bitcoin::{Address, Network, Script, SigHashType, Transaction, TxOut, WPubkeyHash};
 use bitcoin::bech32::u5;
 use bitcoin::hashes::Hash;
 use bitcoin::util::bip32::{ChildNumber, ExtendedPubKey};
@@ -25,26 +25,23 @@ use lightning_signer::util::loopback::{LoopbackChannelSigner, LoopbackSignerKeys
 use std::any::Any;
 use std::convert::TryFrom;
 use std::fs;
-use std::future::Future;
 use std::io::Error;
 use std::str::FromStr;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, MutexGuard};
 use std::result::Result as StdResult;
-use std::thread::current;
 use bitcoin::hashes::hex::ToHex;
 use lightning_signer::channel::ChannelId;
 use lightning_signer::policy::simple_validator::SimpleValidatorFactory;
+use lightning_signer::util::crypto_utils::bitcoin_vec_to_signature;
 use lightning_signer::util::INITIAL_COMMITMENT_NUMBER;
 use lightning_signer_server::persist::persist_json::KVJsonPersister;
-use lightning_signer_server::server::remotesigner::{self, Basepoints, ChainParams, ChannelNonce, GetChannelBasepointsRequest, GetExtPubKeyRequest, GetPerCommitmentPointRequest, InitRequest, NewChannelRequest, NodeConfig, PingRequest, PubKey, ReadyChannelRequest, SignInvoiceRequest};
+use lightning_signer_server::server::remotesigner::{self, Basepoints, ChainParams, ChannelNonce, GetChannelBasepointsRequest, GetExtPubKeyRequest, GetPerCommitmentPointRequest, InitRequest, NewChannelRequest, NodeConfig, PingRequest, PubKey, ReadyChannelRequest, SignCounterpartyCommitmentTxPhase2Request, SignInvoiceRequest};
 use lightning_signer_server::server::remotesigner::ready_channel_request::CommitmentType;
 use lightning_signer_server::server::remotesigner::signer_client::SignerClient;
 use log::info;
 use rand::{Rng, thread_rng};
 use tokio::{runtime, task};
-use tokio::runtime::Builder;
-use tonic::{Request, transport};
-use tonic::transport::Channel;
+use tonic::{Request, Response, Status, transport};
 use crate::chain::keysinterface::KeyMaterial;
 use crate::{hex_utils, PaymentPreimage};
 use crate::lightning::ln::chan_utils::{ChannelPublicKeys, ChannelTransactionParameters, ClosingTransaction, CommitmentTransaction, HolderCommitmentTransaction, HTLCOutputInCommitment};
@@ -195,11 +192,76 @@ pub(crate) fn make_signer(network: Network, ldk_data_dir: String) -> Box<dyn Spe
 	}
 }
 
-struct ClientAdapter {
+#[derive(Clone)]
+struct ClientRunner {
 	#[allow(unused)]
-	runtime: runtime::Runtime,
+	runtime: Arc<runtime::Runtime>,
 	handle: runtime::Handle,
 	client: Arc<Mutex<SignerClient<transport::Channel>>>,
+}
+
+impl ClientRunner {
+	fn new(vls_port: u16) -> Self {
+		let runtime = std::thread::spawn(|| {
+			runtime::Builder::new_multi_thread().enable_all()
+				.thread_name("vls-client")
+				.worker_threads(2) // for debugging
+				.build()
+		}).join().expect("runtime join").expect("runtime");
+		let handle = runtime.handle().clone();
+		let join = tokio::runtime::Handle::current().spawn_blocking(move || {
+			runtime::Handle::current().block_on(connect(vls_port)).unwrap()
+		});
+		let client = task::block_in_place(|| {
+			runtime::Handle::current().block_on(join)
+		});
+
+		ClientRunner {
+			runtime: Arc::new(runtime),
+			handle,
+			client: Arc::new(Mutex::new(client.unwrap())),
+		}
+	}
+
+	pub(crate) fn call<Q: 'static + Send, R: 'static + Send>(
+		&self,
+		request: Q,
+		func: fn(Q, MutexGuard<SignerClient<transport::Channel>>, runtime::Handle) -> Result<Response<R>, Status>) -> Response<R> {
+		info!("call from {:?}", std::thread::current().name());
+		let client = self.client.clone();
+		let handle = self.handle.clone();
+		let join = self.handle.spawn_blocking(move || {
+			info!("call ON {:?}", std::thread::current().name());
+			let client = client.lock().unwrap();
+			func(request, client, handle)
+		});
+		let response =
+			task::block_in_place(|| {
+				runtime::Handle::current().block_on(join).unwrap().unwrap()
+			});
+		response
+	}
+
+	// pub(crate) fn call<Q: 'static + Send, R: 'static + Send, F: 'static + Send + Future<Output=Result<Response<R>, Status>>>(
+	// 	&self,
+	// 	request: Q,
+	// 	func: fn(Q, MutexGuard<SignerClient<transport::Channel>>) -> F) -> Response<R>
+	// {
+	// 	let client = self.client.clone();
+	// 	let join = self.handle.spawn_blocking(move || {
+	// 		let client = client.lock().unwrap();
+	// 		tokio::runtime::Handle::current().block_on(func(request, client))
+	// 	});
+	// 	let response =
+	// 		task::block_in_place(|| {
+	// 			tokio::runtime::Handle::current().block_on(join).unwrap().unwrap()
+	// 		});
+	// 	response
+	// }
+}
+
+struct ClientAdapter {
+	runner: ClientRunner,
 	node_id: PublicKey,
 	node_secret: SecretKey,
 	xpub: ExtendedPubKey,
@@ -207,20 +269,15 @@ struct ClientAdapter {
 }
 
 impl ClientAdapter {
-	async fn new(mut client: SignerClient<Channel>, node_id: PublicKey, node_secret: SecretKey) -> ClientAdapter {
-		let runtime = std::thread::spawn(|| {
-			Builder::new_multi_thread().enable_all()
-				.thread_name("vls-client")
-				.worker_threads(2) // for debugging
-				.build()
-		}).join().expect("runtime join").expect("runtime");
-		let handle = runtime.handle().clone();
+	async fn new(vls_port: u16, node_id: PublicKey, node_secret: SecretKey) -> ClientAdapter {
+		let runner = ClientRunner::new(vls_port);
 
 		let xpub_request = Request::new(GetExtPubKeyRequest {
 			node_id: Some(remotesigner::NodeId { data: node_id.serialize().to_vec() })
 		});
-
-		let response = client.get_ext_pub_key(xpub_request).await.expect("xpub call");
+		let response = runner.call(xpub_request, |r, mut client, h| {
+			h.block_on(client.get_ext_pub_key(r))
+		});
 		let reply = response.into_inner();
 		let xpub = ExtendedPubKey::from_str(&reply.xpub.expect("xpub").encoded).expect("xpub");
 
@@ -229,25 +286,12 @@ impl ClientAdapter {
 		rng.fill_bytes(&mut key_material);
 
 		ClientAdapter {
-			runtime,
-			handle,
-			client: Arc::new(Mutex::new(client)),
+			runner,
 			node_id,
 			node_secret,
 			xpub,
 			key_material: KeyMaterial(key_material),
 		}
-	}
-
-	fn call_async<F: Future>(&self, f: F) -> F::Output {
-		task::block_in_place(|| {
-			println!("ENTER block_on {}", current().name().unwrap_or("?"));
-			let res = self.handle.block_on(
-				f
-			);
-			println!("EXIT block_on");
-			res
-		})
 	}
 
 	fn dest_wallet_path() -> Vec<ChildNumber> {
@@ -261,8 +305,7 @@ impl ClientAdapter {
 
 #[derive(Clone)]
 struct ClientSigner {
-	handle: runtime::Handle,
-	client: Arc<Mutex<SignerClient<transport::Channel>>>,
+	runner: ClientRunner,
 	node_id: PublicKey,
 	channel_id: ChannelId,
 	basepoints: ChannelPublicKeys,
@@ -289,16 +332,17 @@ impl KeysInterface for ClientAdapter {
 
 	fn get_shutdown_scriptpubkey(&self) -> ShutdownScript {
 		// TODO review
-		let mut client = self.client.lock().expect("lock");
+		let request = PingRequest { message: "hello".to_string() };
 		let response =
-			self.call_async(client.ping(PingRequest { message: "hello".to_string() }))
-				.expect("");
+			self.runner.call(request, |r, mut client, h| {
+				h.block_on(client.ping(r))
+			});
 		let reply = response.into_inner();
-		println!("XXX {}", reply.message);
 		ShutdownScript::try_from(self.get_destination_script()).expect("script")
 	}
 
 	fn get_channel_signer(&self, _inbound: bool, channel_value: u64) -> Self::Signer {
+		info!("ENTER get_channel_signer");
 		fn decode_pubkey(proto: Option<PubKey>) -> PublicKey {
 			PublicKey::from_slice(&proto.expect("pubkey").data).expect("pubkey decode")
 		}
@@ -308,23 +352,26 @@ impl KeysInterface for ClientAdapter {
 		let channel_nonce = Some(ChannelNonce { data: channel_id_slice.to_vec() });
 		let channel_id = ChannelId(channel_id_slice);
 
-		let mut client = self.client.lock().expect("lock");
-		let response = self.call_async(
-			client.new_channel(NewChannelRequest {
-				node_id: self.proto_node_id(),
-				channel_nonce0: channel_nonce.clone(),
-			})).expect("call NewChannel");
-
+		let request = NewChannelRequest {
+			node_id: self.proto_node_id(),
+			channel_nonce0: channel_nonce.clone(),
+		};
+		let response = self.runner.call(request, |r, mut client, h|
+			h.block_on(client.new_channel(r))
+		);
 		let reply = response.into_inner();
 		println!("supplied nonce {} got nonce {}",
 				 channel_id_slice.to_hex(),
 				 reply.channel_nonce0.as_ref().unwrap().data.to_hex());
 
-		let response = self.call_async(
-			client.get_channel_basepoints(GetChannelBasepointsRequest {
+		let request = GetChannelBasepointsRequest {
 				node_id: self.proto_node_id(),
 				channel_nonce: channel_nonce.clone(),
-			})).expect("call GetChannelBasepoints");
+			};
+
+		let response = self.runner.call(request, |r, mut client, h| {
+			h.block_on(client.get_channel_basepoints(r))
+		});
 		let reply = response.into_inner();
 
 		let bp = reply.basepoints.expect("basepoints");
@@ -336,14 +383,15 @@ impl KeysInterface for ClientAdapter {
 			htlc_basepoint: decode_pubkey(bp.htlc),
 		};
 
+		let runner = self.runner.clone();
 		let signer = ClientSigner {
-			handle: self.handle.clone(),
-			client: self.client.clone(),
+			runner,
 			node_id: self.node_id,
 			channel_id,
 			basepoints,
 			channel_value,
 		};
+		info!("EXIT get_channel_signer");
 		DynSigner::new(signer)
 	}
 
@@ -359,18 +407,24 @@ impl KeysInterface for ClientAdapter {
 	}
 
 	fn sign_invoice(&self, hrp_bytes: &[u8], invoice_data: &[u5]) -> StdResult<RecoverableSignature, ()> {
-		let mut client = self.client.lock().expect("lock");
-		let response = self.call_async(
-			client.sign_invoice(Request::new(SignInvoiceRequest {
-				node_id: self.proto_node_id(),
-				data_part: invoice_data.iter().map(|o| o.to_u8()).collect(),
-				human_readable_part: String::from_utf8(hrp_bytes.to_vec()).expect("hrp"),
-			}))).expect("call SignInvoiceRequest");
-		let reply = response.into_inner();
-		let mut sig = reply.signature.expect("signature").data;
-		let rid_byte = sig.pop().expect("empty signature");
-		let rid = RecoveryId::from_i32(rid_byte as i32).expect("rid");
-		Ok(RecoverableSignature::from_compact(&sig, rid).expect("decode"))
+		let request = SignInvoiceRequest {
+			node_id: self.proto_node_id(),
+			data_part: invoice_data.iter().map(|o| o.to_u8()).collect(),
+			human_readable_part: String::from_utf8(hrp_bytes.to_vec()).expect("hrp"),
+		};
+		panic!()
+		// let response = self.call_async( async {
+		// 	let x = {
+		// 		let mut client = client.lock().unwrap();
+		// 		client.sign_invoice(Request::new(r))
+		// 	};
+		// 	x.await
+		// }).expect("call SignInvoiceRequest");
+		// let reply = response.into_inner();
+		// let mut sig = reply.signature.expect("signature").data;
+		// let rid_byte = sig.pop().expect("empty signature");
+		// let rid = RecoveryId::from_i32(rid_byte as i32).expect("rid");
+		// Ok(RecoverableSignature::from_compact(&sig, rid).expect("decode"))
 	}
 
 	fn get_inbound_payment_key_material(&self) -> KeyMaterial {
@@ -414,15 +468,17 @@ impl InnerSign for ClientSigner {
 #[allow(unused)]
 impl BaseSign for ClientSigner {
 	fn get_per_commitment_point(&self, idx: u64, _secp_ctx: &Secp256k1<All>) -> PublicKey {
-		let mut client = self.client.lock().expect("lock");
-
-		let response = self.call_async(
-			client.get_per_commitment_point(GetPerCommitmentPointRequest {
-				node_id: self.proto_node_id(),
-				channel_nonce: self.proto_channel_nonce(),
-				n: INITIAL_COMMITMENT_NUMBER - idx
-			})).expect("call SignInvoiceRequest");
+		info!("ENTER get_per_commitment_point");
+		let request = GetPerCommitmentPointRequest {
+			node_id: self.proto_node_id(),
+			channel_nonce: self.proto_channel_nonce(),
+			n: INITIAL_COMMITMENT_NUMBER - idx
+		};
+		let response = self.runner.call(request, |r, mut client, h| {
+			h.block_on(client.get_per_commitment_point(r))
+		});
 		let reply = response.into_inner();
+		info!("EXIT get_per_commitment_point");
 		PublicKey::from_slice(&reply.per_commitment_point.expect("point").data).expect("point decode")
 	}
 
@@ -443,7 +499,24 @@ impl BaseSign for ClientSigner {
 	}
 
 	fn sign_counterparty_commitment(&self, commitment_tx: &CommitmentTransaction, preimages: Vec<PaymentPreimage>, secp_ctx: &Secp256k1<All>) -> StdResult<(Signature, Vec<Signature>), ()> {
-		todo!()
+		info!("ENTER sign_counterparty_commitment");
+		let request = SignCounterpartyCommitmentTxPhase2Request {
+			node_id: self.proto_node_id(),
+			channel_nonce: self.proto_channel_nonce(),
+			commitment_info: Some((commitment_tx, false).into())
+		};
+		let response = self.runner.call(request, |r, mut client, h| {
+			h.block_on(client.sign_counterparty_commitment_tx_phase2(r))
+		});
+		let reply = response.into_inner();
+		let sig = bitcoin_vec_to_signature(&reply.signature.as_ref().unwrap().data, SigHashType::All).unwrap();
+		// FIXME anchor sighashtype
+		let htlc_sigs = reply.htlc_signatures.iter()
+			.map(|s| bitcoin_vec_to_signature(&reply.signature.as_ref().unwrap().data, SigHashType::All).unwrap())
+			.collect();
+
+		info!("EXIT sign_counterparty_commitment");
+		Ok((sig, htlc_sigs))
 	}
 
 	fn validate_counterparty_revocation(&self, idx: u64, secret: &SecretKey) -> StdResult<(), ()> {
@@ -479,8 +552,7 @@ impl BaseSign for ClientSigner {
 	}
 
 	fn ready_channel(&mut self, p: &ChannelTransactionParameters) {
-		let mut client = self.client.lock().expect("lock");
-
+		info!("ENTER ready_channel");
 		let cp_param = p.counterparty_parameters.as_ref().expect("cp param");
 		let cp_keys = &cp_param.pubkeys;
 		let cp_basepoints = Basepoints {
@@ -495,23 +567,26 @@ impl BaseSign for ClientSigner {
 		} else {
 			CommitmentType::StaticRemotekey
 		};
-		let response = self.call_async(
-			client.ready_channel(ReadyChannelRequest {
-				node_id: self.proto_node_id(),
-				channel_nonce0: self.proto_channel_nonce(),
-				option_channel_nonce: None,
-				is_outbound: p.is_outbound_from_holder,
-				channel_value_sat: self.channel_value,
-				push_value_msat: 0,
-				funding_outpoint: p.funding_outpoint.map(|p| p.into()),
-				holder_selected_contest_delay: p.holder_selected_contest_delay as u32,
-				holder_shutdown_script: vec![],
-				holder_shutdown_key_path: vec![],
-				counterparty_basepoints: Some(cp_basepoints),
-				counterparty_selected_contest_delay: cp_param.selected_contest_delay as u32,
-				counterparty_shutdown_script: vec![],
-				commitment_type: commitment_type as i32,
-			})).expect("call SignInvoiceRequest");
+		let request = ReadyChannelRequest {
+			node_id: self.proto_node_id(),
+			channel_nonce0: self.proto_channel_nonce(),
+			option_channel_nonce: None,
+			is_outbound: p.is_outbound_from_holder,
+			channel_value_sat: self.channel_value,
+			push_value_msat: 0,
+			funding_outpoint: p.funding_outpoint.map(|p| p.into()),
+			holder_selected_contest_delay: p.holder_selected_contest_delay as u32,
+			holder_shutdown_script: vec![],
+			holder_shutdown_key_path: vec![],
+			counterparty_basepoints: Some(cp_basepoints),
+			counterparty_selected_contest_delay: cp_param.selected_contest_delay as u32,
+			counterparty_shutdown_script: vec![],
+			commitment_type: commitment_type as i32,
+		};
+		let response = self.runner.call(request, |r, mut client, h| {
+			h.block_on(client.ready_channel(r))
+		});
+		info!("EXIT ready_channel");
 		response.into_inner();
 	}
 }
@@ -523,12 +598,6 @@ impl ClientSigner {
 
 	fn proto_channel_nonce(&self) -> Option<remotesigner::ChannelNonce> {
 		Some(self.channel_id.into())
-	}
-
-	fn call_async<F: Future>(&self, f: F) -> F::Output {
-		task::block_in_place(|| {
-			self.handle.block_on(f)
-		})
 	}
 }
 
@@ -545,27 +614,32 @@ pub(crate) async fn make_remote_signer(vls_port: u16, network: Network, ldk_data
 		let node_id = PublicKey::from_str(&node_id_hex).unwrap();
 		let node_secret_hex = fs::read_to_string(node_secret_path.clone()).expect("node secret");
 		let node_secret = SecretKey::from_str(&node_secret_hex).expect("node secret hex");
-		let client = connect(vls_port).await.expect("connect");
-		let adapter = ClientAdapter::new(client, node_id, node_secret).await;
+		let adapter = ClientAdapter::new(vls_port, node_id, node_secret).await;
 		Box::new(adapter)
 	} else {
-		let mut client = connect(vls_port).await.expect("connect VLS");
-		let init_request = Request::new(InitRequest {
-			node_config: Some(NodeConfig { key_derivation_style: KeyDerivationStyle::Native as i32 }),
-			chainparams: Some(ChainParams { network_name: network.to_string() }),
-			coldstart: true,
-			hsm_secret: None,
-		});
+		let (node_id, node_secret) = do_init(vls_port, network, node_id_path, node_secret_path).await;
 
-		let response = client.init(init_request).await.expect("init");
-		let reply = response.into_inner();
-		let node_id_bytes = reply.node_id.expect("missing node_id").data;
-		let node_secret_bytes = reply.node_secret.expect("missing node_secret").data;
-		let node_id = PublicKey::from_slice(&node_id_bytes).expect("node_id as public key");
-		let node_secret = SecretKey::from_slice(&node_secret_bytes).expect("node_secret as secret key");
-		fs::write(node_secret_path, node_secret.to_string()).expect("write node_secret");
-		fs::write(node_id_path, node_id.to_string()).expect("write node_id");
-		let adapter = ClientAdapter::new(client, node_id, node_secret).await;
+		let adapter = ClientAdapter::new(vls_port, node_id, node_secret).await;
 		Box::new(adapter)
 	}
+}
+
+async fn do_init(vls_port: u16, network: Network, node_id_path: String, node_secret_path: String) -> (PublicKey, SecretKey) {
+	let init_request = Request::new(InitRequest {
+		node_config: Some(NodeConfig { key_derivation_style: KeyDerivationStyle::Native as i32 }),
+		chainparams: Some(ChainParams { network_name: network.to_string() }),
+		coldstart: true,
+		hsm_secret: None,
+	});
+
+	let mut client = connect(vls_port).await.expect("connect");
+	let response = client.init(init_request).await.expect("init");
+	let reply = response.into_inner();
+	let node_id_bytes = reply.node_id.expect("missing node_id").data;
+	let node_secret_bytes = reply.node_secret.expect("missing node_secret").data;
+	let node_id = PublicKey::from_slice(&node_id_bytes).expect("node_id as public key");
+	let node_secret = SecretKey::from_slice(&node_secret_bytes).expect("node_secret as secret key");
+	fs::write(node_secret_path, node_secret.to_string()).expect("write node_secret");
+	fs::write(node_id_path, node_id.to_string()).expect("write node_id");
+	(node_id, node_secret)
 }
