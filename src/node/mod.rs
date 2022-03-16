@@ -38,9 +38,9 @@ use lightning_block_sync::{init, poll, SpvClient, UnboundedCache};
 use lightning_invoice::{Invoice, payment};
 use lightning_invoice::payment::PaymentError;
 use lightning_invoice::utils::DefaultRouter;
-use lightning_net_tokio::setup_inbound;
 use lightning_persister::FilesystemPersister;
 use rand::{Rng, thread_rng};
+use tokio::runtime;
 use tokio::runtime::Handle;
 
 use crate::lightning_invoice;
@@ -125,6 +125,7 @@ pub(crate) struct Node {
 	pub(crate) background_processor: BackgroundProcessor,
 	pub(crate) chain_monitor: Arc<ArcChainMonitor>,
 	pub(crate) connector: Arc<Connector>,
+	p2p_runtime: runtime::Runtime,
 }
 
 pub(crate) struct NetworkController {
@@ -350,19 +351,7 @@ async fn build_with_signer(
 	let peer_manager_connection_handler = peer_manager.clone();
 	let listening_port = args.peer_listening_port;
 
-	tokio::spawn(async move {
-		let listener =
-			tokio::net::TcpListener::bind(format!("0.0.0.0:{}", listening_port)).await.unwrap();
-		loop {
-			let tcp_stream = listener.accept().await.unwrap().0;
-			info!("accepted");
-			setup_inbound(
-				peer_manager_connection_handler.clone(),
-				tcp_stream.into_std().unwrap(),
-			).await;
-			info!("setup");
-		}
-	});
+	let p2p_runtime = start_p2p_listener(peer_manager_connection_handler, listening_port);
 
 	// Step 17: Connect and Disconnect Blocks
 	if chain_tip.is_none() {
@@ -466,6 +455,7 @@ async fn build_with_signer(
 		background_processor,
 		chain_monitor,
 		connector,
+		p2p_runtime
 	};
 
 	tokio::spawn(async move {
@@ -499,6 +489,33 @@ async fn build_with_signer(
 	});
 
 	(node, network_controller)
+}
+
+fn start_p2p_listener(peer_manager_connection_handler: Arc<PeerManager>, listening_port: u16) -> runtime::Runtime {
+	let runtime = std::thread::spawn(|| {
+		runtime::Builder::new_multi_thread().enable_all()
+			.thread_name("p2p")
+			.worker_threads(2) // for debugging
+			.build()
+	}).join().expect("runtime join").expect("runtime");
+	let handle = runtime.handle().clone();
+	handle.spawn(async move {
+		let listener =
+			tokio::net::TcpListener::bind(format!("0.0.0.0:{}", listening_port)).await.unwrap();
+		loop {
+			let tcp_stream = listener.accept().await.unwrap().0;
+			let peer_mgr = peer_manager_connection_handler.clone();
+			info!("accepted");
+			tokio::spawn(async move {
+				lightning_net_tokio::setup_inbound(
+					peer_mgr,
+					tcp_stream.into_std().unwrap(),
+				).await;
+			});
+			info!("setup");
+		}
+	});
+	runtime
 }
 
 async fn setup_tor(ldk_data_dir: &String, node_name_opt: Option<String>, listening_port: u16, channel_manager: Arc<ChannelManager>) -> (Arc<Connector>, NetworkController) {
