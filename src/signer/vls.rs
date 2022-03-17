@@ -607,6 +607,8 @@ pub async fn connect(vls_port: u16) -> Result<SignerClient<transport::Channel>, 
 }
 
 pub(crate) async fn make_remote_signer(vls_port: u16, network: Network, ldk_data_dir: String) -> Box<dyn SpendableKeysInterface<Signer = DynSigner>> {
+	setup_tokio_log();
+
 	let node_id_path = format!("{}/node_id", ldk_data_dir);
 	let node_secret_path = format!("{}/node_secret", ldk_data_dir);
 
@@ -642,4 +644,13 @@ async fn do_init(vls_port: u16, network: Network, node_id_path: String, node_sec
 	fs::write(node_secret_path, node_secret.to_string()).expect("write node_secret");
 	fs::write(node_id_path, node_id.to_string()).expect("write node_id");
 	(node_id, node_secret)
+}
+
+fn setup_tokio_log() {
+	let subscriber = tracing_subscriber::FmtSubscriber::builder()
+		.with_max_level(tracing::Level::INFO)
+		.finish();
+
+	tracing::subscriber::set_global_default(subscriber)
+		.expect("setting default subscriber failed");
 }
