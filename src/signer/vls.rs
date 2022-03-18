@@ -210,7 +210,7 @@ impl ClientRunner {
 				.build()
 		}).join().expect("runtime join").expect("runtime");
 		let handle = runtime.handle().clone();
-		let join = tokio::runtime::Handle::current().spawn_blocking(move || {
+		let join = handle.spawn_blocking(move || {
 			runtime::Handle::current().block_on(connect(vls_port)).unwrap()
 		});
 		let client = task::block_in_place(|| {
