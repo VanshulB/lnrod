@@ -34,8 +34,9 @@ use lightning_signer::channel::ChannelId;
 use lightning_signer::policy::simple_validator::SimpleValidatorFactory;
 use lightning_signer::util::crypto_utils::bitcoin_vec_to_signature;
 use lightning_signer::util::INITIAL_COMMITMENT_NUMBER;
+use lightning_signer_server::client::convert::htlcs_to_proto;
 use lightning_signer_server::persist::persist_json::KVJsonPersister;
-use lightning_signer_server::server::remotesigner::{self, Basepoints, ChainParams, ChannelNonce, GetChannelBasepointsRequest, GetExtPubKeyRequest, GetPerCommitmentPointRequest, InitRequest, NewChannelRequest, NodeConfig, PingRequest, PubKey, ReadyChannelRequest, SignCounterpartyCommitmentTxPhase2Request, SignInvoiceRequest};
+use lightning_signer_server::server::remotesigner::{self, Basepoints, ChainParams, ChannelNonce, GetChannelBasepointsRequest, GetExtPubKeyRequest, GetPerCommitmentPointRequest, InitRequest, NewChannelRequest, NodeConfig, PingRequest, PubKey, ReadyChannelRequest, SignCounterpartyCommitmentTxPhase2Request, SignInvoiceRequest, ValidateHolderCommitmentTxPhase2Request};
 use lightning_signer_server::server::remotesigner::ready_channel_request::CommitmentType;
 use lightning_signer_server::server::remotesigner::signer_client::SignerClient;
 use log::info;
@@ -487,7 +488,22 @@ impl BaseSign for ClientSigner {
 	}
 
 	fn validate_holder_commitment(&self, holder_tx: &HolderCommitmentTransaction, preimages: Vec<PaymentPreimage>) -> StdResult<(), ()> {
-		todo!()
+		info!("validate_holder_commitment");
+		let (offered_htlcs, received_htlcs) = htlcs_to_proto(holder_tx.htlcs(), true);
+		let request = ValidateHolderCommitmentTxPhase2Request {
+			node_id: self.proto_node_id(),
+			channel_nonce: self.proto_channel_nonce(),
+			commitment_info: Some((&*holder_tx.trust(), true).into()),
+			commit_signature: Some(holder_tx.counterparty_sig.into()),
+			htlc_signatures: holder_tx.counterparty_htlc_sigs.iter().map(|s| s.clone().into()).collect(),
+		};
+		let response = self.runner.call(request, |r, mut client, h| {
+			h.block_on(client.validate_holder_commitment_tx_phase2(r))
+		});
+		let reply = response.into_inner();
+		// Ignore the reply (with revocation secret).
+		// It's retrieved by LDK via release_commitment_secret.
+		Ok(())
 	}
 
 	fn pubkeys(&self) -> &ChannelPublicKeys {
@@ -495,7 +511,7 @@ impl BaseSign for ClientSigner {
 	}
 
 	fn channel_keys_id(&self) -> [u8; 32] {
-		todo!()
+		self.channel_id.0
 	}
 
 	fn sign_counterparty_commitment(&self, commitment_tx: &CommitmentTransaction, preimages: Vec<PaymentPreimage>, secp_ctx: &Secp256k1<All>) -> StdResult<(Signature, Vec<Signature>), ()> {
