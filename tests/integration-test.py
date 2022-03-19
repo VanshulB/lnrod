@@ -278,6 +278,7 @@ def start_vlsd(n):
     optimization = 'release' if USE_RELEASE_BINARIES else 'debug'
     vlsd = f'../vls/target/{optimization}/vlsd'
     p = Popen([vlsd,
+               # '--log-level-console=TRACE',
                '--network=regtest',
                '--datadir', f'{OUTPUT_DIR}/vls{n}',
                '--port', str(7700 + n)],
@@ -286,6 +287,7 @@ def start_vlsd(n):
     # return grpc_client(f'localhost:{7700 + n}')
     time.sleep(1)
 
+
 def start_node(n):
     global processes
 
@@ -293,6 +295,7 @@ def start_node(n):
     optimization = 'release' if USE_RELEASE_BINARIES else 'debug'
     lnrod = f'target/{optimization}/lnrod'
     p = Popen([lnrod,
+              # '--log-level-console=TRACE',
                '--regtest',
                '--datadir', f'{OUTPUT_DIR}/data{n}',
                '--signer', SIGNER,
