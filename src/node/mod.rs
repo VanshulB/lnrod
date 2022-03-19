@@ -150,13 +150,32 @@ pub(crate) async fn build_node(args: NodeBuildArgs) -> (Node, NetworkController)
 		.unwrap_or_else(|e| panic!("Failed to create FilesystemLogger: {}", e));
 	log::set_max_level(cmp::max(args.disk_log_level, console_log_level));
 
+	// Initialize our bitcoind client.
+	let (user, pass) =
+		if args.bitcoind_rpc_username.is_empty() {
+			// try to get from cookie file
+			bitcoin_rpc_cookie(args.network)
+		} else {
+			(args.bitcoind_rpc_username.clone(), args.bitcoind_rpc_password.clone())
+		};
+	let bitcoind_client = BitcoindClient::new(
+		args.bitcoind_rpc_host.clone(),
+		args.bitcoind_rpc_port,
+		user,
+		pass,
+	)
+		.await
+		.unwrap_or_else(|e| panic!("Failed to connect to bitcoind client: {}", e));
+
+	let bitcoind_client_arc = Arc::new(bitcoind_client.clone());
+
 	// Initialize the KeysManager
 
 	let manager =
-		get_keys_manager(args.signer_name.as_str(), args.vls_port, args.network, ldk_data_dir.clone()).await.unwrap();
+		get_keys_manager(args.signer_name.as_str(), args.vls_port, args.network, ldk_data_dir.clone(), bitcoind_client.clone()).await.unwrap();
 	let keys_manager = Arc::new(DynKeysInterface::new(manager));
 
-	build_with_signer(keys_manager, args, ldk_data_dir).await
+	build_with_signer(keys_manager, args, ldk_data_dir, bitcoind_client_arc).await
 }
 
 fn bitcoin_network_path(base_path: PathBuf, network: Network) -> PathBuf {
@@ -180,26 +199,13 @@ fn bitcoin_rpc_cookie(network: Network) -> (String, String) {
 }
 
 async fn build_with_signer(
-	keys_manager: Arc<DynKeysInterface>, args: NodeBuildArgs, ldk_data_dir: String,
+	keys_manager: Arc<DynKeysInterface>,
+	args: NodeBuildArgs,
+	ldk_data_dir: String,
+	bitcoind_client_arc: Arc<BitcoindClient>,
 ) -> (Node, NetworkController) {
-	// Initialize our bitcoind client.
-	let (user, pass) =
-		if args.bitcoind_rpc_username.is_empty() {
-			// try to get from cookie file
-			bitcoin_rpc_cookie(args.network)
-		} else {
-			(args.bitcoind_rpc_username.clone(), args.bitcoind_rpc_password.clone())
-		};
-	let mut bitcoind_client = BitcoindClient::new(
-		args.bitcoind_rpc_host.clone(),
-		args.bitcoind_rpc_port,
-		user,
-		pass,
-	)
-	.await
-	.unwrap_or_else(|e| panic!("Failed to connect to bitcoind client: {}", e));
+	let mut bitcoind_client = (*bitcoind_client_arc).clone();
 
-	let bitcoind_client_arc = Arc::new(bitcoind_client.clone());
 	// ## Setup
 	// Step 1: Initialize the FeeEstimator
 

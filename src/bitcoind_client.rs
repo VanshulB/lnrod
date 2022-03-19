@@ -120,6 +120,11 @@ impl BitcoindClient {
 		Address::from_str(addr.as_str()).unwrap()
 	}
 
+	pub async fn set_label(&self, address: Address, label: String) {
+		let _: () = self.call("setlabel", &vec![json!(address), json!(label)]).await.unwrap();
+	}
+
+
 	pub async fn get_blockchain_info(&self) -> BlockchainInfo {
 		self.call_into("getblockchaininfo", &[]).await.unwrap()
 	}
@@ -197,7 +202,7 @@ impl BroadcasterInterface for BitcoindClient {
 				}
 				Err(rpc_error::Error::Rpc(e)) => {
 					if e.code == -26 {
-						warn!("non-final, will retry, for {}", ser);
+						warn!("non-final {}, will retry, for {}", e.message, ser);
 						queue.lock().await.push(tx.clone());
 					} else {
 						error!("RPC error on broadcast: {:?} for {}", e, ser)

@@ -27,6 +27,8 @@ EXPECTED_FEE_SAT = 1458
 PAYMENT_MSAT = 4_000_000  # FIXME 2_000_000 fails with dust limit policy violation
 SLEEP_ON_FAIL = False
 USE_RELEASE_BINARIES = False
+
+# options: test, vls, vls-local
 SIGNER = "vls"
 
 logger = logging.getLogger()
@@ -142,6 +144,10 @@ def run():
         print(e)
         raise
 
+    # we have to wait here to prevent a race condition on the bitcoin wallet UTXOs
+    # TODO UTXO locking
+    wait_until('channel at bob', lambda: bob.ChannelList(Void()).channels[0])
+
     print('Create channel bob -> charlie')
     try:
         bob.PeerConnect(PeerConnectRequest(node_id=charlie_id, address=f'127.0.0.1:{charlie.lnport}'))
@@ -150,7 +156,6 @@ def run():
         print(e)
         raise
 
-    wait_until('channel at bob', lambda: bob.ChannelList(Void()).channels[0])
     wait_until('channel at charlie', lambda: charlie.ChannelList(Void()).channels[0])
 
     assert alice.ChannelList(Void()).channels[0].is_pending

@@ -11,7 +11,7 @@ use bitcoin::hash_types::WPubkeyHash;
 use bitcoin::hashes::sha256::Hash as Sha256;
 use bitcoin::hashes::sha256::HashEngine as Sha256State;
 use bitcoin::hashes::{Hash, HashEngine};
-use bitcoin::secp256k1;
+use bitcoin::{Address, secp256k1};
 use bitcoin::secp256k1::recovery::RecoverableSignature;
 use bitcoin::secp256k1::{All, PublicKey, Secp256k1, SecretKey, Signature};
 use bitcoin::util::bip143;
@@ -53,6 +53,12 @@ pub trait SpendableKeysInterface: KeysInterface + Send + Sync {
 		change_destination_script: Script, feerate_sat_per_1000_weight: u32,
 		secp_ctx: &Secp256k1<All>,
 	) -> Result<Transaction>;
+
+	/// Swept funds from closed channels are sent here
+	/// This is implemented by setting the change destination to spend_spendable_outputs to this address.
+	fn get_sweep_address(&self) -> Address;
+
+	fn get_node_id(&self) -> PublicKey;
 }
 
 pub(crate) struct DynKeysInterface {
@@ -62,10 +68,6 @@ pub(crate) struct DynKeysInterface {
 impl DynKeysInterface {
 	pub fn new(inner: Box<dyn SpendableKeysInterface<Signer = DynSigner>>) -> Self {
 		DynKeysInterface { inner }
-	}
-
-	pub fn get_node_id(&self) -> PublicKey {
-		PublicKey::from_secret_key(&Secp256k1::new(), &self.get_node_secret())
 	}
 }
 
@@ -119,6 +121,14 @@ impl SpendableKeysInterface for DynKeysInterface {
 			secp_ctx,
 		)
 	}
+
+	fn get_sweep_address(&self) -> Address {
+		self.inner.get_sweep_address()
+	}
+
+	fn get_node_id(&self) -> PublicKey {
+		self.inner.get_node_id()
+	}
 }
 
 // Copied from keysinterface.rs and decoupled from InMemorySigner
@@ -147,6 +157,7 @@ pub struct KeysManager<F: SignerFactory> {
 	starting_time_secs: u64,
 	starting_time_nanos: u32,
 	factory: F,
+	sweep_address: Address,
 }
 
 impl<F: SignerFactory> KeysManager<F> {
@@ -171,6 +182,7 @@ impl<F: SignerFactory> KeysManager<F> {
 	/// detailed description of the guarantee.
 	pub fn new(
 		seed: &[u8; 32], starting_time_secs: u64, starting_time_nanos: u32,
+		sweep_address: Address,
 	) -> Self {
 		let secp_ctx = Secp256k1::new();
 		// Note that when we aren't serializing the key, network doesn't matter
@@ -246,6 +258,7 @@ impl<F: SignerFactory> KeysManager<F> {
 			starting_time_secs,
 			starting_time_nanos,
 			factory,
+			sweep_address
 		};
 		let secp_seed = res.get_secure_random_bytes();
 		res.secp_ctx.seeded_randomize(&secp_seed);
@@ -489,6 +502,14 @@ impl<F: SignerFactory> SpendableKeysInterface for KeysManager<F> {
 			input_idx += 1;
 		}
 		Ok(spend_tx)
+	}
+
+	fn get_sweep_address(&self) -> Address {
+		self.sweep_address.clone()
+	}
+
+	fn get_node_id(&self) -> PublicKey {
+		PublicKey::from_secret_key(&Secp256k1::new(), &self.get_node_secret())
 	}
 }
 
