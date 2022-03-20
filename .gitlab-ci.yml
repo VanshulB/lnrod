@@ -24,7 +24,7 @@ before_script:
 
 compile:
   stage: build
-  image: rust:1.49.0
+  image: rust:1.48.0
   timeout: 30m
   script:
     - cargo build
@@ -39,7 +39,7 @@ compile:
 
 coverage:
   stage: build
-  image: rust:1.49.0
+  image: rust:1.48.0
   timeout: 20m
   before_script:
     - rustup component add rustfmt
