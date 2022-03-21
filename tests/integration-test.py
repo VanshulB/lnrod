@@ -283,7 +283,8 @@ def start_vlsd(n):
 
     stdout_log = open(OUTPUT_DIR + f'/vls{n}.log', 'w')
     optimization = 'release' if USE_RELEASE_BINARIES else 'debug'
-    vlsd = f'../vls/target/{optimization}/vlsd'
+    # vlsd = f'../vls/target/{optimization}/vlsd'
+    vlsd = 'vlsd'
     p = Popen([vlsd,
                # '--log-level-console=TRACE',
                '--network=regtest',

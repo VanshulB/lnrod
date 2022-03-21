@@ -78,7 +78,7 @@ rev = "a6489a472798f0a63dc7db6797e0420128676e53"
 
 [dependencies.lightning-signer-server]
 git = "https://gitlab.com/lightning-signer/validating-lightning-signer.git"
-rev = "a6489a472798f0a63dc7db6797e0420128676e53"
+rev = "a6489a472798f0a63dc7db6797e0420128676e53" # VLS VERSION
 #path = "../vls/lightning-signer-server"
 
 [build-dependencies]

@@ -1,0 +1,3 @@
+#!/bin/bash
+
+grep "VLS VERSION" Cargo.toml | grep -Eo '"(.*)"' | grep -Eo "[a-f0-9]*"

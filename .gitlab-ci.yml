@@ -29,6 +29,7 @@ compile:
   script:
     - cargo build
     - cargo test
+    - ls -l target/debug
 # use these if you want to quickly iterate over the integration test (disable the build steps above and see integration job)
 #    - cp target/debug/lnrod .cache/
 #    - cp target/debug/lnrcli .cache/
@@ -36,6 +37,15 @@ compile:
     paths:
       - target/debug/lnrod
       - target/debug/lnrcli
+
+compile-vls:
+  stage: build
+  image: rust:1.48.0
+  timeout: 30m
+  script:
+    - vls_rev=`./scripts/vls-revision`
+    - cargo install lightning-signer-server --locked --git https://gitlab.com/lightning-signer/validating-lightning-signer.git --rev $vls_rev
+    - ls -l $CARGO_HOME/bin
 
 coverage:
   stage: build
@@ -61,9 +71,12 @@ integration:
   script:
 # use this if you want to quickly iterate over the integration test (see compile job)
 #    - mkdir -p target/debug && cp .cache/lnrod .cache/lnrcli target/debug/
+    - ls -l $CARGO_HOME/bin
+    - ls -l bin
+    - ls -l target/debug
     - pip3 install -r requirements.txt
     - ./scripts/compile-proto
-    - PATH=$PATH:`pwd`/bin ./tests/integration-test.py
+    - PATH="$PATH:`pwd`/bin:$CARGO_HOME/bin" ./tests/integration-test.py
   artifacts:
     when: always
     paths:
