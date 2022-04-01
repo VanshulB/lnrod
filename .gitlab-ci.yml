@@ -7,23 +7,22 @@ variables:
   CARGO_HOME: "$CI_PROJECT_DIR/.cache/cargo"
 
 cache:
+  key: lnrod-global
   paths:
-    - .cache
-    - bin
+    - .cache/pip
+    - bin/bitcoind
 
 before_script:
   - ls -al
   - mkdir -p bin
-  - if [ ! -e bin/bitcoind ]; then
-    wget --no-verbose https://bitcoin.org/bin/bitcoin-core-0.21.0/bitcoin-0.21.0-x86_64-linux-gnu.tar.gz &&
-    echo da7766775e3f9c98d7a9145429f2be8297c2672fe5b118fd3dc2411fb48e0032  bitcoin-0.21.0-x86_64-linux-gnu.tar.gz | sha256sum -c &&
-    tar xzf bitcoin-0.21.0-x86_64-linux-gnu.tar.gz &&
-    mv bitcoin-0.21.0/bin/bitcoind bin/ &&
-    rm -rf bitcoin-0.21.0 ;
-    fi
 
+# Compile lnrod
 compile:
   stage: build
+  cache:
+    key: lnrod-compile
+    paths:
+      - .cache/cargo
   image: rust:1.48.0
   timeout: 30m
   script:
@@ -38,17 +37,32 @@ compile:
       - target/debug/lnrod
       - target/debug/lnrcli
 
+# Compile vlsd
 compile-vls:
   stage: build
+  cache:
+    key: lnrod-vls
+    paths:
+      - .cache/cargo
   image: rust:1.48.0
   timeout: 30m
   script:
     - vls_rev=`./scripts/vls-revision`
-    - cargo install lightning-signer-server --locked --git https://gitlab.com/lightning-signer/validating-lightning-signer.git --rev $vls_rev
-    - ls -l $CARGO_HOME/bin
+    - echo "$vls_rev"
+    - cargo install lightning-signer-server --locked --git https://gitlab.com/lightning-signer/validating-lightning-signer.git --rev "$vls_rev"
+    - ls -l "$CARGO_HOME/bin"
+    - cp "$CARGO_HOME/bin/vlsd" "$CARGO_HOME/bin/vls-cli" bin/
+  artifacts:
+    paths:
+      - bin/vlsd
+      - bin/vls-cli
 
 coverage:
-  stage: build
+  stage: test
+  cache:
+    key: lnrod-compile
+    paths:
+      - .cache/cargo
   image: rust:1.48.0
   timeout: 20m
   before_script:
@@ -71,12 +85,18 @@ integration:
   script:
 # use this if you want to quickly iterate over the integration test (see compile job)
 #    - mkdir -p target/debug && cp .cache/lnrod .cache/lnrcli target/debug/
-    - ls -l $CARGO_HOME/bin
     - ls -l bin
     - ls -l target/debug
+    - if [ ! -e bin/bitcoind ]; then
+      wget --no-verbose https://bitcoin.org/bin/bitcoin-core-0.21.0/bitcoin-0.21.0-x86_64-linux-gnu.tar.gz &&
+      echo da7766775e3f9c98d7a9145429f2be8297c2672fe5b118fd3dc2411fb48e0032  bitcoin-0.21.0-x86_64-linux-gnu.tar.gz | sha256sum -c &&
+      tar xzf bitcoin-0.21.0-x86_64-linux-gnu.tar.gz &&
+      mv bitcoin-0.21.0/bin/bitcoind bin/ &&
+      rm -rf bitcoin-0.21.0 ;
+      fi
     - pip3 install -r requirements.txt
     - ./scripts/compile-proto
-    - PATH="$PATH:`pwd`/bin:$CARGO_HOME/bin" ./tests/integration-test.py
+    - PATH="$PATH:`pwd`/bin" ./tests/integration-test.py
   artifacts:
     when: always
     paths:
