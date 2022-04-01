@@ -14,10 +14,11 @@ use lightning::chain::keysinterface::{
 	DelayedPaymentOutputDescriptor, KeysInterface, SpendableOutputDescriptor,
 	StaticPaymentOutputDescriptor,
 };
-use lightning::ln::msgs::DecodeError;
+use lightning::ln::msgs::{DecodeError, UnsignedChannelAnnouncement};
 use lightning::ln::script::ShutdownScript;
+use lightning::ln::chan_utils::{ChannelPublicKeys, ChannelTransactionParameters, ClosingTransaction, CommitmentTransaction, HolderCommitmentTransaction, HTLCOutputInCommitment};
 use lightning::util::ser::Writeable;
-use lightning::chain::keysinterface::BaseSign;
+use lightning::chain::keysinterface::{BaseSign, KeyMaterial, Recipient};
 use lightning_signer::lightning;
 use lightning_signer::node::NodeConfig as SignerNodeConfig;
 use lightning_signer::signer::multi_signer::MultiSigner;
@@ -38,17 +39,14 @@ use lightning_signer::util::crypto_utils::bitcoin_vec_to_signature;
 use lightning_signer::util::{INITIAL_COMMITMENT_NUMBER, transaction_utils};
 use lightning_signer::util::transaction_utils::MAX_VALUE_MSAT;
 use lightning_signer_server::persist::persist_json::KVJsonPersister;
-use lightning_signer_server::server::remotesigner::{self, AddAllowlistRequest, Basepoints, ChainParams, ChannelNonce, GetChannelBasepointsRequest, GetExtPubKeyRequest, GetPerCommitmentPointRequest, InitRequest, InputDescriptor, KeyLocator, NewChannelRequest, NodeConfig, OutputDescriptor, PingRequest, PubKey, ReadyChannelRequest, SignChannelAnnouncementRequest, SignCounterpartyCommitmentTxPhase2Request, SignHolderCommitmentTxPhase2Request, SignInvoiceRequest, SignMutualCloseTxPhase2Request, SignOnchainTxRequest, UnilateralCloseInfo, ValidateCounterpartyRevocationRequest, ValidateHolderCommitmentTxPhase2Request};
+use lightning_signer_server::server::remotesigner::{self, AddAllowlistRequest, Basepoints, ChainParams, ChannelNonce, GetChannelBasepointsRequest, GetPerCommitmentPointRequest, InitRequest, InputDescriptor, KeyLocator, NewChannelRequest, NodeConfig, OutputDescriptor, PingRequest, PubKey, ReadyChannelRequest, SignChannelAnnouncementRequest, SignCounterpartyCommitmentTxPhase2Request, SignHolderCommitmentTxPhase2Request, SignInvoiceRequest, SignMutualCloseTxPhase2Request, SignOnchainTxRequest, UnilateralCloseInfo, ValidateCounterpartyRevocationRequest, ValidateHolderCommitmentTxPhase2Request, GetNodeParamRequest};
 use lightning_signer_server::server::remotesigner::ready_channel_request::CommitmentType;
 use lightning_signer_server::server::remotesigner::signer_client::SignerClient;
 use log::{info, trace};
 use rand::{Rng, thread_rng};
 use tokio::{runtime, task};
 use tonic::{Request, Response, Status, transport};
-use crate::chain::keysinterface::KeyMaterial;
 use crate::{hex_utils, PaymentPreimage};
-use crate::lightning::ln::chan_utils::{ChannelPublicKeys, ChannelTransactionParameters, ClosingTransaction, CommitmentTransaction, HolderCommitmentTransaction, HTLCOutputInCommitment};
-use crate::lightning::ln::msgs::UnsignedChannelAnnouncement;
 
 struct Adapter {
 	inner: LoopbackSignerKeysInterface,
@@ -97,8 +95,8 @@ impl InnerSign for LoopbackChannelSigner {
 impl KeysInterface for Adapter {
 	type Signer = DynSigner;
 
-	fn get_node_secret(&self) -> SecretKey {
-		self.inner.get_node_secret()
+	fn get_node_secret(&self, recipient: Recipient) -> Result<SecretKey, ()> {
+		self.inner.get_node_secret(recipient)
 	}
 
 	fn get_destination_script(&self) -> Script {
@@ -124,8 +122,8 @@ impl KeysInterface for Adapter {
 		Ok(DynSigner::new(inner))
 	}
 
-	fn sign_invoice(&self, hrp_bytes: &[u8], invoice_data: &[u5]) -> Result<RecoverableSignature, ()> {
-		self.inner.sign_invoice(hrp_bytes, invoice_data)
+	fn sign_invoice(&self, hrp_bytes: &[u8], invoice_data: &[u5], recipient: Recipient) -> Result<RecoverableSignature, ()> {
+		self.inner.sign_invoice(hrp_bytes, invoice_data, recipient)
 	}
 
 	fn get_inbound_payment_key_material(&self) -> KeyMaterial {
@@ -276,11 +274,9 @@ impl ClientAdapter {
 
 		let proto_node_id = Some(remotesigner::NodeId { data: node_id.serialize().to_vec() });
 
-		let xpub_request = Request::new(GetExtPubKeyRequest {
-			node_id: proto_node_id.clone()
-		});
+		let xpub_request = Request::new(GetNodeParamRequest { node_id: proto_node_id.clone() });
 		let response = runner.call(xpub_request, |r, mut client, h| {
-			h.block_on(client.get_ext_pub_key(r))
+			h.block_on(client.get_node_param(r))
 		});
 		let reply = response.into_inner();
 		let xpub = ExtendedPubKey::from_str(&reply.xpub.expect("xpub").encoded).expect("xpub");
@@ -341,8 +337,11 @@ struct ClientSigner {
 impl KeysInterface for ClientAdapter {
 	type Signer = DynSigner;
 
-	fn get_node_secret(&self) -> SecretKey {
-		self.node_secret
+	fn get_node_secret(&self, recipient: Recipient) -> Result<SecretKey, ()> {
+		match recipient {
+			Recipient::Node => Ok(self.node_secret),
+			Recipient::PhantomNode => Err(())
+		}
 	}
 
 	fn get_destination_script(&self) -> Script {
@@ -426,7 +425,7 @@ impl KeysInterface for ClientAdapter {
 		todo!()
 	}
 
-	fn sign_invoice(&self, hrp_bytes: &[u8], invoice_data: &[u5]) -> StdResult<RecoverableSignature, ()> {
+	fn sign_invoice(&self, hrp_bytes: &[u8], invoice_data: &[u5], recipient: Recipient) -> StdResult<RecoverableSignature, ()> {
 		let request = SignInvoiceRequest {
 			node_id: self.proto_node_id(),
 			data_part: invoice_data.iter().map(|o| o.to_u8()).collect(),
@@ -882,9 +881,14 @@ async fn do_init(vls_port: u16, network: Network, node_id_path: String, node_sec
 	let response = client.init(init_request).await.expect("init");
 	let reply = response.into_inner();
 	let node_id_bytes = reply.node_id.expect("missing node_id").data;
+
+	let response = client.get_node_param(GetNodeParamRequest { node_id: Some(remotesigner::NodeId { data: node_id_bytes.clone() }) }).await.expect("param");
+	let reply = response.into_inner();
 	let node_secret_bytes = reply.node_secret.expect("missing node_secret").data;
+
 	let node_id = PublicKey::from_slice(&node_id_bytes).expect("node_id as public key");
 	let node_secret = SecretKey::from_slice(&node_secret_bytes).expect("node_secret as secret key");
+
 	fs::write(node_secret_path, node_secret.to_string()).expect("write node_secret");
 	fs::write(node_id_path, node_id.to_string()).expect("write node_id");
 	(node_id, node_secret)

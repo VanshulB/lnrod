@@ -299,6 +299,9 @@ async fn handle_ldk_events(
 			info!("EVENT: payment path successful for payment hash {:?}",
 				payment_hash.map(|p| hex_utils::hex_str(&p.0)));
 		}
+		Event::OpenChannelRequest { .. } => {
+			unimplemented!("OpenChannelRequest");
+		}
 	}
 }
 

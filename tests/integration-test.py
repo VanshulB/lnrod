@@ -33,7 +33,7 @@ SIGNER = "vls"
 
 logger = logging.getLogger()
 
-os.environ['RUST_BACKTRACE'] = "0"
+os.environ['RUST_BACKTRACE'] = "1"
 
 
 def kill_procs():

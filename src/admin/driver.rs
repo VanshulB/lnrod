@@ -9,7 +9,7 @@ use serde_json::json;
 use tonic::{transport::Server, Request, Response, Status};
 
 use bitcoin::secp256k1::{PublicKey, Secp256k1};
-use lightning::chain::keysinterface::KeysInterface;
+use lightning::chain::keysinterface::{KeysInterface, Recipient};
 use lightning::chain::channelmonitor::Balance;
 use lightning::util::config::UserConfig;
 use lightning_signer::lightning;
@@ -59,7 +59,7 @@ impl Admin for AdminHandler {
 		info!("ENTER node_info");
 		let node_pubkey = PublicKey::from_secret_key(
 			&Secp256k1::new(),
-			&self.node.keys_manager.get_node_secret(),
+			&self.node.keys_manager.get_node_secret(Recipient::Node).unwrap(),
 		);
 		let shutdown_scriptpubkey = self.node.keys_manager.get_shutdown_scriptpubkey();
 		let shutdown_address =
@@ -296,7 +296,7 @@ pub fn start(rpc_port: u16, args: NodeBuildArgs) -> Result<(), Box<dyn std::erro
 pub async fn do_start(rpc_port: u16, args: NodeBuildArgs) -> Result<(), Box<dyn std::error::Error>> {
 	let (node, _network_controller) = build_node(args.clone()).await;
 	let node_id =
-		PublicKey::from_secret_key(&Secp256k1::new(), &node.keys_manager.get_node_secret());
+		PublicKey::from_secret_key(&Secp256k1::new(), &node.keys_manager.get_node_secret(Recipient::Node).unwrap());
 
 	info!("p2p {} 127.0.0.1:{}", node_id, args.peer_listening_port);
 	info!(

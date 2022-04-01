@@ -52,33 +52,33 @@ tracing-subscriber = { version = "0.3.9" }
 
 [dependencies.lightning-net-tokio]
 git = "https://github.com/lightningdevkit/rust-lightning"
-rev = "482a2b9250679abb3c9931497b2324799fbfa087"
+rev = "7671ae54522197dbca495c4c7b3fec5c814a1841"
 #path = "../rust-lightning/lightning-net-tokio"
 
 [dependencies.lightning-background-processor]
 git = "https://github.com/lightningdevkit/rust-lightning"
-rev = "482a2b9250679abb3c9931497b2324799fbfa087"
+rev = "7671ae54522197dbca495c4c7b3fec5c814a1841"
 #path = "../rust-lightning/lightning-background-processor"
 
 [dependencies.lightning-persister]
 git = "https://github.com/lightningdevkit/rust-lightning"
-rev = "482a2b9250679abb3c9931497b2324799fbfa087"
+rev = "7671ae54522197dbca495c4c7b3fec5c814a1841"
 #path = "../rust-lightning/lightning-persister"
 
 [dependencies.lightning-block-sync]
 features = ["rpc-client"]
 git = "https://github.com/lightningdevkit/rust-lightning"
-rev = "482a2b9250679abb3c9931497b2324799fbfa087"
+rev = "7671ae54522197dbca495c4c7b3fec5c814a1841"
 #path = "../rust-lightning/lightning-block-sync"
 
 [dependencies.lightning-signer-core]
 git = "https://gitlab.com/lightning-signer/validating-lightning-signer.git"
-rev = "a6489a472798f0a63dc7db6797e0420128676e53"
+rev = "06ea97a8baefdfaaf184d65bc67144b64788fb1c"
 #path = "../vls/lightning-signer-core"
 
 [dependencies.lightning-signer-server]
 git = "https://gitlab.com/lightning-signer/validating-lightning-signer.git"
-rev = "a6489a472798f0a63dc7db6797e0420128676e53" # VLS VERSION
+rev = "06ea97a8baefdfaaf184d65bc67144b64788fb1c" # VLS VERSION
 #path = "../vls/lightning-signer-server"
 
 [build-dependencies]

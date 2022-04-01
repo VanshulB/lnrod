@@ -25,12 +25,12 @@ use lightning::ln::channelmanager::{
 use lightning::ln::peer_handler::MessageHandler;
 use lightning::ln::{channelmanager, PaymentHash, PaymentPreimage};
 use lightning::routing::network_graph::{NetGraphMsgHandler, RoutingFees};
+use lightning::util::events::{EventHandler, Event};
 use lightning::util::ser::{ReadableArgs};
 use lightning::chain::BestBlock;
 use lightning::routing::router::RouteHintHop;
 use lightning::routing::network_graph::NetworkGraph;
-use lightning::routing::scoring::Scorer;
-use lightning::util::events::{Event, EventHandler};
+use lightning::routing::scoring::{ProbabilisticScorer, ProbabilisticScoringParameters};
 use lightning::routing::router::RouteHint;
 use lightning_background_processor::BackgroundProcessor;
 use lightning_signer::lightning;
@@ -39,6 +39,7 @@ use lightning_invoice::{Invoice, payment};
 use lightning_invoice::payment::PaymentError;
 use lightning_invoice::utils::DefaultRouter;
 use lightning_persister::FilesystemPersister;
+use lightning_signer::lightning::chain::keysinterface::Recipient;
 use rand::{Rng, thread_rng};
 use tokio::runtime;
 use tokio::runtime::Handle;
@@ -107,7 +108,7 @@ impl EventHandler for MyEventHandler {
 pub(crate) type InvoicePayer = payment::InvoicePayer<
 	Arc<ChannelManager>,
 	Router,
-	Arc<Mutex<Scorer>>,
+	Arc<Mutex<ProbabilisticScorer<Arc<NetworkGraph>>>>,
 	Arc<LoggerAdapter>,
 	MyEventHandler,
 >;
@@ -243,7 +244,7 @@ async fn build_with_signer(
 	let user_config = args.config.bitcoin_channel().into();
 
 	let mut restarting_node = true;
-	let (channel_manager_blockhash, mut channel_manager) = {
+	let (channel_manager_blockhash, channel_manager) = {
 		if let Ok(mut f) = fs::File::open(format!("{}/manager", ldk_data_dir.clone())) {
 			let mut channel_monitor_mut_references = Vec::new();
 			for (_, channel_monitor) in outpoint_to_channelmonitor.iter_mut() {
@@ -285,7 +286,7 @@ async fn build_with_signer(
 	let mut chain_tip: Option<poll::ValidatedBlockHeader> = None;
 	if restarting_node {
 		let mut chain_listeners =
-			vec![(channel_manager_blockhash, &mut channel_manager as &mut dyn chain::Listen)];
+			vec![(channel_manager_blockhash, &channel_manager as &dyn chain::Listen)];
 
 		for (outpoint, blockhash_and_monitor) in outpoint_to_channelmonitor.drain() {
 			let blockhash = blockhash_and_monitor.0;
@@ -300,7 +301,7 @@ async fn build_with_signer(
 		for monitor_listener_info in chain_listener_channel_monitors.iter_mut() {
 			chain_listeners.push((
 				monitor_listener_info.0,
-				&mut monitor_listener_info.1 as &mut dyn chain::Listen,
+				&monitor_listener_info.1 as &dyn chain::Listen,
 			));
 		}
 		chain_tip = Some(
@@ -345,7 +346,7 @@ async fn build_with_signer(
 		MessageHandler { chan_handler: channel_manager.clone(), route_handler: network_gossip.clone() };
 	let peer_manager: Arc<PeerManager> = Arc::new(PeerManager::new(
 		lightning_msg_handler,
-		keys_manager.get_node_secret(),
+		keys_manager.get_node_secret(Recipient::Node).unwrap(),
 		&ephemeral_bytes,
 		logadapter.clone(),
 		Arc::new(IgnoringMessageHandler {}),
@@ -385,8 +386,9 @@ async fn build_with_signer(
 
 	let payment_info: PaymentInfoStorage = Arc::new(Mutex::new(HashMap::new()));
 
-	let scorer = Arc::new(Mutex::new(Scorer::default()));
-	let router = DefaultRouter::new(network_graph.clone(), logadapter.clone());
+	let params = ProbabilisticScoringParameters::default();
+	let scorer = Arc::new(Mutex::new(ProbabilisticScorer::new(params, network_graph.clone())));
+	let router = DefaultRouter::new(network_graph.clone(), logadapter.clone(), keys_manager.get_secure_random_bytes());
 	let handle = tokio::runtime::Handle::current();
 
 	let channel_manager_event_listener = channel_manager.clone();
@@ -637,7 +639,7 @@ impl Node {
 		// Sign the invoice.
 		let invoice = invoice
 			.build_signed(|msg_hash| {
-				secp_ctx.sign_recoverable(msg_hash, &self.keys_manager.get_node_secret())
+				secp_ctx.sign_recoverable(msg_hash, &self.keys_manager.get_node_secret(Recipient::Node).unwrap())
 			})
 			.map_err(|e| format!("{:?}", e))?;
 

@@ -19,7 +19,7 @@ use bitcoin::util::bip32::{ChildNumber, ExtendedPrivKey, ExtendedPubKey};
 use bitcoin::{Network, Script, SigHashType, Transaction, TxIn, TxOut};
 use lightning::chain::keysinterface::{
 	BaseSign, DelayedPaymentOutputDescriptor, InMemorySigner, KeysInterface, Sign,
-	SpendableOutputDescriptor, StaticPaymentOutputDescriptor,
+	SpendableOutputDescriptor, StaticPaymentOutputDescriptor, Recipient
 };
 use lightning::ln::chan_utils::{
 	ChannelPublicKeys, ChannelTransactionParameters, CommitmentTransaction, HTLCOutputInCommitment,
@@ -74,8 +74,8 @@ impl DynKeysInterface {
 impl KeysInterface for DynKeysInterface {
 	type Signer = DynSigner;
 
-	fn get_node_secret(&self) -> SecretKey {
-		self.inner.get_node_secret()
+	fn get_node_secret(&self, recipient: Recipient) -> Result<SecretKey, ()> {
+		self.inner.get_node_secret(recipient)
 	}
 
 	fn get_destination_script(&self) -> Script {
@@ -98,8 +98,8 @@ impl KeysInterface for DynKeysInterface {
 		self.inner.read_chan_signer(reader)
 	}
 
-	fn sign_invoice(&self, hrp_bytes: &[u8], invoice_data: &[u5]) -> Result<RecoverableSignature, ()> {
-		self.inner.sign_invoice(hrp_bytes, invoice_data)
+	fn sign_invoice(&self, hrp_bytes: &[u8], invoice_data: &[u5], recipient: Recipient) -> Result<RecoverableSignature, ()> {
+		self.inner.sign_invoice(hrp_bytes, invoice_data, recipient)
 	}
 
 	fn get_inbound_payment_key_material(&self) -> KeyMaterial {
@@ -277,8 +277,11 @@ impl<F: SignerFactory> KeysManager<F> {
 impl<F: SignerFactory> KeysInterface for KeysManager<F> {
 	type Signer = DynSigner;
 
-	fn get_node_secret(&self) -> SecretKey {
-		self.node_secret.clone()
+	fn get_node_secret(&self, recipient: Recipient) -> Result<SecretKey, ()> {
+		match recipient {
+			Recipient::Node => Ok(self.node_secret.clone()),
+			Recipient::PhantomNode => Err(())
+		}
 	}
 
 	fn get_destination_script(&self) -> Script {
@@ -323,11 +326,11 @@ impl<F: SignerFactory> KeysInterface for KeysManager<F> {
 		Ok(DynSigner { inner: Box::new(signer) })
 	}
 
-	fn sign_invoice(&self, hrp_bytes: &[u8], invoice_data: &[u5]) -> Result<RecoverableSignature, ()> {
+	fn sign_invoice(&self, hrp_bytes: &[u8], invoice_data: &[u5], recipient: Recipient) -> Result<RecoverableSignature, ()> {
 		let invoice_preimage = construct_invoice_preimage(&hrp_bytes, &invoice_data);
 		let hash = Sha256::hash(invoice_preimage.as_slice());
 		let message = secp256k1::Message::from_slice(&hash).unwrap();
-		Ok(self.secp_ctx.sign_recoverable(&message, &self.get_node_secret()))
+		Ok(self.secp_ctx.sign_recoverable(&message, &self.get_node_secret(recipient).unwrap()))
 	}
 
 	fn get_inbound_payment_key_material(&self) -> KeyMaterial {
@@ -509,7 +512,7 @@ impl<F: SignerFactory> SpendableKeysInterface for KeysManager<F> {
 	}
 
 	fn get_node_id(&self) -> PublicKey {
-		PublicKey::from_secret_key(&Secp256k1::new(), &self.get_node_secret())
+		PublicKey::from_secret_key(&Secp256k1::new(), &self.get_node_secret(Recipient::Node).unwrap())
 	}
 }
 
