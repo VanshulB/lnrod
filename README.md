@@ -4,11 +4,14 @@ A node implementation using LDK.
 
 ## Installation
 ```
+git clone git@gitlab.com:lightning-signer/validating-lightning-signer.git
 git clone git@gitlab.com:lightning-signer/lnrod.git
 ```
 
 ## Usage
 ```
+(cd validating-lightning-signer && cargo install --path=lightning-signer-server --locked)
+
 cd lnrod
 
 cargo build
@@ -71,13 +74,6 @@ pip3 install -r requirements.txt
 cargo build
 ./scripts/compile-proto
 ./tests/integration-test.py
-```
-
-or in CI or if you don't want to install `bitcoind` and Python deps:
-
-```
-docker build -t latest .
-docker run latest
 ```
 
 ### Using [kcov](https://github.com/SimonKagstrom/kcov) for Code Coverage
