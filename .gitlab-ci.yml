@@ -7,28 +7,28 @@ variables:
   CARGO_HOME: "$CI_PROJECT_DIR/.cache/cargo"
 
 cache:
+  key: lnrod-global
   paths:
-    - .cache
-    - bin
+    - .cache/pip
+    - bin/bitcoind
 
 before_script:
   - ls -al
   - mkdir -p bin
-  - if [ ! -e bin/bitcoind ]; then
-    wget --no-verbose https://bitcoin.org/bin/bitcoin-core-0.21.0/bitcoin-0.21.0-x86_64-linux-gnu.tar.gz &&
-    echo da7766775e3f9c98d7a9145429f2be8297c2672fe5b118fd3dc2411fb48e0032  bitcoin-0.21.0-x86_64-linux-gnu.tar.gz | sha256sum -c &&
-    tar xzf bitcoin-0.21.0-x86_64-linux-gnu.tar.gz &&
-    mv bitcoin-0.21.0/bin/bitcoind bin/ &&
-    rm -rf bitcoin-0.21.0 ;
-    fi
 
+# Compile lnrod
 compile:
   stage: build
-  image: rust:1.49.0
+  cache:
+    key: lnrod-compile
+    paths:
+      - .cache/cargo
+  image: rust:1.48.0
   timeout: 30m
   script:
     - cargo build
     - cargo test
+    - ls -l target/debug
 # use these if you want to quickly iterate over the integration test (disable the build steps above and see integration job)
 #    - cp target/debug/lnrod .cache/
 #    - cp target/debug/lnrcli .cache/
@@ -37,22 +37,49 @@ compile:
       - target/debug/lnrod
       - target/debug/lnrcli
 
-coverage:
+# Compile vlsd
+compile-vls:
   stage: build
-  image: rust:1.49.0
-  timeout: 20m
-  before_script:
-    - rustup component add rustfmt
-    - apt-get update
-    - apt-get install -y cmake g++ pkg-config jq libcurl4-openssl-dev libelf-dev libdw-dev binutils-dev libiberty-dev
-    - cargo install cargo-kcov
-    - ls -l $CARGO_HOME/bin
-    - if [ ! -x $CARGO_HOME/bin/kcov ]; then cargo kcov --print-install-kcov-sh | sh ; fi
-    - $CARGO_HOME/bin/kcov --version
+  cache:
+    key: lnrod-vls
+    paths:
+      - .cache/cargo
+  image: rust:1.48.0
+  timeout: 30m
   script:
-    - CARGO_TARGET_DIR=target/kcov cargo kcov --verbose --lib -- --verify --exclude-pattern=/home/user/.cargo,/usr/include,/usr/src/debug
-  after_script:
-    - bash <(curl -s https://codecov.io/bash) -t "${CODECOV_TOKEN}"
+    - vls_rev=`./scripts/vls-revision`
+    - echo "$vls_rev"
+    - cargo install lightning-signer-server --locked --git https://gitlab.com/lightning-signer/validating-lightning-signer.git --rev "$vls_rev"
+    - ls -l "$CARGO_HOME/bin"
+    - cp "$CARGO_HOME/bin/vlsd" "$CARGO_HOME/bin/vls-cli" bin/
+  artifacts:
+    paths:
+      - bin/vlsd
+      - bin/vls-cli
+
+# Disable coverage for now, because it doesn't work in docker based gitlab runners without
+# disabling important kernel security features
+
+#coverage:
+#  stage: test
+#  cache:
+#    key: lnrod-compile
+#    paths:
+#      - .cache/cargo
+#  image: rust:1.48.0
+#  timeout: 20m
+#  before_script:
+#    - rustup component add rustfmt
+#    - apt-get update
+#    - apt-get install -y cmake g++ pkg-config jq libcurl4-openssl-dev libelf-dev libdw-dev binutils-dev libiberty-dev
+#    - cargo install cargo-kcov
+#    - ls -l $CARGO_HOME/bin
+#    - if [ ! -x $CARGO_HOME/bin/kcov ]; then cargo kcov --print-install-kcov-sh | sh ; fi
+#    - $CARGO_HOME/bin/kcov --version
+#  script:
+#    - CARGO_TARGET_DIR=target/kcov cargo kcov --verbose --lib -- --verify --exclude-pattern=/home/user/.cargo,/usr/include,/usr/src/debug
+#  after_script:
+#    - bash <(curl -s https://codecov.io/bash) -t "${CODECOV_TOKEN}"
 
 integration:
   stage: test
@@ -61,9 +88,18 @@ integration:
   script:
 # use this if you want to quickly iterate over the integration test (see compile job)
 #    - mkdir -p target/debug && cp .cache/lnrod .cache/lnrcli target/debug/
+    - ls -l bin
+    - ls -l target/debug
+    - if [ ! -e bin/bitcoind ]; then
+      wget --no-verbose https://bitcoin.org/bin/bitcoin-core-0.21.0/bitcoin-0.21.0-x86_64-linux-gnu.tar.gz &&
+      echo da7766775e3f9c98d7a9145429f2be8297c2672fe5b118fd3dc2411fb48e0032  bitcoin-0.21.0-x86_64-linux-gnu.tar.gz | sha256sum -c &&
+      tar xzf bitcoin-0.21.0-x86_64-linux-gnu.tar.gz &&
+      mv bitcoin-0.21.0/bin/bitcoind bin/ &&
+      rm -rf bitcoin-0.21.0 ;
+      fi
     - pip3 install -r requirements.txt
     - ./scripts/compile-proto
-    - PATH=$PATH:`pwd`/bin ./tests/integration-test.py
+    - PATH="$PATH:`pwd`/bin" ./tests/integration-test.py
   artifacts:
     when: always
     paths:

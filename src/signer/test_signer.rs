@@ -8,7 +8,7 @@ use bitcoin::hashes::sha256::Hash as Sha256;
 use bitcoin::hashes::{Hash, HashEngine};
 use bitcoin::secp256k1::{All, Secp256k1, SecretKey};
 use bitcoin::util::bip32::{ChildNumber, ExtendedPrivKey};
-use bitcoin::{Network, Transaction};
+use bitcoin::{Address, Network, Transaction};
 use lightning::chain::keysinterface::{
 	DelayedPaymentOutputDescriptor, InMemorySigner, StaticPaymentOutputDescriptor,
 };
@@ -25,12 +25,7 @@ use rand::{Rng, thread_rng};
 pub struct InMemorySignerFactory {
 	seed: [u8; 32],
 	secp_ctx: Secp256k1<All>,
-}
-
-impl InMemorySignerFactory {
-	pub fn new(seed: &[u8; 32]) -> Self {
-		InMemorySignerFactory { seed: seed.clone(), secp_ctx: Secp256k1::new() }
-	}
+	node_secret: SecretKey,
 }
 
 impl PaymentSign for InMemorySigner {
@@ -110,6 +105,7 @@ impl SignerFactory for InMemorySignerFactory {
 
 		let signer = InMemorySigner::new(
 			&self.secp_ctx,
+			self.node_secret,
 			funding_key,
 			revocation_base_key,
 			payment_key,
@@ -122,11 +118,16 @@ impl SignerFactory for InMemorySignerFactory {
 
 		DynSigner { inner: Box::new(signer) }
 	}
+
+	fn new(seed: &[u8; 32], node_secret: SecretKey) -> Self {
+		InMemorySignerFactory { seed: seed.clone(), secp_ctx: Secp256k1::new(), node_secret }
+	}
 }
 
 pub(crate) fn make_signer(
 	_network: Network,
 	ldk_data_dir: String,
+	sweep_address: Address,
 ) -> Box<dyn SpendableKeysInterface<Signer = DynSigner>> {
 	// The key seed that we use to derive the node privkey (that corresponds to the node pubkey) and
 	// other secret key material.
@@ -146,11 +147,11 @@ pub(crate) fn make_signer(
 		key
 	};
 
-	let manager = KeysManager::new(
+	let manager: KeysManager<InMemorySignerFactory> = KeysManager::new(
 		&seed,
 		cur.as_secs(),
 		cur.subsec_nanos(),
-		InMemorySignerFactory::new(&seed),
+		sweep_address
 	);
 	Box::new(manager)
 }

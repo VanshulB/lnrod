@@ -4,6 +4,8 @@ import logging
 import os
 import signal
 import subprocess
+
+import sys
 import time
 from shutil import rmtree
 from subprocess import Popen
@@ -25,9 +27,13 @@ EXPECTED_FEE_SAT = 1458
 PAYMENT_MSAT = 4_000_000  # FIXME 2_000_000 fails with dust limit policy violation
 SLEEP_ON_FAIL = False
 USE_RELEASE_BINARIES = False
-SIGNER = "rls"
+
+# options: test, vls, vls-local
+SIGNER = "vls"
 
 logger = logging.getLogger()
+
+os.environ['RUST_BACKTRACE'] = "1"
 
 
 def kill_procs():
@@ -70,7 +76,7 @@ class Bitcoind(jsonrpc_requests.Server):
 
 
 @retry(stop_max_attempt_number=50, wait_fixed=100)
-def node(url):
+def grpc_client(url):
     channel = grpc.insecure_channel(url)
     stub = AdminStub(channel)
     stub.Ping(PingRequest(message="hello"))
@@ -110,6 +116,12 @@ def run():
     print('Starting bitcoind')
     btc = start_bitcoind()
 
+    if SIGNER == 'vls':
+        print('Starting signers')
+        alice_signer = start_vlsd(1)
+        bob_signer = start_vlsd(2)
+        charlie_signer = start_vlsd(3)
+
     print('Starting nodes')
     alice = start_node(1)
     bob = start_node(2)
@@ -132,6 +144,10 @@ def run():
         print(e)
         raise
 
+    # we have to wait here to prevent a race condition on the bitcoin wallet UTXOs
+    # TODO UTXO locking
+    wait_until('channel at bob', lambda: bob.ChannelList(Void()).channels[0])
+
     print('Create channel bob -> charlie')
     try:
         bob.PeerConnect(PeerConnectRequest(node_id=charlie_id, address=f'127.0.0.1:{charlie.lnport}'))
@@ -140,7 +156,6 @@ def run():
         print(e)
         raise
 
-    wait_until('channel at bob', lambda: bob.ChannelList(Void()).channels[0])
     wait_until('channel at charlie', lambda: charlie.ChannelList(Void()).channels[0])
 
     assert alice.ChannelList(Void()).channels[0].is_pending
@@ -263,6 +278,24 @@ def start_bitcoind():
     return btc
 
 
+def start_vlsd(n):
+    global processes
+
+    stdout_log = open(OUTPUT_DIR + f'/vls{n}.log', 'w')
+    optimization = 'release' if USE_RELEASE_BINARIES else 'debug'
+    # vlsd = f'../vls/target/{optimization}/vlsd'
+    vlsd = 'vlsd'
+    p = Popen([vlsd,
+               # '--log-level-console=TRACE',
+               '--network=regtest',
+               '--datadir', f'{OUTPUT_DIR}/vls{n}',
+               '--port', str(7700 + n)],
+              stdout=stdout_log, stderr=subprocess.STDOUT)
+    processes.append(p)
+    # return grpc_client(f'localhost:{7700 + n}')
+    time.sleep(1)
+
+
 def start_node(n):
     global processes
 
@@ -270,13 +303,16 @@ def start_node(n):
     optimization = 'release' if USE_RELEASE_BINARIES else 'debug'
     lnrod = f'target/{optimization}/lnrod'
     p = Popen([lnrod,
+              # '--log-level-console=TRACE',
                '--regtest',
                '--datadir', f'{OUTPUT_DIR}/data{n}',
                '--signer', SIGNER,
-               '--rpcport', str(8800 + n), '--lnport', str(9900 + n)],
+               '--vlsport', str(7700 + n),
+               '--rpcport', str(8800 + n),
+               '--lnport', str(9900 + n)],
               stdout=stdout_log, stderr=subprocess.STDOUT)
     processes.append(p)
-    lnrod = node(f'localhost:{8800 + n}')
+    lnrod = grpc_client(f'localhost:{8800 + n}')
     lnrod.lnport = 9900 + n
     return lnrod
 

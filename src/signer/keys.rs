@@ -4,13 +4,14 @@ use std::io::Read;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use anyhow::{anyhow, bail, Result};
+use bitcoin::bech32::u5;
 use bitcoin::blockdata::opcodes;
 use bitcoin::blockdata::script::Builder;
 use bitcoin::hash_types::WPubkeyHash;
 use bitcoin::hashes::sha256::Hash as Sha256;
 use bitcoin::hashes::sha256::HashEngine as Sha256State;
 use bitcoin::hashes::{Hash, HashEngine};
-use bitcoin::secp256k1;
+use bitcoin::{Address, secp256k1};
 use bitcoin::secp256k1::recovery::RecoverableSignature;
 use bitcoin::secp256k1::{All, PublicKey, Secp256k1, SecretKey, Signature};
 use bitcoin::util::bip143;
@@ -18,7 +19,7 @@ use bitcoin::util::bip32::{ChildNumber, ExtendedPrivKey, ExtendedPubKey};
 use bitcoin::{Network, Script, SigHashType, Transaction, TxIn, TxOut};
 use lightning::chain::keysinterface::{
 	BaseSign, DelayedPaymentOutputDescriptor, InMemorySigner, KeysInterface, Sign,
-	SpendableOutputDescriptor, StaticPaymentOutputDescriptor,
+	SpendableOutputDescriptor, StaticPaymentOutputDescriptor, Recipient
 };
 use lightning::ln::chan_utils::{
 	ChannelPublicKeys, ChannelTransactionParameters, CommitmentTransaction, HTLCOutputInCommitment,
@@ -27,18 +28,22 @@ use lightning::ln::chan_utils::{
 use lightning::ln::msgs::{DecodeError, UnsignedChannelAnnouncement};
 use lightning::ln::script::ShutdownScript;
 use lightning::util::ser::{Readable, Writeable, Writer};
+use lightning::ln::chan_utils::ClosingTransaction;
+use lightning::util::invoice::construct_invoice_preimage;
+use lightning::util::ser::ReadableArgs;
 use lightning_signer::lightning;
 use lightning_signer::util::transaction_utils;
 use lightning_signer::util::transaction_utils::MAX_VALUE_MSAT;
 
-use crate::byte_utils;
-use crate::lightning::ln::chan_utils::ClosingTransaction;
+use crate::{byte_utils, PaymentPreimage};
+use crate::chain::keysinterface::KeyMaterial;
 
 /// Decouple creation of DynSigner from KeysManager
 pub trait SignerFactory: Sync + Send {
 	fn derive_channel_keys(
 		&self, channel_master_key: &ExtendedPrivKey, channel_value_satoshis: u64, params: &[u8; 32],
 	) -> DynSigner;
+	fn new(seed: &[u8; 32], node_secret: SecretKey) -> Self;
 }
 
 // TODO(devrandom) why is spend_spendable_outputs not in KeysInterface?
@@ -48,6 +53,12 @@ pub trait SpendableKeysInterface: KeysInterface + Send + Sync {
 		change_destination_script: Script, feerate_sat_per_1000_weight: u32,
 		secp_ctx: &Secp256k1<All>,
 	) -> Result<Transaction>;
+
+	/// Swept funds from closed channels are sent here
+	/// This is implemented by setting the change destination to spend_spendable_outputs to this address.
+	fn get_sweep_address(&self) -> Address;
+
+	fn get_node_id(&self) -> PublicKey;
 }
 
 pub(crate) struct DynKeysInterface {
@@ -58,17 +69,13 @@ impl DynKeysInterface {
 	pub fn new(inner: Box<dyn SpendableKeysInterface<Signer = DynSigner>>) -> Self {
 		DynKeysInterface { inner }
 	}
-
-	pub fn get_node_id(&self) -> PublicKey {
-		PublicKey::from_secret_key(&Secp256k1::new(), &self.get_node_secret())
-	}
 }
 
 impl KeysInterface for DynKeysInterface {
 	type Signer = DynSigner;
 
-	fn get_node_secret(&self) -> SecretKey {
-		self.inner.get_node_secret()
+	fn get_node_secret(&self, recipient: Recipient) -> Result<SecretKey, ()> {
+		self.inner.get_node_secret(recipient)
 	}
 
 	fn get_destination_script(&self) -> Script {
@@ -91,8 +98,12 @@ impl KeysInterface for DynKeysInterface {
 		self.inner.read_chan_signer(reader)
 	}
 
-	fn sign_invoice(&self, invoice_preimage: Vec<u8>) -> Result<RecoverableSignature, ()> {
-		self.inner.sign_invoice(invoice_preimage)
+	fn sign_invoice(&self, hrp_bytes: &[u8], invoice_data: &[u5], recipient: Recipient) -> Result<RecoverableSignature, ()> {
+		self.inner.sign_invoice(hrp_bytes, invoice_data, recipient)
+	}
+
+	fn get_inbound_payment_key_material(&self) -> KeyMaterial {
+		self.inner.get_inbound_payment_key_material()
 	}
 }
 
@@ -110,6 +121,14 @@ impl SpendableKeysInterface for DynKeysInterface {
 			secp_ctx,
 		)
 	}
+
+	fn get_sweep_address(&self) -> Address {
+		self.inner.get_sweep_address()
+	}
+
+	fn get_node_id(&self) -> PublicKey {
+		self.inner.get_node_id()
+	}
 }
 
 // Copied from keysinterface.rs and decoupled from InMemorySigner
@@ -124,6 +143,7 @@ impl SpendableKeysInterface for DynKeysInterface {
 pub struct KeysManager<F: SignerFactory> {
 	secp_ctx: Secp256k1<secp256k1::All>,
 	node_secret: SecretKey,
+	inbound_payment_key: KeyMaterial,
 	destination_script: Script,
 	shutdown_pubkey: PublicKey,
 	channel_master_key: ExtendedPrivKey,
@@ -137,6 +157,7 @@ pub struct KeysManager<F: SignerFactory> {
 	starting_time_secs: u64,
 	starting_time_nanos: u32,
 	factory: F,
+	sweep_address: Address,
 }
 
 impl<F: SignerFactory> KeysManager<F> {
@@ -160,78 +181,88 @@ impl<F: SignerFactory> KeysManager<F> {
 	/// versions. Once the library is more fully supported, the docs will be updated to include a
 	/// detailed description of the guarantee.
 	pub fn new(
-		seed: &[u8; 32], starting_time_secs: u64, starting_time_nanos: u32, factory: F,
+		seed: &[u8; 32], starting_time_secs: u64, starting_time_nanos: u32,
+		sweep_address: Address,
 	) -> Self {
 		let secp_ctx = Secp256k1::new();
 		// Note that when we aren't serializing the key, network doesn't matter
-		match ExtendedPrivKey::new_master(Network::Testnet, seed) {
-			Ok(master_key) => {
-				let node_secret = master_key
-					.ckd_priv(&secp_ctx, ChildNumber::from_hardened_idx(0).unwrap())
-					.expect("Your RNG is busted")
-					.private_key
-					.key;
-				let destination_script = match master_key
-					.ckd_priv(&secp_ctx, ChildNumber::from_hardened_idx(1).unwrap())
-				{
-					Ok(destination_key) => {
-						let wpubkey_hash = WPubkeyHash::hash(
-							&ExtendedPubKey::from_private(&secp_ctx, &destination_key)
-								.public_key
-								.to_bytes(),
-						);
-						Builder::new()
-							.push_opcode(opcodes::all::OP_PUSHBYTES_0)
-							.push_slice(&wpubkey_hash.into_inner())
-							.into_script()
-					}
-					Err(_) => panic!("Your RNG is busted"),
-				};
-				let shutdown_pubkey = match master_key
-					.ckd_priv(&secp_ctx, ChildNumber::from_hardened_idx(2).unwrap())
-				{
-					Ok(shutdown_key) => {
-						ExtendedPubKey::from_private(&secp_ctx, &shutdown_key).public_key.key
-					}
-					Err(_) => panic!("Your RNG is busted"),
-				};
-				let channel_master_key = master_key
-					.ckd_priv(&secp_ctx, ChildNumber::from_hardened_idx(3).unwrap())
-					.expect("Your RNG is busted");
-				let rand_bytes_master_key = master_key
-					.ckd_priv(&secp_ctx, ChildNumber::from_hardened_idx(4).unwrap())
-					.expect("Your RNG is busted");
-
-				let mut rand_bytes_unique_start = Sha256::engine();
-				rand_bytes_unique_start.input(&byte_utils::be64_to_array(starting_time_secs));
-				rand_bytes_unique_start.input(&byte_utils::be32_to_array(starting_time_nanos));
-				rand_bytes_unique_start.input(seed);
-
-				let mut res = KeysManager {
-					secp_ctx,
-					node_secret,
-
-					destination_script,
-					shutdown_pubkey,
-
-					channel_master_key,
-					channel_child_index: AtomicUsize::new(0),
-
-					rand_bytes_master_key,
-					rand_bytes_child_index: AtomicUsize::new(0),
-					rand_bytes_unique_start,
-
-					seed: *seed,
-					starting_time_secs,
-					starting_time_nanos,
-					factory,
-				};
-				let secp_seed = res.get_secure_random_bytes();
-				res.secp_ctx.seeded_randomize(&secp_seed);
-				res
+		let master_key = ExtendedPrivKey::new_master(Network::Testnet, seed).expect("your RNG is busted");
+		let node_secret = master_key
+			.ckd_priv(&secp_ctx, ChildNumber::from_hardened_idx(0).unwrap())
+			.expect("Your RNG is busted")
+			.private_key
+			.key;
+		let destination_script = match master_key
+			.ckd_priv(&secp_ctx, ChildNumber::from_hardened_idx(1).unwrap())
+		{
+			Ok(destination_key) => {
+				let wpubkey_hash = WPubkeyHash::hash(
+					&ExtendedPubKey::from_private(&secp_ctx, &destination_key)
+						.public_key
+						.to_bytes(),
+				);
+				Builder::new()
+					.push_opcode(opcodes::all::OP_PUSHBYTES_0)
+					.push_slice(&wpubkey_hash.into_inner())
+					.into_script()
 			}
-			Err(_) => panic!("Your rng is busted"),
-		}
+			Err(_) => panic!("Your RNG is busted"),
+		};
+		let shutdown_pubkey = match master_key
+			.ckd_priv(&secp_ctx, ChildNumber::from_hardened_idx(2).unwrap())
+		{
+			Ok(shutdown_key) => {
+				ExtendedPubKey::from_private(&secp_ctx, &shutdown_key).public_key.key
+			}
+			Err(_) => panic!("Your RNG is busted"),
+		};
+		let channel_master_key = master_key
+			.ckd_priv(&secp_ctx, ChildNumber::from_hardened_idx(3).unwrap())
+			.expect("Your RNG is busted");
+		let rand_bytes_master_key = master_key
+			.ckd_priv(&secp_ctx, ChildNumber::from_hardened_idx(4).unwrap())
+			.expect("Your RNG is busted");
+
+		let mut rand_bytes_unique_start = Sha256::engine();
+		rand_bytes_unique_start.input(&byte_utils::be64_to_array(starting_time_secs));
+		rand_bytes_unique_start.input(&byte_utils::be32_to_array(starting_time_nanos));
+		rand_bytes_unique_start.input(seed);
+
+		let inbound_payment_key: SecretKey = master_key
+			.ckd_priv(&secp_ctx, ChildNumber::from_hardened_idx(5).unwrap())
+			.expect("Your RNG is busted")
+			.private_key
+			.key;
+		let mut inbound_pmt_key_bytes = [0; 32];
+		inbound_pmt_key_bytes.copy_from_slice(&inbound_payment_key[..]);
+
+		let factory = F::new(&seed, node_secret);
+
+
+		let mut res = KeysManager {
+			secp_ctx,
+			node_secret,
+
+			inbound_payment_key: KeyMaterial(inbound_pmt_key_bytes),
+			destination_script,
+			shutdown_pubkey,
+
+			channel_master_key,
+			channel_child_index: AtomicUsize::new(0),
+
+			rand_bytes_master_key,
+			rand_bytes_child_index: AtomicUsize::new(0),
+			rand_bytes_unique_start,
+
+			seed: *seed,
+			starting_time_secs,
+			starting_time_nanos,
+			factory,
+			sweep_address
+		};
+		let secp_seed = res.get_secure_random_bytes();
+		res.secp_ctx.seeded_randomize(&secp_seed);
+		res
 	}
 	/// Derive an old Sign containing per-channel secrets based on a key derivation parameters.
 	///
@@ -246,8 +277,11 @@ impl<F: SignerFactory> KeysManager<F> {
 impl<F: SignerFactory> KeysInterface for KeysManager<F> {
 	type Signer = DynSigner;
 
-	fn get_node_secret(&self) -> SecretKey {
-		self.node_secret.clone()
+	fn get_node_secret(&self, recipient: Recipient) -> Result<SecretKey, ()> {
+		match recipient {
+			Recipient::Node => Ok(self.node_secret.clone()),
+			Recipient::PhantomNode => Err(())
+		}
 	}
 
 	fn get_destination_script(&self) -> Script {
@@ -288,14 +322,19 @@ impl<F: SignerFactory> KeysInterface for KeysManager<F> {
 	fn read_chan_signer(&self, reader: &[u8]) -> Result<Self::Signer, DecodeError> {
 		let mut cursor = std::io::Cursor::new(reader);
 		// TODO(devrandom) make this polymorphic
-		let signer = InMemorySigner::read(&mut cursor)?;
+		let signer = InMemorySigner::read(&mut cursor, self.node_secret)?;
 		Ok(DynSigner { inner: Box::new(signer) })
 	}
 
-	fn sign_invoice(&self, invoice_preimage: Vec<u8>) -> Result<RecoverableSignature, ()> {
+	fn sign_invoice(&self, hrp_bytes: &[u8], invoice_data: &[u5], recipient: Recipient) -> Result<RecoverableSignature, ()> {
+		let invoice_preimage = construct_invoice_preimage(&hrp_bytes, &invoice_data);
 		let hash = Sha256::hash(invoice_preimage.as_slice());
 		let message = secp256k1::Message::from_slice(&hash).unwrap();
-		Ok(self.secp_ctx.sign_recoverable(&message, &self.get_node_secret()))
+		Ok(self.secp_ctx.sign_recoverable(&message, &self.get_node_secret(recipient).unwrap()))
+	}
+
+	fn get_inbound_payment_key_material(&self) -> KeyMaterial {
+		self.inbound_payment_key
 	}
 }
 
@@ -467,6 +506,14 @@ impl<F: SignerFactory> SpendableKeysInterface for KeysManager<F> {
 		}
 		Ok(spend_tx)
 	}
+
+	fn get_sweep_address(&self) -> Address {
+		self.sweep_address.clone()
+	}
+
+	fn get_node_id(&self) -> PublicKey {
+		PublicKey::from_secret_key(&Secp256k1::new(), &self.get_node_secret(Recipient::Node).unwrap())
+	}
 }
 
 // XXX why are these two calls not in `Sign`?
@@ -490,6 +537,12 @@ pub trait InnerSign: PaymentSign + Send + Sync {
 
 pub struct DynSigner {
 	pub inner: Box<dyn InnerSign>,
+}
+
+impl DynSigner {
+	pub(crate) fn new<S: InnerSign + 'static>(inner: S) -> Self {
+		DynSigner { inner: Box::new(inner) }
+	}
 }
 
 impl Sign for DynSigner {}
@@ -534,8 +587,8 @@ impl BaseSign for DynSigner {
 		self.inner.release_commitment_secret(idx)
 	}
 
-	fn validate_holder_commitment(&self, holder_tx: &HolderCommitmentTransaction) -> Result<(), ()> {
-		self.inner.validate_holder_commitment(holder_tx)
+	fn validate_holder_commitment(&self, holder_tx: &HolderCommitmentTransaction, preimages: Vec<PaymentPreimage>) -> Result<(), ()> {
+		self.inner.validate_holder_commitment(holder_tx, preimages)
 	}
 
 	fn pubkeys(&self) -> &ChannelPublicKeys {
@@ -547,9 +600,11 @@ impl BaseSign for DynSigner {
 	}
 
 	fn sign_counterparty_commitment(
-		&self, commitment_tx: &CommitmentTransaction, secp_ctx: &Secp256k1<secp256k1::All>,
+		&self, commitment_tx: &CommitmentTransaction,
+		preimages: Vec<PaymentPreimage>,
+		secp_ctx: &Secp256k1<secp256k1::All>,
 	) -> Result<(Signature, Vec<Signature>), ()> {
-		self.inner.sign_counterparty_commitment(commitment_tx, secp_ctx)
+		self.inner.sign_counterparty_commitment(commitment_tx, preimages, secp_ctx)
 	}
 
 	fn validate_counterparty_revocation(&self, idx: u64, secret: &SecretKey) -> Result<(), ()> {
@@ -617,7 +672,7 @@ impl BaseSign for DynSigner {
 
 	fn sign_channel_announcement(
 		&self, msg: &UnsignedChannelAnnouncement, secp_ctx: &Secp256k1<secp256k1::All>,
-	) -> Result<Signature, ()> {
+	) -> Result<(Signature, Signature), ()> {
 		self.inner.sign_channel_announcement(msg, secp_ctx)
 	}
 

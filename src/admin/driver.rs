@@ -9,11 +9,12 @@ use serde_json::json;
 use tonic::{transport::Server, Request, Response, Status};
 
 use bitcoin::secp256k1::{PublicKey, Secp256k1};
-use lightning::chain::keysinterface::KeysInterface;
+use lightning::chain::keysinterface::{KeysInterface, Recipient};
 use lightning::chain::channelmonitor::Balance;
 use lightning::util::config::UserConfig;
 use lightning_signer::lightning;
 use lightning_invoice::Invoice;
+use crate::lightning_invoice;
 
 use crate::admin::admin_api::{
 	Channel, ChannelCloseRequest, ChannelNewReply, ChannelNewRequest, InvoiceNewReply,
@@ -27,6 +28,7 @@ use crate::HTLCDirection;
 use super::admin_api::admin_server::{Admin, AdminServer};
 use super::admin_api::{ChannelListReply, NodeInfoReply, PingReply, PingRequest, Void};
 use bitcoin::Address;
+use tokio::runtime::Builder;
 
 struct AdminHandler {
 	node: Node,
@@ -57,7 +59,7 @@ impl Admin for AdminHandler {
 		info!("ENTER node_info");
 		let node_pubkey = PublicKey::from_secret_key(
 			&Secp256k1::new(),
-			&self.node.keys_manager.get_node_secret(),
+			&self.node.keys_manager.get_node_secret(Recipient::Node).unwrap(),
 		);
 		let shutdown_scriptpubkey = self.node.keys_manager.get_shutdown_scriptpubkey();
 		let shutdown_address =
@@ -280,16 +282,26 @@ impl Admin for AdminHandler {
 	}
 }
 
-#[tokio::main]
-pub async fn start(rpc_port: u16, args: NodeBuildArgs) -> Result<(), Box<dyn std::error::Error>> {
+// A small number of threads for debugging
+pub fn start(rpc_port: u16, args: NodeBuildArgs) -> Result<(), Box<dyn std::error::Error>> {
+	let runtime = std::thread::spawn(|| {
+		Builder::new_multi_thread().enable_all()
+			.thread_name("main")
+			.worker_threads(2) // for debugging
+			.build()
+	}).join().expect("runtime join").expect("runtime");
+	runtime.block_on(do_start(rpc_port, args))
+}
+
+pub async fn do_start(rpc_port: u16, args: NodeBuildArgs) -> Result<(), Box<dyn std::error::Error>> {
 	let (node, _network_controller) = build_node(args.clone()).await;
 	let node_id =
-		PublicKey::from_secret_key(&Secp256k1::new(), &node.keys_manager.get_node_secret());
+		PublicKey::from_secret_key(&Secp256k1::new(), &node.keys_manager.get_node_secret(Recipient::Node).unwrap());
 
 	info!("p2p {} 127.0.0.1:{}", node_id, args.peer_listening_port);
 	info!(
-		"admin port {}, datadir {}, signer {}",
-		rpc_port, args.storage_dir_path, args.signer_name
+		"admin port {}, datadir {}, signer {}, vls port {}",
+		rpc_port, args.storage_dir_path, args.signer_name, args.vls_port,
 	);
 	let addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), rpc_port);
 	let handler = AdminHandler::new(node);

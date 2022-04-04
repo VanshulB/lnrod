@@ -10,6 +10,7 @@ pub struct Config {
 	pub signet: Option<bool>,
 	pub ln_port: Option<u16>,
 	pub rpc_port: Option<u16>,
+	pub vls_port: Option<u16>,
 	pub bitcoin_rpc: Option<String>,
 	pub data_dir: Option<String>,
 	pub log_level_console: Option<String>,
@@ -47,6 +48,7 @@ impl Into<UserConfig> for ConfigCoinChannel {
 			channel_options: self.default.unwrap_or(Default::default()).into(),
 			accept_forwards_to_priv_channels: true,
 			accept_inbound_channels: true,
+			manually_accept_inbound_channels: false
 		}
 	}
 }
@@ -64,6 +66,7 @@ impl Into<ChannelHandshakeConfig> for ConfigProposeCoinChannel {
 			minimum_depth: self.minimum_depth.unwrap_or(6),
 			our_to_self_delay: self.our_to_self_delay.unwrap_or(144),
 			our_htlc_minimum_msat: self.our_htlc_minimum_msat.unwrap_or(1),
+			negotiate_scid_privacy: false
 		}
 	}
 }

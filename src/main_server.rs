@@ -35,6 +35,14 @@ fn main() -> Result<()> {
 				.takes_value(true),
 		)
 		.arg(
+			Arg::new("vlsport")
+				.about("vlsd RPC port")
+				.long("vlsport")
+				.default_value("50051")
+				.validator(|s| s.parse::<u16>())
+				.takes_value(true),
+		)
+		.arg(
 			Arg::new("datadir")
 				.short('d')
 				.long("datadir")
@@ -84,7 +92,7 @@ fn main() -> Result<()> {
 		)
 		.arg(
 			Arg::new("signer")
-				.about("signer name")
+				.about("signer name - use vls for a remote Validating Lightning Signer")
 				.long("signer")
 				.possible_values(&SIGNER_NAMES)
 				.default_value(SIGNER_NAMES[0])
@@ -133,6 +141,7 @@ fn main() -> Result<()> {
 
 	let peer_listening_port = arg_value_or_config("lnport", &matches, &config.ln_port);
 	let rpc_port = arg_value_or_config("rpcport", &matches, &config.rpc_port);
+	let vls_port = arg_value_or_config("vlsport", &matches, &config.vls_port);
 
 	let signer_name = arg_value_or_config("signer", &matches, &config.signer);
 
@@ -146,6 +155,7 @@ fn main() -> Result<()> {
 		bitcoind_rpc_port: bitcoin_url.port().expect("port"),
 		storage_dir_path: data_dir,
 		peer_listening_port,
+		vls_port,
 		network,
 		disk_log_level,
 		console_log_level,
