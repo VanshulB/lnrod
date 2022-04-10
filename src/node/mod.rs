@@ -55,7 +55,10 @@ use crate::signer::keys::DynKeysInterface;
 use crate::{disk, handle_ldk_events, ArcChainMonitor, ChannelManager, HTLCDirection, HTLCStatus, MilliSatoshiAmount, PaymentInfoStorage, PeerManager, IgnoringMessageHandler, Sha256};
 use crate::disk::HostAndPort;
 use crate::net::Connector;
+use crate::node::persister::DataPersister;
 use crate::tor::TorManager;
+
+mod persister;
 
 #[derive(Clone)]
 pub struct NodeBuildArgs {
@@ -380,9 +383,7 @@ async fn build_with_signer(
 
 	// Step 17 & 18: Initialize ChannelManager persistence & Once Per Minute: ChannelManager's
 	// timer_chan_freshness_every_min() and PeerManager's timer_tick_occurred
-	let data_dir = ldk_data_dir.clone();
-	let persist_channel_manager_callback =
-		move |node: &ChannelManager| FilesystemPersister::persist_manager(data_dir.clone(), &*node);
+	let persister = DataPersister { data_dir: ldk_data_dir.clone() };
 
 	let payment_info: PaymentInfoStorage = Arc::new(Mutex::new(HashMap::new()));
 
@@ -416,7 +417,7 @@ async fn build_with_signer(
 	));
 
 	let background_processor = BackgroundProcessor::start(
-		persist_channel_manager_callback,
+		persister,
 		invoice_payer.clone(),
 		chain_monitor.clone(),
 		channel_manager.clone(),
