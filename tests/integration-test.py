@@ -28,8 +28,8 @@ PAYMENT_MSAT = 4_000_000  # FIXME 2_000_000 fails with dust limit policy violati
 SLEEP_ON_FAIL = False
 USE_RELEASE_BINARIES = False
 
-# options: test, vls, vls-local
-SIGNER = "vls"
+# options: test, vls, vls-local, vls2-null
+SIGNER = os.environ.get("SIGNER", "vls2-null")
 
 logger = logging.getLogger()
 
@@ -79,7 +79,7 @@ class Bitcoind(jsonrpc_requests.Server):
 def grpc_client(url):
     channel = grpc.insecure_channel(url)
     stub = AdminStub(channel)
-    stub.Ping(PingRequest(message="hello"))
+    stub.Ping(PingRequest(message="hello"), timeout=1)
     return stub
 
 
