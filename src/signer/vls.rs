@@ -1,6 +1,6 @@
 //! Validating Lightning Signer integration
 
-use crate::signer::keys::{DynSigner, InnerSign, PaymentSign, SpendableKeysInterface};
+use crate::signer::keys::{DynSigner, InnerSign, SpendableKeysInterface};
 use anyhow::{anyhow, Result};
 use bitcoin::secp256k1::recovery::RecoverableSignature;
 use bitcoin::secp256k1::{All, PublicKey, Secp256k1, SecretKey, Signature};
@@ -58,24 +58,6 @@ macro_rules! todo {
 		println!("TODO");
 		panic!("not yet implemented")
 	}}
-}
-
-impl PaymentSign for LoopbackChannelSigner {
-	#[allow(unused)]
-	fn sign_counterparty_payment_input_t(
-		&self, spend_tx: &Transaction, input_idx: usize,
-		descriptor: &StaticPaymentOutputDescriptor, secp_ctx: &Secp256k1<All>,
-	) -> Result<Vec<Vec<u8>>, ()> {
-		todo!()
-	}
-
-	#[allow(unused)]
-	fn sign_dynamic_p2wsh_input_t(
-		&self, spend_tx: &Transaction, input_idx: usize,
-		descriptor: &DelayedPaymentOutputDescriptor, secp_ctx: &Secp256k1<All>,
-	) -> Result<Vec<Vec<u8>>, ()> {
-		todo!()
-	}
 }
 
 impl InnerSign for LoopbackChannelSigner {
@@ -590,17 +572,6 @@ pub fn create_spending_transaction(
 		change_destination_script,
 	).map_err(|()| anyhow!("could not add change"))?;
 	Ok(spend_tx)
-}
-
-#[allow(unused)]
-impl PaymentSign for ClientSigner {
-	fn sign_counterparty_payment_input_t(&self, spend_tx: &Transaction, input_idx: usize, descriptor: &StaticPaymentOutputDescriptor, secp_ctx: &Secp256k1<All>) -> Result<Vec<Vec<u8>>, ()> {
-		todo!()
-	}
-
-	fn sign_dynamic_p2wsh_input_t(&self, spend_tx: &Transaction, input_idx: usize, descriptor: &DelayedPaymentOutputDescriptor, secp_ctx: &Secp256k1<All>) -> Result<Vec<Vec<u8>>, ()> {
-		todo!()
-	}
 }
 
 #[allow(unused)]

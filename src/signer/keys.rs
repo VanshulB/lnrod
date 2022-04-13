@@ -37,14 +37,7 @@ use lightning_signer::util::transaction_utils::MAX_VALUE_MSAT;
 
 use crate::{byte_utils, PaymentPreimage};
 use crate::chain::keysinterface::KeyMaterial;
-
-/// Decouple creation of DynSigner from KeysManager
-pub trait SignerFactory: Sync + Send {
-	fn derive_channel_keys(
-		&self, channel_master_key: &ExtendedPrivKey, channel_value_satoshis: u64, params: &[u8; 32],
-	) -> DynSigner;
-	fn new(seed: &[u8; 32], node_secret: SecretKey) -> Self;
-}
+use crate::signer::test_signer::InMemorySignerFactory;
 
 // TODO(devrandom) why is spend_spendable_outputs not in KeysInterface?
 pub trait SpendableKeysInterface: KeysInterface + Send + Sync {
@@ -140,7 +133,7 @@ impl SpendableKeysInterface for DynKeysInterface {
 /// ChannelMonitor closes may use seed/1'
 /// Cooperative closes may use seed/2'
 /// The two close keys may be needed to claim on-chain funds!
-pub struct KeysManager<F: SignerFactory> {
+pub struct KeysManager {
 	secp_ctx: Secp256k1<secp256k1::All>,
 	node_secret: SecretKey,
 	inbound_payment_key: KeyMaterial,
@@ -156,11 +149,11 @@ pub struct KeysManager<F: SignerFactory> {
 	seed: [u8; 32],
 	starting_time_secs: u64,
 	starting_time_nanos: u32,
-	factory: F,
 	sweep_address: Address,
+	pub factory: InMemorySignerFactory,
 }
 
-impl<F: SignerFactory> KeysManager<F> {
+impl KeysManager {
 	/// Constructs a KeysManager from a 32-byte seed. If the seed is in some way biased (eg your
 	/// CSRNG is busted) this may panic (but more importantly, you will possibly lose funds).
 	/// starting_time isn't strictly required to actually be a time, but it must absolutely,
@@ -236,7 +229,7 @@ impl<F: SignerFactory> KeysManager<F> {
 		let mut inbound_pmt_key_bytes = [0; 32];
 		inbound_pmt_key_bytes.copy_from_slice(&inbound_payment_key[..]);
 
-		let factory = F::new(&seed, node_secret);
+		let factory = InMemorySignerFactory::new(&seed, node_secret);
 
 
 		let mut res = KeysManager {
@@ -269,12 +262,12 @@ impl<F: SignerFactory> KeysManager<F> {
 	/// Key derivation parameters are accessible through a per-channel secrets
 	/// Sign::channel_keys_id and is provided inside DynamicOuputP2WSH in case of
 	/// onchain output detection for which a corresponding delayed_payment_key must be derived.
-	pub fn derive_channel_keys(&self, channel_value_satoshis: u64, params: &[u8; 32]) -> DynSigner {
+	pub fn derive_channel_keys(&self, channel_value_satoshis: u64, params: &[u8; 32]) -> InMemorySigner {
 		self.factory.derive_channel_keys(&self.channel_master_key, channel_value_satoshis, params)
 	}
 }
 
-impl<F: SignerFactory> KeysInterface for KeysManager<F> {
+impl KeysInterface for KeysManager {
 	type Signer = DynSigner;
 
 	fn get_node_secret(&self, recipient: Recipient) -> Result<SecretKey, ()> {
@@ -299,7 +292,7 @@ impl<F: SignerFactory> KeysInterface for KeysManager<F> {
 		id[0..8].copy_from_slice(&byte_utils::be64_to_array(child_ix as u64));
 		id[8..16].copy_from_slice(&byte_utils::be64_to_array(self.starting_time_nanos as u64));
 		id[16..24].copy_from_slice(&byte_utils::be64_to_array(self.starting_time_secs));
-		self.derive_channel_keys(channel_value_satoshis, &id)
+		DynSigner::new(self.derive_channel_keys(channel_value_satoshis, &id))
 	}
 
 	fn get_secure_random_bytes(&self) -> [u8; 32] {
@@ -338,7 +331,7 @@ impl<F: SignerFactory> KeysInterface for KeysManager<F> {
 	}
 }
 
-impl<F: SignerFactory> SpendableKeysInterface for KeysManager<F> {
+impl SpendableKeysInterface for KeysManager {
 	/// Creates a Transaction which spends the given descriptors to the given outputs, plus an
 	/// output to the given change destination (if sufficient change value remains). The
 	/// transaction will have a feerate, at least, of the given value.
@@ -415,7 +408,7 @@ impl<F: SignerFactory> SpendableKeysInterface for KeysManager<F> {
 		)
 		.map_err(|_| anyhow!("failed to add change output"))?;
 
-		let mut keys_cache: Option<(DynSigner, [u8; 32])> = None;
+		let mut keys_cache: Option<(InMemorySigner, [u8; 32])> = None;
 		let mut input_idx = 0;
 		for outp in descriptors {
 			match outp {
@@ -435,7 +428,7 @@ impl<F: SignerFactory> SpendableKeysInterface for KeysManager<F> {
 						.as_ref()
 						.unwrap()
 						.0
-						.sign_counterparty_payment_input_t(
+						.sign_counterparty_payment_input(
 							&spend_tx,
 							input_idx,
 							&descriptor,
@@ -459,7 +452,7 @@ impl<F: SignerFactory> SpendableKeysInterface for KeysManager<F> {
 						.as_ref()
 						.unwrap()
 						.0
-						.sign_dynamic_p2wsh_input_t(&spend_tx, input_idx, &descriptor, &secp_ctx)
+						.sign_dynamic_p2wsh_input(&spend_tx, input_idx, &descriptor, &secp_ctx)
 						.unwrap();
 				}
 				SpendableOutputDescriptor::StaticOutput { ref output, .. } => {
@@ -516,20 +509,8 @@ impl<F: SignerFactory> SpendableKeysInterface for KeysManager<F> {
 	}
 }
 
-// XXX why are these two calls not in `Sign`?
-pub trait PaymentSign: BaseSign {
-	fn sign_counterparty_payment_input_t(
-		&self, spend_tx: &Transaction, input_idx: usize,
-		descriptor: &StaticPaymentOutputDescriptor, secp_ctx: &Secp256k1<All>,
-	) -> Result<Vec<Vec<u8>>, ()>;
-	fn sign_dynamic_p2wsh_input_t(
-		&self, spend_tx: &Transaction, input_idx: usize,
-		descriptor: &DelayedPaymentOutputDescriptor, secp_ctx: &Secp256k1<All>,
-	) -> Result<Vec<Vec<u8>>, ()>;
-}
-
 /// Helper to allow DynSigner to clone itself
-pub trait InnerSign: PaymentSign + Send + Sync {
+pub trait InnerSign: BaseSign + Send + Sync {
 	fn box_clone(&self) -> Box<dyn InnerSign>;
 	fn as_any(&self) -> &dyn Any;
 	fn vwrite(&self, writer: &mut Vec<u8>) -> Result<(), ::std::io::Error>;
@@ -550,22 +531,6 @@ impl Sign for DynSigner {}
 impl Clone for DynSigner {
 	fn clone(&self) -> Self {
 		DynSigner { inner: self.inner.box_clone() }
-	}
-}
-
-impl PaymentSign for DynSigner {
-	fn sign_counterparty_payment_input_t(
-		&self, spend_tx: &Transaction, input_idx: usize,
-		descriptor: &StaticPaymentOutputDescriptor, secp_ctx: &Secp256k1<All>,
-	) -> Result<Vec<Vec<u8>>, ()> {
-		self.inner.sign_counterparty_payment_input_t(spend_tx, input_idx, descriptor, secp_ctx)
-	}
-
-	fn sign_dynamic_p2wsh_input_t(
-		&self, spend_tx: &Transaction, input_idx: usize,
-		descriptor: &DelayedPaymentOutputDescriptor, secp_ctx: &Secp256k1<All>,
-	) -> Result<Vec<Vec<u8>>, ()> {
-		self.inner.sign_dynamic_p2wsh_input_t(spend_tx, input_idx, descriptor, secp_ctx)
 	}
 }
 
