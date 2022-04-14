@@ -51,7 +51,7 @@ use crate::convert::BlockchainInfo;
 use crate::fslogger::FilesystemLogger;
 use crate::logadapter::LoggerAdapter;
 use crate::signer::get_keys_manager;
-use crate::signer::keys::DynKeysInterface;
+use crate::DynKeysInterface;
 use crate::{disk, handle_ldk_events, ArcChainMonitor, ChannelManager, HTLCDirection, HTLCStatus, MilliSatoshiAmount, PaymentInfoStorage, PeerManager, IgnoringMessageHandler, Sha256};
 use crate::disk::HostAndPort;
 use crate::net::Connector;

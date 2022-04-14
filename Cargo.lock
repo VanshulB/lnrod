@@ -301,7 +301,7 @@ checksum = "8d696c370c750c948ada61c69a0ee2cbbb9c50b1019ddb86d9317157a99c2cae"
 [[package]]
 name = "bolt-derive"
 version = "0.1.0"
-source = "git+https://gitlab.com/lightning-signer/vls-protocol.git?rev=2d3d749095a6181cb234ccd1f3fa973154a2ea91#2d3d749095a6181cb234ccd1f3fa973154a2ea91"
+source = "git+https://gitlab.com/lightning-signer/vls-protocol.git?rev=8afda12e79e089940e96c1b961f08a5fed9eae3c#8afda12e79e089940e96c1b961f08a5fed9eae3c"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -2666,7 +2666,7 @@ checksum = "49874b5167b65d7193b8aba1567f5c7d93d001cafc34600cee003eda787e483f"
 [[package]]
 name = "vls-protocol"
 version = "0.1.0"
-source = "git+https://gitlab.com/lightning-signer/vls-protocol.git?rev=2d3d749095a6181cb234ccd1f3fa973154a2ea91#2d3d749095a6181cb234ccd1f3fa973154a2ea91"
+source = "git+https://gitlab.com/lightning-signer/vls-protocol.git?rev=8afda12e79e089940e96c1b961f08a5fed9eae3c#8afda12e79e089940e96c1b961f08a5fed9eae3c"
 dependencies = [
  "bolt-derive",
  "serde",
@@ -2677,8 +2677,9 @@ dependencies = [
 [[package]]
 name = "vls-protocol-client"
 version = "0.1.0"
-source = "git+https://gitlab.com/lightning-signer/vls-protocol.git?rev=2d3d749095a6181cb234ccd1f3fa973154a2ea91#2d3d749095a6181cb234ccd1f3fa973154a2ea91"
+source = "git+https://gitlab.com/lightning-signer/vls-protocol.git?rev=8afda12e79e089940e96c1b961f08a5fed9eae3c#8afda12e79e089940e96c1b961f08a5fed9eae3c"
 dependencies = [
+ "anyhow",
  "bit-vec",
  "lightning-signer-core",
  "log",
@@ -2688,7 +2689,7 @@ dependencies = [
 [[package]]
 name = "vls-protocol-signer"
 version = "0.1.0"
-source = "git+https://gitlab.com/lightning-signer/vls-protocol.git?rev=2d3d749095a6181cb234ccd1f3fa973154a2ea91#2d3d749095a6181cb234ccd1f3fa973154a2ea91"
+source = "git+https://gitlab.com/lightning-signer/vls-protocol.git?rev=8afda12e79e089940e96c1b961f08a5fed9eae3c#8afda12e79e089940e96c1b961f08a5fed9eae3c"
 dependencies = [
  "bit-vec",
  "lightning-signer-core",

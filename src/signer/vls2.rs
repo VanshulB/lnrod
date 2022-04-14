@@ -1,4 +1,3 @@
-use std::any::Any;
 use std::fs;
 use std::sync::Arc;
 
@@ -13,13 +12,12 @@ use lightning::ln::script::ShutdownScript;
 use lightning_signer::lightning;
 use lightning_signer::persist::DummyPersister;
 use log::{debug, error, info};
-use vls_protocol_client::{Error, KeysManagerClient, SignerClient, Transport};
+use vls_protocol_client::{Error, KeysManagerClient, Transport};
 use vls_protocol_signer::handler::{Handler, RootHandler};
 use vls_protocol_signer::vls_protocol::model::PubKey;
 use vls_protocol_signer::vls_protocol::msgs;
 
 use crate::{DynSigner, SpendableKeysInterface};
-use crate::signer::keys::InnerSign;
 use crate::signer::vls::create_spending_transaction;
 
 // A VLS client with a null transport.
@@ -98,7 +96,8 @@ impl KeysInterface for KeysManager {
     }
 
     fn read_chan_signer(&self, reader: &[u8]) -> Result<Self::Signer, DecodeError> {
-        todo!()
+        let signer = self.client.read_chan_signer(reader)?;
+        Ok(DynSigner::new(signer))
     }
 
     fn sign_invoice(&self, hrp_bytes: &[u8], invoice_data: &[u5], recipient: Recipient) -> Result<RecoverableSignature, ()> {
@@ -107,21 +106,6 @@ impl KeysInterface for KeysManager {
 
     fn get_inbound_payment_key_material(&self) -> KeyMaterial {
         self.client.get_inbound_payment_key_material()
-    }
-}
-
-impl InnerSign for SignerClient {
-    fn box_clone(&self) -> Box<dyn InnerSign> {
-        Box::new(self.clone())
-    }
-
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
-
-    fn vwrite(&self, writer: &mut Vec<u8>) -> anyhow::Result<(), std::io::Error> {
-        // TODO
-        Ok(())
     }
 }
 
@@ -148,9 +132,8 @@ impl SpendableKeysInterface for KeysManager {
 
 pub(crate) async fn make_null_signer(network: Network, ldk_data_dir: String, sweep_address: Address) -> Box<dyn SpendableKeysInterface<Signer = DynSigner>> {
     let node_id_path = format!("{}/node_id", ldk_data_dir);
-    let node_secret_path = format!("{}/node_secret", ldk_data_dir);
 
-    if let Ok(node_id_hex) = fs::read_to_string(node_id_path.clone()) {
+    if let Ok(_node_id_hex) = fs::read_to_string(node_id_path.clone()) {
         unimplemented!("read from disk {}", node_id_path);
     } else {
         let transport = NullTransport::new(sweep_address.clone());

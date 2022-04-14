@@ -1,9 +1,7 @@
-use std::any::Any;
 use std::fs;
 use std::fs::File;
 use std::io::Write;
 
-use anyhow::Result;
 use bitcoin::hashes::sha256::Hash as Sha256;
 use bitcoin::hashes::{Hash, HashEngine};
 use bitcoin::secp256k1::{All, Secp256k1, SecretKey};
@@ -12,11 +10,8 @@ use bitcoin::{Address, Network};
 use lightning::chain::keysinterface::InMemorySigner;
 use lightning_signer::lightning;
 
-use crate::byte_utils;
-use crate::signer::keys::{
-	DynSigner, InnerSign, KeysManager, SpendableKeysInterface,
-};
-use lightning::util::ser::Writeable;
+use crate::{byte_utils, DynSigner, SpendableKeysInterface};
+use crate::signer::keys::KeysManager;
 use std::time::SystemTime;
 use rand::{Rng, thread_rng};
 
@@ -24,20 +19,6 @@ pub struct InMemorySignerFactory {
 	seed: [u8; 32],
 	secp_ctx: Secp256k1<All>,
 	node_secret: SecretKey,
-}
-
-impl InnerSign for InMemorySigner {
-	fn box_clone(&self) -> Box<dyn InnerSign> {
-		Box::new(self.clone())
-	}
-
-	fn as_any(&self) -> &dyn Any {
-		self
-	}
-
-	fn vwrite(&self, writer: &mut Vec<u8>) -> Result<(), std::io::Error> {
-		self.write(writer)
-	}
 }
 
 impl InMemorySignerFactory {

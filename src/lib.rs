@@ -30,7 +30,7 @@ use lightning_signer::lightning;
 use lightning_signer::lightning_invoice;
 use rand::{thread_rng, Rng};
 
-use signer::keys::{DynKeysInterface, DynSigner, SpendableKeysInterface};
+use vls_protocol_client::{DynSigner, InnerSign, DynKeysInterface, SpendableKeysInterface};
 
 use bitcoind_client::BitcoindClient;
 use logadapter::LoggerAdapter;

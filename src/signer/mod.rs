@@ -1,8 +1,7 @@
 use anyhow::Result;
 use bitcoin::Network;
 
-use keys::{DynSigner, SpendableKeysInterface};
-use crate::BitcoindClient;
+use crate::{BitcoindClient, DynSigner, SpendableKeysInterface};
 
 pub mod keys;
 mod vls;
