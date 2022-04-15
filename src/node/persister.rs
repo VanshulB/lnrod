@@ -1,7 +1,8 @@
 use std::sync::Arc;
 use lightning_background_processor::Persister;
 use lightning_persister::FilesystemPersister;
-use crate::{ArcChainMonitor, BitcoindClient, ChannelManager, DynKeysInterface, DynSigner, LoggerAdapter, NetworkGraph};
+use vls_protocol_client::DynSigner;
+use crate::{ArcChainMonitor, BitcoindClient, ChannelManager, DynKeysInterface, LoggerAdapter, NetworkGraph};
 
 pub(crate) struct DataPersister {
     pub(crate) data_dir: String,

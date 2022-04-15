@@ -1,4 +1,3 @@
-use crate::signer::keys::{DynKeysInterface, DynSigner};
 use anyhow::Result;
 use bitcoin::hashes::hex::FromHex;
 use bitcoin::{BlockHash, Txid};
@@ -20,7 +19,7 @@ use std::time::Duration;
 use bitcoin::secp256k1::PublicKey;
 use log::error;
 use regex::Regex;
-use crate::{hex_utils, NetworkGraph};
+use crate::{hex_utils, NetworkGraph, DynSigner, DynKeysInterface};
 
 const MAX_CHANNEL_MONITOR_FILENAME_LENGTH: usize = 65;
 

@@ -1,6 +1,4 @@
-use std::any::Any;
 use std::collections::HashSet;
-use std::io::Read;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use anyhow::{anyhow, bail, Result};
@@ -13,123 +11,25 @@ use bitcoin::hashes::sha256::HashEngine as Sha256State;
 use bitcoin::hashes::{Hash, HashEngine};
 use bitcoin::{Address, secp256k1};
 use bitcoin::secp256k1::recovery::RecoverableSignature;
-use bitcoin::secp256k1::{All, PublicKey, Secp256k1, SecretKey, Signature};
+use bitcoin::secp256k1::{All, PublicKey, Secp256k1, SecretKey};
 use bitcoin::util::bip143;
 use bitcoin::util::bip32::{ChildNumber, ExtendedPrivKey, ExtendedPubKey};
 use bitcoin::{Network, Script, SigHashType, Transaction, TxIn, TxOut};
 use lightning::chain::keysinterface::{
-	BaseSign, DelayedPaymentOutputDescriptor, InMemorySigner, KeysInterface, Sign,
+	DelayedPaymentOutputDescriptor, InMemorySigner, KeysInterface,
 	SpendableOutputDescriptor, StaticPaymentOutputDescriptor, Recipient
 };
-use lightning::ln::chan_utils::{
-	ChannelPublicKeys, ChannelTransactionParameters, CommitmentTransaction, HTLCOutputInCommitment,
-	HolderCommitmentTransaction,
-};
-use lightning::ln::msgs::{DecodeError, UnsignedChannelAnnouncement};
+use lightning::ln::msgs::DecodeError;
 use lightning::ln::script::ShutdownScript;
-use lightning::util::ser::{Readable, Writeable, Writer};
-use lightning::ln::chan_utils::ClosingTransaction;
 use lightning::util::invoice::construct_invoice_preimage;
 use lightning::util::ser::ReadableArgs;
 use lightning_signer::lightning;
 use lightning_signer::util::transaction_utils;
 use lightning_signer::util::transaction_utils::MAX_VALUE_MSAT;
 
-use crate::{byte_utils, PaymentPreimage};
+use crate::{byte_utils, DynSigner, SpendableKeysInterface};
 use crate::chain::keysinterface::KeyMaterial;
-
-/// Decouple creation of DynSigner from KeysManager
-pub trait SignerFactory: Sync + Send {
-	fn derive_channel_keys(
-		&self, channel_master_key: &ExtendedPrivKey, channel_value_satoshis: u64, params: &[u8; 32],
-	) -> DynSigner;
-	fn new(seed: &[u8; 32], node_secret: SecretKey) -> Self;
-}
-
-// TODO(devrandom) why is spend_spendable_outputs not in KeysInterface?
-pub trait SpendableKeysInterface: KeysInterface + Send + Sync {
-	fn spend_spendable_outputs(
-		&self, descriptors: &[&SpendableOutputDescriptor], outputs: Vec<TxOut>,
-		change_destination_script: Script, feerate_sat_per_1000_weight: u32,
-		secp_ctx: &Secp256k1<All>,
-	) -> Result<Transaction>;
-
-	/// Swept funds from closed channels are sent here
-	/// This is implemented by setting the change destination to spend_spendable_outputs to this address.
-	fn get_sweep_address(&self) -> Address;
-
-	fn get_node_id(&self) -> PublicKey;
-}
-
-pub(crate) struct DynKeysInterface {
-	pub inner: Box<dyn SpendableKeysInterface<Signer = DynSigner>>,
-}
-
-impl DynKeysInterface {
-	pub fn new(inner: Box<dyn SpendableKeysInterface<Signer = DynSigner>>) -> Self {
-		DynKeysInterface { inner }
-	}
-}
-
-impl KeysInterface for DynKeysInterface {
-	type Signer = DynSigner;
-
-	fn get_node_secret(&self, recipient: Recipient) -> Result<SecretKey, ()> {
-		self.inner.get_node_secret(recipient)
-	}
-
-	fn get_destination_script(&self) -> Script {
-		self.inner.get_destination_script()
-	}
-
-	fn get_shutdown_scriptpubkey(&self) -> ShutdownScript {
-		self.inner.get_shutdown_scriptpubkey()
-	}
-
-	fn get_channel_signer(&self, inbound: bool, channel_value_satoshis: u64) -> Self::Signer {
-		self.inner.get_channel_signer(inbound, channel_value_satoshis)
-	}
-
-	fn get_secure_random_bytes(&self) -> [u8; 32] {
-		self.inner.get_secure_random_bytes()
-	}
-
-	fn read_chan_signer(&self, reader: &[u8]) -> Result<Self::Signer, DecodeError> {
-		self.inner.read_chan_signer(reader)
-	}
-
-	fn sign_invoice(&self, hrp_bytes: &[u8], invoice_data: &[u5], recipient: Recipient) -> Result<RecoverableSignature, ()> {
-		self.inner.sign_invoice(hrp_bytes, invoice_data, recipient)
-	}
-
-	fn get_inbound_payment_key_material(&self) -> KeyMaterial {
-		self.inner.get_inbound_payment_key_material()
-	}
-}
-
-impl SpendableKeysInterface for DynKeysInterface {
-	fn spend_spendable_outputs(
-		&self, descriptors: &[&SpendableOutputDescriptor], outputs: Vec<TxOut>,
-		change_destination_script: Script, feerate_sat_per_1000_weight: u32,
-		secp_ctx: &Secp256k1<All>,
-	) -> Result<Transaction> {
-		self.inner.spend_spendable_outputs(
-			descriptors,
-			outputs,
-			change_destination_script,
-			feerate_sat_per_1000_weight,
-			secp_ctx,
-		)
-	}
-
-	fn get_sweep_address(&self) -> Address {
-		self.inner.get_sweep_address()
-	}
-
-	fn get_node_id(&self) -> PublicKey {
-		self.inner.get_node_id()
-	}
-}
+use crate::signer::test_signer::InMemorySignerFactory;
 
 // Copied from keysinterface.rs and decoupled from InMemorySigner
 
@@ -140,7 +40,7 @@ impl SpendableKeysInterface for DynKeysInterface {
 /// ChannelMonitor closes may use seed/1'
 /// Cooperative closes may use seed/2'
 /// The two close keys may be needed to claim on-chain funds!
-pub struct KeysManager<F: SignerFactory> {
+pub struct KeysManager {
 	secp_ctx: Secp256k1<secp256k1::All>,
 	node_secret: SecretKey,
 	inbound_payment_key: KeyMaterial,
@@ -156,11 +56,11 @@ pub struct KeysManager<F: SignerFactory> {
 	seed: [u8; 32],
 	starting_time_secs: u64,
 	starting_time_nanos: u32,
-	factory: F,
 	sweep_address: Address,
+	pub factory: InMemorySignerFactory,
 }
 
-impl<F: SignerFactory> KeysManager<F> {
+impl KeysManager {
 	/// Constructs a KeysManager from a 32-byte seed. If the seed is in some way biased (eg your
 	/// CSRNG is busted) this may panic (but more importantly, you will possibly lose funds).
 	/// starting_time isn't strictly required to actually be a time, but it must absolutely,
@@ -236,7 +136,7 @@ impl<F: SignerFactory> KeysManager<F> {
 		let mut inbound_pmt_key_bytes = [0; 32];
 		inbound_pmt_key_bytes.copy_from_slice(&inbound_payment_key[..]);
 
-		let factory = F::new(&seed, node_secret);
+		let factory = InMemorySignerFactory::new(&seed, node_secret);
 
 
 		let mut res = KeysManager {
@@ -269,12 +169,12 @@ impl<F: SignerFactory> KeysManager<F> {
 	/// Key derivation parameters are accessible through a per-channel secrets
 	/// Sign::channel_keys_id and is provided inside DynamicOuputP2WSH in case of
 	/// onchain output detection for which a corresponding delayed_payment_key must be derived.
-	pub fn derive_channel_keys(&self, channel_value_satoshis: u64, params: &[u8; 32]) -> DynSigner {
+	pub fn derive_channel_keys(&self, channel_value_satoshis: u64, params: &[u8; 32]) -> InMemorySigner {
 		self.factory.derive_channel_keys(&self.channel_master_key, channel_value_satoshis, params)
 	}
 }
 
-impl<F: SignerFactory> KeysInterface for KeysManager<F> {
+impl KeysInterface for KeysManager {
 	type Signer = DynSigner;
 
 	fn get_node_secret(&self, recipient: Recipient) -> Result<SecretKey, ()> {
@@ -299,7 +199,7 @@ impl<F: SignerFactory> KeysInterface for KeysManager<F> {
 		id[0..8].copy_from_slice(&byte_utils::be64_to_array(child_ix as u64));
 		id[8..16].copy_from_slice(&byte_utils::be64_to_array(self.starting_time_nanos as u64));
 		id[16..24].copy_from_slice(&byte_utils::be64_to_array(self.starting_time_secs));
-		self.derive_channel_keys(channel_value_satoshis, &id)
+		DynSigner::new(self.derive_channel_keys(channel_value_satoshis, &id))
 	}
 
 	fn get_secure_random_bytes(&self) -> [u8; 32] {
@@ -338,7 +238,7 @@ impl<F: SignerFactory> KeysInterface for KeysManager<F> {
 	}
 }
 
-impl<F: SignerFactory> SpendableKeysInterface for KeysManager<F> {
+impl SpendableKeysInterface for KeysManager {
 	/// Creates a Transaction which spends the given descriptors to the given outputs, plus an
 	/// output to the given change destination (if sufficient change value remains). The
 	/// transaction will have a feerate, at least, of the given value.
@@ -354,7 +254,7 @@ impl<F: SignerFactory> SpendableKeysInterface for KeysManager<F> {
 		&self, descriptors: &[&SpendableOutputDescriptor], outputs: Vec<TxOut>,
 		change_destination_script: Script, feerate_sat_per_1000_weight: u32,
 		secp_ctx: &Secp256k1<All>,
-	) -> Result<Transaction> {
+	) -> anyhow::Result<Transaction> {
 		let mut input = Vec::new();
 		let mut input_value = 0;
 		let mut witness_weight = 0;
@@ -415,7 +315,7 @@ impl<F: SignerFactory> SpendableKeysInterface for KeysManager<F> {
 		)
 		.map_err(|_| anyhow!("failed to add change output"))?;
 
-		let mut keys_cache: Option<(DynSigner, [u8; 32])> = None;
+		let mut keys_cache: Option<(InMemorySigner, [u8; 32])> = None;
 		let mut input_idx = 0;
 		for outp in descriptors {
 			match outp {
@@ -435,7 +335,7 @@ impl<F: SignerFactory> SpendableKeysInterface for KeysManager<F> {
 						.as_ref()
 						.unwrap()
 						.0
-						.sign_counterparty_payment_input_t(
+						.sign_counterparty_payment_input(
 							&spend_tx,
 							input_idx,
 							&descriptor,
@@ -459,7 +359,7 @@ impl<F: SignerFactory> SpendableKeysInterface for KeysManager<F> {
 						.as_ref()
 						.unwrap()
 						.0
-						.sign_dynamic_p2wsh_input_t(&spend_tx, input_idx, &descriptor, &secp_ctx)
+						.sign_dynamic_p2wsh_input(&spend_tx, input_idx, &descriptor, &secp_ctx)
 						.unwrap();
 				}
 				SpendableOutputDescriptor::StaticOutput { ref output, .. } => {
@@ -513,180 +413,6 @@ impl<F: SignerFactory> SpendableKeysInterface for KeysManager<F> {
 
 	fn get_node_id(&self) -> PublicKey {
 		PublicKey::from_secret_key(&Secp256k1::new(), &self.get_node_secret(Recipient::Node).unwrap())
-	}
-}
-
-// XXX why are these two calls not in `Sign`?
-pub trait PaymentSign: BaseSign {
-	fn sign_counterparty_payment_input_t(
-		&self, spend_tx: &Transaction, input_idx: usize,
-		descriptor: &StaticPaymentOutputDescriptor, secp_ctx: &Secp256k1<All>,
-	) -> Result<Vec<Vec<u8>>, ()>;
-	fn sign_dynamic_p2wsh_input_t(
-		&self, spend_tx: &Transaction, input_idx: usize,
-		descriptor: &DelayedPaymentOutputDescriptor, secp_ctx: &Secp256k1<All>,
-	) -> Result<Vec<Vec<u8>>, ()>;
-}
-
-/// Helper to allow DynSigner to clone itself
-pub trait InnerSign: PaymentSign + Send + Sync {
-	fn box_clone(&self) -> Box<dyn InnerSign>;
-	fn as_any(&self) -> &dyn Any;
-	fn vwrite(&self, writer: &mut Vec<u8>) -> Result<(), ::std::io::Error>;
-}
-
-pub struct DynSigner {
-	pub inner: Box<dyn InnerSign>,
-}
-
-impl DynSigner {
-	pub(crate) fn new<S: InnerSign + 'static>(inner: S) -> Self {
-		DynSigner { inner: Box::new(inner) }
-	}
-}
-
-impl Sign for DynSigner {}
-
-impl Clone for DynSigner {
-	fn clone(&self) -> Self {
-		DynSigner { inner: self.inner.box_clone() }
-	}
-}
-
-impl PaymentSign for DynSigner {
-	fn sign_counterparty_payment_input_t(
-		&self, spend_tx: &Transaction, input_idx: usize,
-		descriptor: &StaticPaymentOutputDescriptor, secp_ctx: &Secp256k1<All>,
-	) -> Result<Vec<Vec<u8>>, ()> {
-		self.inner.sign_counterparty_payment_input_t(spend_tx, input_idx, descriptor, secp_ctx)
-	}
-
-	fn sign_dynamic_p2wsh_input_t(
-		&self, spend_tx: &Transaction, input_idx: usize,
-		descriptor: &DelayedPaymentOutputDescriptor, secp_ctx: &Secp256k1<All>,
-	) -> Result<Vec<Vec<u8>>, ()> {
-		self.inner.sign_dynamic_p2wsh_input_t(spend_tx, input_idx, descriptor, secp_ctx)
-	}
-}
-
-// This is taken care of by KeysInterface
-impl Readable for DynSigner {
-	fn read<R: Read>(_reader: &mut R) -> Result<Self, DecodeError> {
-		unimplemented!()
-	}
-}
-
-impl BaseSign for DynSigner {
-	fn get_per_commitment_point(
-		&self, idx: u64, secp_ctx: &Secp256k1<secp256k1::All>,
-	) -> PublicKey {
-		self.inner.get_per_commitment_point(idx, secp_ctx)
-	}
-
-	fn release_commitment_secret(&self, idx: u64) -> [u8; 32] {
-		self.inner.release_commitment_secret(idx)
-	}
-
-	fn validate_holder_commitment(&self, holder_tx: &HolderCommitmentTransaction, preimages: Vec<PaymentPreimage>) -> Result<(), ()> {
-		self.inner.validate_holder_commitment(holder_tx, preimages)
-	}
-
-	fn pubkeys(&self) -> &ChannelPublicKeys {
-		self.inner.pubkeys()
-	}
-
-	fn channel_keys_id(&self) -> [u8; 32] {
-		self.inner.channel_keys_id()
-	}
-
-	fn sign_counterparty_commitment(
-		&self, commitment_tx: &CommitmentTransaction,
-		preimages: Vec<PaymentPreimage>,
-		secp_ctx: &Secp256k1<secp256k1::All>,
-	) -> Result<(Signature, Vec<Signature>), ()> {
-		self.inner.sign_counterparty_commitment(commitment_tx, preimages, secp_ctx)
-	}
-
-	fn validate_counterparty_revocation(&self, idx: u64, secret: &SecretKey) -> Result<(), ()> {
-		self.inner.validate_counterparty_revocation(idx, secret)
-	}
-
-	fn sign_holder_commitment_and_htlcs(
-		&self, commitment_tx: &HolderCommitmentTransaction, secp_ctx: &Secp256k1<secp256k1::All>,
-	) -> Result<(Signature, Vec<Signature>), ()> {
-		self.inner.sign_holder_commitment_and_htlcs(commitment_tx, secp_ctx)
-	}
-
-	fn unsafe_sign_holder_commitment_and_htlcs(
-		&self, commitment_tx: &HolderCommitmentTransaction, secp_ctx: &Secp256k1<All>,
-	) -> Result<(Signature, Vec<Signature>), ()> {
-		self.inner.unsafe_sign_holder_commitment_and_htlcs(commitment_tx, secp_ctx)
-	}
-
-	fn sign_justice_revoked_output(
-		&self, justice_tx: &Transaction, input: usize, amount: u64, per_commitment_key: &SecretKey,
-		secp_ctx: &Secp256k1<All>,
-	) -> Result<Signature, ()> {
-		self.inner.sign_justice_revoked_output(
-			justice_tx,
-			input,
-			amount,
-			per_commitment_key,
-			secp_ctx,
-		)
-	}
-
-	fn sign_justice_revoked_htlc(
-		&self, justice_tx: &Transaction, input: usize, amount: u64, per_commitment_key: &SecretKey,
-		htlc: &HTLCOutputInCommitment, secp_ctx: &Secp256k1<All>,
-	) -> Result<Signature, ()> {
-		self.inner.sign_justice_revoked_htlc(
-			justice_tx,
-			input,
-			amount,
-			per_commitment_key,
-			htlc,
-			secp_ctx,
-		)
-	}
-
-	fn sign_counterparty_htlc_transaction(
-		&self, htlc_tx: &Transaction, input: usize, amount: u64, per_commitment_point: &PublicKey,
-		htlc: &HTLCOutputInCommitment, secp_ctx: &Secp256k1<secp256k1::All>,
-	) -> Result<Signature, ()> {
-		self.inner.sign_counterparty_htlc_transaction(
-			htlc_tx,
-			input,
-			amount,
-			per_commitment_point,
-			htlc,
-			secp_ctx,
-		)
-	}
-
-	fn sign_closing_transaction(
-		&self, closing_tx: &ClosingTransaction, secp_ctx: &Secp256k1<secp256k1::All>,
-	) -> Result<Signature, ()> {
-		self.inner.sign_closing_transaction(closing_tx, secp_ctx)
-	}
-
-	fn sign_channel_announcement(
-		&self, msg: &UnsignedChannelAnnouncement, secp_ctx: &Secp256k1<secp256k1::All>,
-	) -> Result<(Signature, Signature), ()> {
-		self.inner.sign_channel_announcement(msg, secp_ctx)
-	}
-
-	fn ready_channel(&mut self, channel_parameters: &ChannelTransactionParameters) {
-		self.inner.ready_channel(channel_parameters)
-	}
-}
-
-impl Writeable for DynSigner {
-	fn write<W: Writer>(&self, writer: &mut W) -> Result<(), ::std::io::Error> {
-		let inner = self.inner.as_ref();
-		let mut buf = Vec::new();
-		inner.vwrite(&mut buf)?;
-		writer.write_all(&buf)
 	}
 }
 

@@ -99,7 +99,11 @@ integration:
       fi
     - pip3 install -r requirements.txt
     - ./scripts/compile-proto
-    - PATH="$PATH:`pwd`/bin" ./tests/integration-test.py
+    - export PATH="$PATH:`pwd`/bin"
+#    - SIGNER=vls-local ./tests/integration-test.py
+    - SIGNER=vls2-null  ./tests/integration-test.py
+    - sleep 5 # wait for bitcoind to stop
+    - SIGNER=vls       ./tests/integration-test.py
   artifacts:
     when: always
     paths:

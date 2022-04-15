@@ -30,6 +30,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "739f4a8db6605981345c5654f3a85b056ce52f37a39d34da03f25bf2151ea16e"
 
 [[package]]
+name = "ahash"
+version = "0.7.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fcb51a0695d8f838b1ee009b3fbf66bda078cd64590202a864a8f3e8c4315c47"
+dependencies = [
+ "getrandom 0.2.5",
+ "once_cell",
+ "version_check",
+]
+
+[[package]]
 name = "aho-corasick"
 version = "0.6.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -194,6 +205,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "bit-vec"
+version = "0.6.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "349f9b6a179ed607305526ca489b34ad0a41aed5f7980fa90eb03160b69598fb"
+
+[[package]]
 name = "bitcoin"
 version = "0.27.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -280,6 +297,16 @@ name = "block-padding"
 version = "0.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8d696c370c750c948ada61c69a0ee2cbbb9c50b1019ddb86d9317157a99c2cae"
+
+[[package]]
+name = "bolt-derive"
+version = "0.1.0"
+source = "git+https://gitlab.com/lightning-signer/vls-protocol.git?rev=8afda12e79e089940e96c1b961f08a5fed9eae3c#8afda12e79e089940e96c1b961f08a5fed9eae3c"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn",
+]
 
 [[package]]
 name = "bugsalot"
@@ -790,6 +817,9 @@ name = "hashbrown"
 version = "0.11.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ab5ef0d4909ef3724cc8cce6ccc8572c5c817592e9285f5464f8e86f8bd3726e"
+dependencies = [
+ "ahash 0.7.6",
+]
 
 [[package]]
 name = "heck"
@@ -1019,6 +1049,8 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "580647f97f8e6d138ad724027c8ca9b890b1001b05374c270bbee4c10309b641"
 dependencies = [
  "bitcoin",
+ "core2",
+ "hashbrown 0.11.2",
  "hex 0.4.3",
  "regex 0.2.11",
  "secp256k1",
@@ -1056,6 +1088,8 @@ checksum = "f069b6eb46d7639d07977d14dc7d9a40d9d8bc5ac2b47f1924318fec13edd5c0"
 dependencies = [
  "bech32 0.8.1",
  "bitcoin_hashes 0.10.0",
+ "core2",
+ "hashbrown 0.11.2",
  "lightning",
  "num-traits",
  "secp256k1",
@@ -1092,6 +1126,7 @@ dependencies = [
  "anyhow",
  "backtrace",
  "bitcoin",
+ "core2",
  "env_logger",
  "hashbrown 0.9.1",
  "itertools 0.9.0",
@@ -1175,6 +1210,8 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "url",
+ "vls-protocol-client",
+ "vls-protocol-signer",
  "zeroize",
 ]
 
@@ -1837,6 +1874,8 @@ version = "0.20.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "97d03ceae636d0fed5bae6a7f4f664354c5f4fcedf6eef053fef17e49f837d0a"
 dependencies = [
+ "bitcoin_hashes 0.9.7",
+ "rand 0.6.5",
  "secp256k1-sys",
  "serde",
 ]
@@ -1885,6 +1924,16 @@ version = "1.0.136"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ce31e24b01e1e524df96f1c2fdd054405f8d7376249a5110886fb4b658484789"
 dependencies = [
+ "serde_derive",
+]
+
+[[package]]
+name = "serde_bolt"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "704720009634ab092146c0b01eb578ae8b9d88eef028398752965fd766eb38bd"
+dependencies = [
+ "serde",
  "serde_derive",
 ]
 
@@ -2613,6 +2662,42 @@ name = "version_check"
 version = "0.9.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "49874b5167b65d7193b8aba1567f5c7d93d001cafc34600cee003eda787e483f"
+
+[[package]]
+name = "vls-protocol"
+version = "0.1.0"
+source = "git+https://gitlab.com/lightning-signer/vls-protocol.git?rev=8afda12e79e089940e96c1b961f08a5fed9eae3c#8afda12e79e089940e96c1b961f08a5fed9eae3c"
+dependencies = [
+ "bolt-derive",
+ "serde",
+ "serde_bolt",
+ "serde_derive",
+]
+
+[[package]]
+name = "vls-protocol-client"
+version = "0.1.0"
+source = "git+https://gitlab.com/lightning-signer/vls-protocol.git?rev=8afda12e79e089940e96c1b961f08a5fed9eae3c#8afda12e79e089940e96c1b961f08a5fed9eae3c"
+dependencies = [
+ "anyhow",
+ "bit-vec",
+ "lightning-signer-core",
+ "log",
+ "vls-protocol",
+]
+
+[[package]]
+name = "vls-protocol-signer"
+version = "0.1.0"
+source = "git+https://gitlab.com/lightning-signer/vls-protocol.git?rev=8afda12e79e089940e96c1b961f08a5fed9eae3c#8afda12e79e089940e96c1b961f08a5fed9eae3c"
+dependencies = [
+ "bit-vec",
+ "lightning-signer-core",
+ "log",
+ "secp256k1",
+ "serde",
+ "vls-protocol",
+]
 
 [[package]]
 name = "want"

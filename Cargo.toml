@@ -85,6 +85,16 @@ git = "https://gitlab.com/lightning-signer/validating-lightning-signer.git"
 rev = "3778a66e3c969041e7bcc530e63e6b822a802f72" # VLS VERSION
 #path = "../vls/lightning-signer-server"
 
+[dependencies.vls-protocol-signer]
+git = "https://gitlab.com/lightning-signer/vls-protocol.git"
+rev = "8afda12e79e089940e96c1b961f08a5fed9eae3c"
+#path = "../vls-protocol/vls-protocol-signer"
+
+[dependencies.vls-protocol-client]
+git = "https://gitlab.com/lightning-signer/vls-protocol.git"
+rev = "8afda12e79e089940e96c1b961f08a5fed9eae3c"
+#path = "../vls-protocol/vls-protocol-client"
+
 [build-dependencies]
 tonic-build = "0.6"
 

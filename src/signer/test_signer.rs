@@ -1,24 +1,17 @@
-use std::any::Any;
 use std::fs;
 use std::fs::File;
 use std::io::Write;
 
-use anyhow::Result;
 use bitcoin::hashes::sha256::Hash as Sha256;
 use bitcoin::hashes::{Hash, HashEngine};
 use bitcoin::secp256k1::{All, Secp256k1, SecretKey};
 use bitcoin::util::bip32::{ChildNumber, ExtendedPrivKey};
-use bitcoin::{Address, Network, Transaction};
-use lightning::chain::keysinterface::{
-	DelayedPaymentOutputDescriptor, InMemorySigner, StaticPaymentOutputDescriptor,
-};
+use bitcoin::{Address, Network};
+use lightning::chain::keysinterface::InMemorySigner;
 use lightning_signer::lightning;
 
-use crate::byte_utils;
-use crate::signer::keys::{
-	DynSigner, InnerSign, KeysManager, PaymentSign, SignerFactory, SpendableKeysInterface,
-};
-use lightning::util::ser::Writeable;
+use crate::{byte_utils, DynSigner, SpendableKeysInterface};
+use crate::signer::keys::KeysManager;
 use std::time::SystemTime;
 use rand::{Rng, thread_rng};
 
@@ -28,40 +21,10 @@ pub struct InMemorySignerFactory {
 	node_secret: SecretKey,
 }
 
-impl PaymentSign for InMemorySigner {
-	fn sign_counterparty_payment_input_t(
-		&self, spend_tx: &Transaction, input_idx: usize,
-		descriptor: &StaticPaymentOutputDescriptor, secp_ctx: &Secp256k1<All>,
-	) -> Result<Vec<Vec<u8>>, ()> {
-		self.sign_counterparty_payment_input(spend_tx, input_idx, descriptor, secp_ctx)
-	}
-
-	fn sign_dynamic_p2wsh_input_t(
-		&self, spend_tx: &Transaction, input_idx: usize,
-		descriptor: &DelayedPaymentOutputDescriptor, secp_ctx: &Secp256k1<All>,
-	) -> Result<Vec<Vec<u8>>, ()> {
-		self.sign_dynamic_p2wsh_input(spend_tx, input_idx, descriptor, secp_ctx)
-	}
-}
-
-impl InnerSign for InMemorySigner {
-	fn box_clone(&self) -> Box<dyn InnerSign> {
-		Box::new(self.clone())
-	}
-
-	fn as_any(&self) -> &dyn Any {
-		self
-	}
-
-	fn vwrite(&self, writer: &mut Vec<u8>) -> Result<(), std::io::Error> {
-		self.write(writer)
-	}
-}
-
-impl SignerFactory for InMemorySignerFactory {
-	fn derive_channel_keys(
+impl InMemorySignerFactory {
+	pub fn derive_channel_keys(
 		&self, channel_master_key: &ExtendedPrivKey, channel_value_satoshis: u64, params: &[u8; 32],
-	) -> DynSigner {
+	) -> InMemorySigner {
 		let chan_id = byte_utils::slice_to_be64(&params[0..8]);
 		assert!(chan_id <= std::u32::MAX as u64); // Otherwise the params field wasn't created by us
 		let mut unique_start = Sha256::engine();
@@ -116,10 +79,10 @@ impl SignerFactory for InMemorySignerFactory {
 			params.clone(),
 		);
 
-		DynSigner { inner: Box::new(signer) }
+		signer
 	}
 
-	fn new(seed: &[u8; 32], node_secret: SecretKey) -> Self {
+	pub fn new(seed: &[u8; 32], node_secret: SecretKey) -> Self {
 		InMemorySignerFactory { seed: seed.clone(), secp_ctx: Secp256k1::new(), node_secret }
 	}
 }
@@ -147,7 +110,7 @@ pub(crate) fn make_signer(
 		key
 	};
 
-	let manager: KeysManager<InMemorySignerFactory> = KeysManager::new(
+	let manager: KeysManager = KeysManager::new(
 		&seed,
 		cur.as_secs(),
 		cur.subsec_nanos(),
