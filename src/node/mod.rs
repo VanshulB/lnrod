@@ -57,6 +57,7 @@ use crate::disk::HostAndPort;
 use crate::net::Connector;
 use crate::node::persister::DataPersister;
 use crate::tor::TorManager;
+use crate::util::Shutter;
 
 mod persister;
 
@@ -137,7 +138,7 @@ pub(crate) struct NetworkController {
 	tor: Option<TorManager>
 }
 
-pub(crate) async fn build_node(args: NodeBuildArgs) -> (Node, NetworkController) {
+pub(crate) async fn build_node(args: NodeBuildArgs, shutter: Shutter) -> (Node, NetworkController) {
 	// Initialize the LDK data directory if necessary.
 	let ldk_data_dir = args.storage_dir_path.clone();
 	fs::create_dir_all(ldk_data_dir.clone()).unwrap();
@@ -176,7 +177,12 @@ pub(crate) async fn build_node(args: NodeBuildArgs) -> (Node, NetworkController)
 	// Initialize the KeysManager
 
 	let manager =
-		get_keys_manager(args.signer_name.as_str(), args.vls_port, args.network, ldk_data_dir.clone(), bitcoind_client.clone()).await.unwrap();
+		get_keys_manager(shutter,
+						 args.signer_name.as_str(),
+						 args.vls_port,
+						 args.network,
+						 ldk_data_dir.clone(),
+						 bitcoind_client.clone()).await.unwrap();
 	let keys_manager = Arc::new(DynKeysInterface::new(manager));
 
 	build_with_signer(keys_manager, args, ldk_data_dir, bitcoind_client_arc).await

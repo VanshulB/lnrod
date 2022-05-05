@@ -24,6 +24,7 @@ use crate::admin::admin_api::{
 };
 use crate::node::{build_node, Node, NodeBuildArgs};
 use crate::HTLCDirection;
+use crate::util::Shutter;
 
 use super::admin_api::admin_server::{Admin, AdminServer};
 use super::admin_api::{ChannelListReply, NodeInfoReply, PingReply, PingRequest, Void};
@@ -294,7 +295,9 @@ pub fn start(rpc_port: u16, args: NodeBuildArgs) -> Result<(), Box<dyn std::erro
 }
 
 pub async fn do_start(rpc_port: u16, args: NodeBuildArgs) -> Result<(), Box<dyn std::error::Error>> {
-	let (node, _network_controller) = build_node(args.clone()).await;
+	let shutter = Shutter::new();
+
+	let (node, _network_controller) = build_node(args.clone(), shutter.clone()).await;
 	let node_id =
 		PublicKey::from_secret_key(&Secp256k1::new(), &node.keys_manager.get_node_secret(Recipient::Node).unwrap());
 
@@ -306,7 +309,8 @@ pub async fn do_start(rpc_port: u16, args: NodeBuildArgs) -> Result<(), Box<dyn 
 	let addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), rpc_port);
 	let handler = AdminHandler::new(node);
 	info!("starting server");
-	Server::builder().add_service(AdminServer::new(handler)).serve(addr).await?;
+	Server::builder().add_service(AdminServer::new(handler))
+		.serve_with_shutdown(addr, shutter.signal).await?;
 	info!("stopping server");
 	Ok(())
 }

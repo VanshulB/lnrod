@@ -2,16 +2,18 @@ use anyhow::Result;
 use bitcoin::Network;
 
 use crate::{BitcoindClient, DynSigner, SpendableKeysInterface};
+use crate::util::Shutter;
 
 pub mod keys;
 mod vls;
 mod vls2;
 mod test_signer;
 
-pub const SIGNER_NAMES: [&str; 4] = ["test", "vls-local", "vls", "vls2-null"];
+pub const SIGNER_NAMES: [&str; 5] = ["test", "vls-local", "vls", "vls2-null", "vls2-grpc"];
 
 /// Get the keys manager and the sweep address
 pub async fn get_keys_manager(
+	shutter: Shutter,
 	name: &str,
 	vls_port: u16,
 	network: Network,
@@ -25,6 +27,7 @@ pub async fn get_keys_manager(
 		"vls-local" => vls::make_signer(network, ldk_data_dir, sweep_address),
 		"vls" => vls::make_remote_signer(vls_port, network, ldk_data_dir, sweep_address).await,
 		"vls2-null" => vls2::make_null_signer(network, ldk_data_dir, sweep_address).await,
+		"vls2-grpc" => vls2::make_grpc_signer(shutter, vls_port, network, ldk_data_dir, sweep_address).await,
 		_ => anyhow::bail!("not found"),
 	};
 
