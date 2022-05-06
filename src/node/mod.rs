@@ -136,7 +136,7 @@ pub(crate) struct NetworkController {
 	tor: Option<TorManager>
 }
 
-pub(crate) async fn build_node(args: NodeBuildArgs, shutter: Shutter, p2p_handle: Handle) -> (Node, NetworkController) {
+pub(crate) async fn build_node(args: NodeBuildArgs, shutter: Shutter, p2p_handle: Handle, signer_handle: Handle) -> (Node, NetworkController) {
 	// Initialize the LDK data directory if necessary.
 	let ldk_data_dir = args.storage_dir_path.clone();
 	fs::create_dir_all(ldk_data_dir.clone()).unwrap();
@@ -176,6 +176,7 @@ pub(crate) async fn build_node(args: NodeBuildArgs, shutter: Shutter, p2p_handle
 
 	let manager =
 		get_keys_manager(shutter,
+						 signer_handle,
 						 args.signer_name.as_str(),
 						 args.vls_port,
 						 args.network,

@@ -187,7 +187,7 @@ impl GrpcTransport {
         })
     }
 
-    fn get_node_id(&self) -> PublicKey {
+    fn node_id(&self) -> PublicKey {
         self.node_id
     }
 
@@ -230,7 +230,7 @@ impl Transport for GrpcTransport {
     }
 }
 
-pub(crate) async fn make_grpc_signer(shutter: Shutter, vls_port: u16, network: Network, ldk_data_dir: String, sweep_address: Address) -> Box<dyn SpendableKeysInterface<Signer = DynSigner>> {
+pub(crate) async fn make_grpc_signer(shutter: Shutter, signer_handle: Handle, vls_port: u16, network: Network, ldk_data_dir: String, sweep_address: Address) -> Box<dyn SpendableKeysInterface<Signer = DynSigner>> {
     let node_id_path = format!("{}/node_id", ldk_data_dir);
     let addr = SocketAddr::from((Ipv4Addr::LOCALHOST, vls_port));
     let incoming = TcpIncoming::new(addr, false, None).expect("listen incoming");
@@ -239,11 +239,12 @@ pub(crate) async fn make_grpc_signer(shutter: Shutter, vls_port: u16, network: N
 
     let sender = server.sender();
 
-    tokio::spawn(server.start(incoming, shutter.signal));
+    signer_handle.spawn(server.start(incoming, shutter.signal));
 
-    let transport = GrpcTransport::new(network, sender, sweep_address.clone())
-        .await.expect("gRPC transport init");
-    let node_id = transport.get_node_id();
+    let transport =
+        signer_handle.spawn(GrpcTransport::new(network, sender, sweep_address.clone()))
+        .await.expect("join").expect("gRPC transport init");
+    let node_id = transport.node_id();
 
     let client = KeysManagerClient::new(Arc::new(transport), network.to_string());
     let keys_manager = KeysManager { client, sweep_address, node_id };

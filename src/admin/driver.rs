@@ -301,13 +301,21 @@ pub fn start(rpc_port: u16, args: NodeBuildArgs) -> Result<(), Box<dyn std::erro
 	}).join().expect("runtime join").expect("runtime");
 	let p2p_handle = p2p_runtime.handle().clone();
 
-	runtime.block_on(do_start(rpc_port, args, p2p_handle))
+	let signer_runtime = std::thread::spawn(|| {
+		Builder::new_multi_thread().enable_all()
+			.thread_name("signer")
+			.worker_threads(2) // for debugging
+			.build()
+	}).join().expect("runtime join").expect("runtime");
+	let signer_handle = signer_runtime.handle().clone();
+
+	runtime.block_on(do_start(rpc_port, args, p2p_handle, signer_handle))
 }
 
-pub async fn do_start(rpc_port: u16, args: NodeBuildArgs, p2p_handle: Handle) -> Result<(), Box<dyn std::error::Error>> {
+pub async fn do_start(rpc_port: u16, args: NodeBuildArgs, p2p_handle: Handle, signer_handle: Handle) -> Result<(), Box<dyn std::error::Error>> {
 	let shutter = Shutter::new();
 
-	let (node, _network_controller) = build_node(args.clone(), shutter.clone(), p2p_handle).await;
+	let (node, _network_controller) = build_node(args.clone(), shutter.clone(), p2p_handle, signer_handle).await;
 	let node_id =
 		PublicKey::from_secret_key(&Secp256k1::new(), &node.keys_manager.get_node_secret(Recipient::Node).unwrap());
 
