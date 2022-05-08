@@ -24,11 +24,12 @@ use crate::admin::admin_api::{
 };
 use crate::node::{build_node, Node, NodeBuildArgs};
 use crate::HTLCDirection;
+use crate::util::Shutter;
 
 use super::admin_api::admin_server::{Admin, AdminServer};
 use super::admin_api::{ChannelListReply, NodeInfoReply, PingReply, PingRequest, Void};
 use bitcoin::Address;
-use tokio::runtime::Builder;
+use tokio::runtime::{Builder, Handle};
 
 struct AdminHandler {
 	node: Node,
@@ -284,17 +285,37 @@ impl Admin for AdminHandler {
 
 // A small number of threads for debugging
 pub fn start(rpc_port: u16, args: NodeBuildArgs) -> Result<(), Box<dyn std::error::Error>> {
+	// Various housekeeping things run on this
 	let runtime = std::thread::spawn(|| {
 		Builder::new_multi_thread().enable_all()
 			.thread_name("main")
 			.worker_threads(2) // for debugging
 			.build()
 	}).join().expect("runtime join").expect("runtime");
-	runtime.block_on(do_start(rpc_port, args))
+	// The Lightning p2p protocol runs on this
+	let p2p_runtime = std::thread::spawn(|| {
+		Builder::new_multi_thread().enable_all()
+			.thread_name("p2p")
+			.worker_threads(2) // for debugging
+			.build()
+	}).join().expect("runtime join").expect("runtime");
+	let p2p_handle = p2p_runtime.handle().clone();
+
+	let signer_runtime = std::thread::spawn(|| {
+		Builder::new_multi_thread().enable_all()
+			.thread_name("signer")
+			.worker_threads(2) // for debugging
+			.build()
+	}).join().expect("runtime join").expect("runtime");
+	let signer_handle = signer_runtime.handle().clone();
+
+	runtime.block_on(do_start(rpc_port, args, p2p_handle, signer_handle))
 }
 
-pub async fn do_start(rpc_port: u16, args: NodeBuildArgs) -> Result<(), Box<dyn std::error::Error>> {
-	let (node, _network_controller) = build_node(args.clone()).await;
+pub async fn do_start(rpc_port: u16, args: NodeBuildArgs, p2p_handle: Handle, signer_handle: Handle) -> Result<(), Box<dyn std::error::Error>> {
+	let shutter = Shutter::new();
+
+	let (node, _network_controller) = build_node(args.clone(), shutter.clone(), p2p_handle, signer_handle).await;
 	let node_id =
 		PublicKey::from_secret_key(&Secp256k1::new(), &node.keys_manager.get_node_secret(Recipient::Node).unwrap());
 
@@ -306,7 +327,8 @@ pub async fn do_start(rpc_port: u16, args: NodeBuildArgs) -> Result<(), Box<dyn 
 	let addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), rpc_port);
 	let handler = AdminHandler::new(node);
 	info!("starting server");
-	Server::builder().add_service(AdminServer::new(handler)).serve(addr).await?;
+	Server::builder().add_service(AdminServer::new(handler))
+		.serve_with_shutdown(addr, shutter.signal).await?;
 	info!("stopping server");
 	Ok(())
 }

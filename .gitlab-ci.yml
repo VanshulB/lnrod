@@ -26,6 +26,7 @@ compile:
   image: rust:1.58.1
   timeout: 30m
   script:
+    - rustup component add rustfmt
     - cargo build
     - cargo test
     - ls -l target/debug
@@ -47,14 +48,20 @@ compile-vls:
   image: rust:1.58.1
   timeout: 30m
   script:
+    - rustup component add rustfmt
     - vls_rev=`./scripts/vls-revision`
     - echo "$vls_rev"
-    - cargo install lightning-signer-server --locked --git https://gitlab.com/lightning-signer/validating-lightning-signer.git --rev "$vls_rev"
-    - ls -l "$CARGO_HOME/bin"
-    - cp "$CARGO_HOME/bin/vlsd" "$CARGO_HOME/bin/vls-cli" bin/
+    - git clone https://gitlab.com/lightning-signer/validating-lightning-signer.git
+    - cd validating-lightning-signer
+    - git checkout "$vls_rev"
+    - cargo build --locked
+    - ls -l target/debug
+    - mkdir -p ../bin
+    - cp target/debug/{vlsd,vlsd2,vls-cli} ../bin/
   artifacts:
     paths:
       - bin/vlsd
+      - bin/vlsd2
       - bin/vls-cli
 
 # Disable coverage for now, because it doesn't work in docker based gitlab runners without
@@ -101,6 +108,8 @@ integration:
     - ./scripts/compile-proto
     - export PATH="$PATH:`pwd`/bin"
 #    - SIGNER=vls-local ./tests/integration-test.py
+    - SIGNER=vls2-grpc  ./tests/integration-test.py
+    - sleep 5 # wait for bitcoind to stop
     - SIGNER=vls2-null  ./tests/integration-test.py
     - sleep 5 # wait for bitcoind to stop
     - SIGNER=vls       ./tests/integration-test.py

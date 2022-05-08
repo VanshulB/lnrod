@@ -41,7 +41,6 @@ use lightning_invoice::utils::DefaultRouter;
 use lightning_persister::FilesystemPersister;
 use lightning_signer::lightning::chain::keysinterface::Recipient;
 use rand::{Rng, thread_rng};
-use tokio::runtime;
 use tokio::runtime::Handle;
 
 use crate::lightning_invoice;
@@ -57,6 +56,7 @@ use crate::disk::HostAndPort;
 use crate::net::Connector;
 use crate::node::persister::DataPersister;
 use crate::tor::TorManager;
+use crate::util::Shutter;
 
 mod persister;
 
@@ -129,7 +129,6 @@ pub(crate) struct Node {
 	pub(crate) background_processor: BackgroundProcessor,
 	pub(crate) chain_monitor: Arc<ArcChainMonitor>,
 	pub(crate) connector: Arc<Connector>,
-	p2p_runtime: runtime::Runtime,
 }
 
 pub(crate) struct NetworkController {
@@ -137,7 +136,7 @@ pub(crate) struct NetworkController {
 	tor: Option<TorManager>
 }
 
-pub(crate) async fn build_node(args: NodeBuildArgs) -> (Node, NetworkController) {
+pub(crate) async fn build_node(args: NodeBuildArgs, shutter: Shutter, p2p_handle: Handle, signer_handle: Handle) -> (Node, NetworkController) {
 	// Initialize the LDK data directory if necessary.
 	let ldk_data_dir = args.storage_dir_path.clone();
 	fs::create_dir_all(ldk_data_dir.clone()).unwrap();
@@ -176,10 +175,16 @@ pub(crate) async fn build_node(args: NodeBuildArgs) -> (Node, NetworkController)
 	// Initialize the KeysManager
 
 	let manager =
-		get_keys_manager(args.signer_name.as_str(), args.vls_port, args.network, ldk_data_dir.clone(), bitcoind_client.clone()).await.unwrap();
+		get_keys_manager(shutter,
+						 signer_handle,
+						 args.signer_name.as_str(),
+						 args.vls_port,
+						 args.network,
+						 ldk_data_dir.clone(),
+						 bitcoind_client.clone()).await.unwrap();
 	let keys_manager = Arc::new(DynKeysInterface::new(manager));
 
-	build_with_signer(keys_manager, args, ldk_data_dir, bitcoind_client_arc).await
+	build_with_signer(keys_manager, args, ldk_data_dir, bitcoind_client_arc, p2p_handle).await
 }
 
 fn bitcoin_network_path(base_path: PathBuf, network: Network) -> PathBuf {
@@ -207,6 +212,7 @@ async fn build_with_signer(
 	args: NodeBuildArgs,
 	ldk_data_dir: String,
 	bitcoind_client_arc: Arc<BitcoindClient>,
+	p2p_handle: Handle,
 ) -> (Node, NetworkController) {
 	let mut bitcoind_client = (*bitcoind_client_arc).clone();
 
@@ -361,7 +367,7 @@ async fn build_with_signer(
 	let peer_manager_connection_handler = peer_manager.clone();
 	let listening_port = args.peer_listening_port;
 
-	let p2p_runtime = start_p2p_listener(peer_manager_connection_handler, listening_port);
+	p2p_handle.spawn(start_p2p_listener(peer_manager_connection_handler, listening_port));
 
 	// Step 17: Connect and Disconnect Blocks
 	if chain_tip.is_none() {
@@ -464,7 +470,6 @@ async fn build_with_signer(
 		background_processor,
 		chain_monitor,
 		connector,
-		p2p_runtime
 	};
 
 	tokio::spawn(async move {
@@ -500,31 +505,21 @@ async fn build_with_signer(
 	(node, network_controller)
 }
 
-fn start_p2p_listener(peer_manager_connection_handler: Arc<PeerManager>, listening_port: u16) -> runtime::Runtime {
-	let runtime = std::thread::spawn(|| {
-		runtime::Builder::new_multi_thread().enable_all()
-			.thread_name("p2p")
-			.worker_threads(2) // for debugging
-			.build()
-	}).join().expect("runtime join").expect("runtime");
-	let handle = runtime.handle().clone();
-	handle.spawn(async move {
-		let listener =
-			tokio::net::TcpListener::bind(format!("0.0.0.0:{}", listening_port)).await.unwrap();
-		loop {
-			let tcp_stream = listener.accept().await.unwrap().0;
-			let peer_mgr = peer_manager_connection_handler.clone();
-			info!("accepted");
-			tokio::spawn(async move {
-				lightning_net_tokio::setup_inbound(
-					peer_mgr,
-					tcp_stream.into_std().unwrap(),
-				).await;
-			});
-			info!("setup");
-		}
-	});
-	runtime
+async fn start_p2p_listener(peer_manager_connection_handler: Arc<PeerManager>, listening_port: u16) {
+	let listener =
+		tokio::net::TcpListener::bind(format!("0.0.0.0:{}", listening_port)).await.unwrap();
+	loop {
+		let tcp_stream = listener.accept().await.unwrap().0;
+		let peer_mgr = peer_manager_connection_handler.clone();
+		info!("accepted");
+		tokio::spawn(async move {
+			lightning_net_tokio::setup_inbound(
+				peer_mgr,
+				tcp_stream.into_std().unwrap(),
+			).await;
+		});
+		info!("setup");
+	}
 }
 
 async fn setup_tor(ldk_data_dir: &String, node_name_opt: Option<String>, listening_port: u16, channel_manager: Arc<ChannelManager>) -> (Arc<Connector>, NetworkController) {

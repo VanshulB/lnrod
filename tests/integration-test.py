@@ -28,7 +28,7 @@ PAYMENT_MSAT = 4_000_000  # FIXME 2_000_000 fails with dust limit policy violati
 SLEEP_ON_FAIL = False
 USE_RELEASE_BINARIES = False
 
-# options: test, vls, vls-local, vls2-null
+# options: test, vls, vls-local, vls2-null, vls2-grpc
 SIGNER = os.environ.get("SIGNER", "vls2-null")
 
 logger = logging.getLogger()
@@ -296,6 +296,23 @@ def start_vlsd(n):
     time.sleep(1)
 
 
+def start_vlsd2(n):
+    global processes
+
+    stdout_log = open(OUTPUT_DIR + f'/vls{n}.log', 'w')
+    optimization = 'release' if USE_RELEASE_BINARIES else 'debug'
+    vlsd = 'vlsd2'
+    # vlsd = f'../vls/target/{optimization}/vlsd2'
+    p = Popen([vlsd,
+               # '--log-level-console=TRACE',
+               '--network=regtest',
+               '--datadir', f'{OUTPUT_DIR}/vls{n}',
+               '--connect', f"http://127.0.0.1:{str(7700 + n)}"],
+              stdout=stdout_log, stderr=subprocess.STDOUT)
+    processes.append(p)
+    time.sleep(1)
+
+
 def start_node(n):
     global processes
 
@@ -312,6 +329,9 @@ def start_node(n):
                '--lnport', str(9900 + n)],
               stdout=stdout_log, stderr=subprocess.STDOUT)
     processes.append(p)
+    time.sleep(2)  # FIXME allow gRPC to function before signer connects so we can ping instead of randomly waiting
+    if SIGNER == 'vls2-grpc':
+        start_vlsd2(n)
     lnrod = grpc_client(f'localhost:{8800 + n}')
     lnrod.lnport = 9900 + n
     return lnrod

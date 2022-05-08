@@ -49,6 +49,8 @@ zeroize = { version = "=1.3.0", optional = true }
 regex = { version = "1.5.4", optional = true }
 tracing = { version = "0.1.32" }
 tracing-subscriber = { version = "0.3.9" }
+triggered = "0.1"
+ctrlc = { version = "3.1", features = ["termination"] }
 
 [dependencies.lightning-net-tokio]
 version = "0.0.106"
@@ -77,23 +79,28 @@ version = "0.0.106"
 
 [dependencies.lightning-signer-core]
 git = "https://gitlab.com/lightning-signer/validating-lightning-signer.git"
-rev = "3778a66e3c969041e7bcc530e63e6b822a802f72"
+rev = "fac4f915f9b99f094f01f2a7dbdc49511c808e8b"
 #path = "../vls/lightning-signer-core"
 
 [dependencies.lightning-signer-server]
 git = "https://gitlab.com/lightning-signer/validating-lightning-signer.git"
-rev = "3778a66e3c969041e7bcc530e63e6b822a802f72" # VLS VERSION
+rev = "fac4f915f9b99f094f01f2a7dbdc49511c808e8b" # VLS VERSION
 #path = "../vls/lightning-signer-server"
 
 [dependencies.vls-protocol-signer]
-git = "https://gitlab.com/lightning-signer/vls-protocol.git"
-rev = "8afda12e79e089940e96c1b961f08a5fed9eae3c"
-#path = "../vls-protocol/vls-protocol-signer"
+git = "https://gitlab.com/lightning-signer/validating-lightning-signer.git"
+rev = "fac4f915f9b99f094f01f2a7dbdc49511c808e8b"
+#path = "../vls/vls-protocol-signer"
 
 [dependencies.vls-protocol-client]
-git = "https://gitlab.com/lightning-signer/vls-protocol.git"
-rev = "8afda12e79e089940e96c1b961f08a5fed9eae3c"
-#path = "../vls-protocol/vls-protocol-client"
+git = "https://gitlab.com/lightning-signer/validating-lightning-signer.git"
+rev = "fac4f915f9b99f094f01f2a7dbdc49511c808e8b"
+#path = "../vls/vls-protocol-client"
+
+[dependencies.vls-proxy]
+git = "https://gitlab.com/lightning-signer/validating-lightning-signer.git"
+rev = "fac4f915f9b99f094f01f2a7dbdc49511c808e8b"
+#path = "../vls/vls-proxy"
 
 [build-dependencies]
 tonic-build = "0.6"

@@ -1,4 +1,5 @@
 use std::fs;
+use std::net::{Ipv4Addr, SocketAddr};
 use std::sync::Arc;
 
 use bitcoin::{Address, Network, Script, Transaction, TxOut};
@@ -12,13 +13,21 @@ use lightning::ln::script::ShutdownScript;
 use lightning_signer::lightning;
 use lightning_signer::persist::DummyPersister;
 use log::{debug, error, info};
+use tokio::sync::mpsc::Sender;
+use tokio::sync::oneshot;
+use tokio::{runtime, task};
+use tokio::runtime::Handle;
 use vls_protocol_client::{Error, KeysManagerClient, Transport};
 use vls_protocol_signer::handler::{Handler, RootHandler};
 use vls_protocol_signer::vls_protocol::model::PubKey;
-use vls_protocol_signer::vls_protocol::msgs;
+use vls_protocol_signer::vls_protocol::msgs::{self, SerBolt, DeBolt};
+use vls_protocol_signer::vls_protocol::serde_bolt::WireString;
+use vls_proxy::grpc::adapter::{ChannelRequest, ClientId, HsmdService};
+use vls_proxy::grpc::incoming::TcpIncoming;
 
 use crate::{DynSigner, SpendableKeysInterface};
 use crate::signer::vls::create_spending_transaction;
+use crate::util::Shutter;
 
 // A VLS client with a null transport.
 // Actually runs VLS in-process, but still performs the protocol
@@ -54,7 +63,7 @@ impl Transport for NullTransport {
     fn call(&self, dbid: u64, peer_id: PubKey, message_ser: Vec<u8>) -> Result<Vec<u8>, Error> {
         let message = msgs::from_vec(message_ser)?;
         debug!("ENTER call({}) {:?}", dbid, message);
-        let handler = self.handler.for_new_client(0, peer_id, dbid);
+        let handler = self.handler.for_new_client(0, Some(peer_id), dbid);
         let result = handler.handle(message)
             .map_err(|e| {
                 error!("error in handle: {:?}", e);
@@ -143,4 +152,103 @@ pub(crate) async fn make_null_signer(network: Network, ldk_data_dir: String, swe
         fs::write(node_id_path, node_id.to_string()).expect("write node_id");
         Box::new(keys_manager)
     }
+}
+
+struct GrpcTransport {
+    sender: Sender<ChannelRequest>,
+    #[allow(unused)]
+    node_secret: SecretKey,
+    node_id: PublicKey,
+    handle: Handle,
+}
+
+impl GrpcTransport {
+    async fn new(network: Network, sender: Sender<ChannelRequest>, sweep_address: Address) -> Result<Self, Error> {
+        info!("waiting for signer");
+        let init = msgs::HsmdInit2 {
+            derivation_style: 0,
+            network_name: WireString(network.to_string().into_bytes()),
+            dev_seed: None,
+            dev_allowlist: vec![WireString(sweep_address.to_string().into_bytes())]
+        };
+        let init_reply_vec = Self::do_call_async(sender.clone(), init.as_vec(), None).await?;
+        let init_reply = msgs::HsmdInit2Reply::from_vec(init_reply_vec)?;
+        let node_secret = SecretKey::from_slice(&init_reply.node_secret.0).expect("node secret");
+        let secp_ctx = Secp256k1::new();
+        let node_id = PublicKey::from_secret_key(&secp_ctx, &node_secret);
+        let handle = Handle::current();
+
+        info!("signer connected, node ID {}", node_id);
+        Ok(Self {
+            sender,
+            node_secret,
+            node_id,
+            handle
+        })
+    }
+
+    fn node_id(&self) -> PublicKey {
+        self.node_id
+    }
+
+    fn do_call(handle: &Handle, sender: Sender<ChannelRequest>, message: Vec<u8>, client_id: Option<ClientId>) -> Result<Vec<u8>, Error> {
+        let join = handle.spawn_blocking(move || {
+            runtime::Handle::current().block_on(Self::do_call_async(sender, message, client_id)).unwrap()
+        });
+        let result = task::block_in_place(|| {
+            runtime::Handle::current().block_on(join)
+        }).expect("join");
+        Ok(result)
+    }
+
+    async fn do_call_async(sender: Sender<ChannelRequest>, message: Vec<u8>, client_id: Option<ClientId>) -> Result<Vec<u8>, Error> {
+        // Create a one-shot channel to receive the reply
+        let (reply_tx, reply_rx) = oneshot::channel();
+
+        // Send a request to the gRPC handler to send to signer
+        let request = ChannelRequest { client_id, message, reply_tx };
+
+        // This can fail if gRPC adapter shut down
+        sender.send(request).await.map_err(|_| Error::TransportError)?;
+        let reply = reply_rx.await.map_err(|_| Error::TransportError)?;
+        Ok(reply.reply)
+    }
+}
+
+impl Transport for GrpcTransport {
+    fn node_call(&self, message: Vec<u8>) -> Result<Vec<u8>, Error> {
+        Self::do_call(&self.handle, self.sender.clone(), message, None)
+    }
+
+    fn call(&self, dbid: u64, peer_id: PubKey, message: Vec<u8>) -> Result<Vec<u8>, Error> {
+        let client_id = Some(ClientId {
+            peer_id: PublicKey::from_slice(&peer_id.0).unwrap(),
+            dbid
+        });
+
+        Self::do_call(&self.handle, self.sender.clone(), message, client_id)
+    }
+}
+
+pub(crate) async fn make_grpc_signer(shutter: Shutter, signer_handle: Handle, vls_port: u16, network: Network, ldk_data_dir: String, sweep_address: Address) -> Box<dyn SpendableKeysInterface<Signer = DynSigner>> {
+    let node_id_path = format!("{}/node_id", ldk_data_dir);
+    let addr = SocketAddr::from((Ipv4Addr::LOCALHOST, vls_port));
+    let incoming = TcpIncoming::new(addr, false, None).expect("listen incoming");
+
+    let server = HsmdService::new(shutter.trigger.clone());
+
+    let sender = server.sender();
+
+    signer_handle.spawn(server.start(incoming, shutter.signal));
+
+    let transport =
+        signer_handle.spawn(GrpcTransport::new(network, sender, sweep_address.clone()))
+        .await.expect("join").expect("gRPC transport init");
+    let node_id = transport.node_id();
+
+    let client = KeysManagerClient::new(Arc::new(transport), network.to_string());
+    let keys_manager = KeysManager { client, sweep_address, node_id };
+    fs::write(node_id_path, node_id.to_string()).expect("write node_id");
+
+    Box::new(keys_manager)
 }
