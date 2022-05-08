@@ -5,7 +5,7 @@ use std::str::FromStr;
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Arc;
 
-use log::{error, info, warn, debug};
+use log::{debug, error, info, warn};
 
 use anyhow::{anyhow, Result};
 use bitcoin::blockdata::transaction::Transaction;
@@ -13,9 +13,9 @@ use bitcoin::util::address::Address;
 use bitcoin::util::psbt::serialize::Serialize;
 use bitcoin::{Amount, Block, BlockHash};
 use lightning::chain::chaininterface::{BroadcasterInterface, ConfirmationTarget, FeeEstimator};
-use lightning_signer::lightning;
 use lightning_block_sync::http::JsonResponse;
 use lightning_block_sync::{AsyncBlockSourceResult, BlockHeaderData, BlockSource};
+use lightning_signer::lightning;
 use serde_json::{json, Value};
 use tokio::sync::Mutex;
 
@@ -123,7 +123,6 @@ impl BitcoindClient {
 	pub async fn set_label(&self, address: Address, label: String) {
 		let _: () = self.call("setlabel", &vec![json!(address), json!(label)]).await.unwrap();
 	}
-
 
 	pub async fn get_blockchain_info(&self) -> BlockchainInfo {
 		self.call_into("getblockchaininfo", &[]).await.unwrap()

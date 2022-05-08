@@ -9,15 +9,15 @@ use bitcoin::hash_types::WPubkeyHash;
 use bitcoin::hashes::sha256::Hash as Sha256;
 use bitcoin::hashes::sha256::HashEngine as Sha256State;
 use bitcoin::hashes::{Hash, HashEngine};
-use bitcoin::{Address, secp256k1};
 use bitcoin::secp256k1::recovery::RecoverableSignature;
 use bitcoin::secp256k1::{All, PublicKey, Secp256k1, SecretKey};
 use bitcoin::util::bip143;
 use bitcoin::util::bip32::{ChildNumber, ExtendedPrivKey, ExtendedPubKey};
+use bitcoin::{secp256k1, Address};
 use bitcoin::{Network, Script, SigHashType, Transaction, TxIn, TxOut};
 use lightning::chain::keysinterface::{
-	DelayedPaymentOutputDescriptor, InMemorySigner, KeysInterface,
-	SpendableOutputDescriptor, StaticPaymentOutputDescriptor, Recipient
+	DelayedPaymentOutputDescriptor, InMemorySigner, KeysInterface, Recipient,
+	SpendableOutputDescriptor, StaticPaymentOutputDescriptor,
 };
 use lightning::ln::msgs::DecodeError;
 use lightning::ln::script::ShutdownScript;
@@ -27,9 +27,9 @@ use lightning_signer::lightning;
 use lightning_signer::util::transaction_utils;
 use lightning_signer::util::transaction_utils::MAX_VALUE_MSAT;
 
-use crate::{byte_utils, DynSigner, SpendableKeysInterface};
 use crate::chain::keysinterface::KeyMaterial;
 use crate::signer::test_signer::InMemorySignerFactory;
+use crate::{byte_utils, DynSigner, SpendableKeysInterface};
 
 // Copied from keysinterface.rs and decoupled from InMemorySigner
 
@@ -81,41 +81,39 @@ impl KeysManager {
 	/// versions. Once the library is more fully supported, the docs will be updated to include a
 	/// detailed description of the guarantee.
 	pub fn new(
-		seed: &[u8; 32], starting_time_secs: u64, starting_time_nanos: u32,
-		sweep_address: Address,
+		seed: &[u8; 32], starting_time_secs: u64, starting_time_nanos: u32, sweep_address: Address,
 	) -> Self {
 		let secp_ctx = Secp256k1::new();
 		// Note that when we aren't serializing the key, network doesn't matter
-		let master_key = ExtendedPrivKey::new_master(Network::Testnet, seed).expect("your RNG is busted");
+		let master_key =
+			ExtendedPrivKey::new_master(Network::Testnet, seed).expect("your RNG is busted");
 		let node_secret = master_key
 			.ckd_priv(&secp_ctx, ChildNumber::from_hardened_idx(0).unwrap())
 			.expect("Your RNG is busted")
 			.private_key
 			.key;
-		let destination_script = match master_key
-			.ckd_priv(&secp_ctx, ChildNumber::from_hardened_idx(1).unwrap())
-		{
-			Ok(destination_key) => {
-				let wpubkey_hash = WPubkeyHash::hash(
-					&ExtendedPubKey::from_private(&secp_ctx, &destination_key)
-						.public_key
-						.to_bytes(),
-				);
-				Builder::new()
-					.push_opcode(opcodes::all::OP_PUSHBYTES_0)
-					.push_slice(&wpubkey_hash.into_inner())
-					.into_script()
-			}
-			Err(_) => panic!("Your RNG is busted"),
-		};
-		let shutdown_pubkey = match master_key
-			.ckd_priv(&secp_ctx, ChildNumber::from_hardened_idx(2).unwrap())
-		{
-			Ok(shutdown_key) => {
-				ExtendedPubKey::from_private(&secp_ctx, &shutdown_key).public_key.key
-			}
-			Err(_) => panic!("Your RNG is busted"),
-		};
+		let destination_script =
+			match master_key.ckd_priv(&secp_ctx, ChildNumber::from_hardened_idx(1).unwrap()) {
+				Ok(destination_key) => {
+					let wpubkey_hash = WPubkeyHash::hash(
+						&ExtendedPubKey::from_private(&secp_ctx, &destination_key)
+							.public_key
+							.to_bytes(),
+					);
+					Builder::new()
+						.push_opcode(opcodes::all::OP_PUSHBYTES_0)
+						.push_slice(&wpubkey_hash.into_inner())
+						.into_script()
+				}
+				Err(_) => panic!("Your RNG is busted"),
+			};
+		let shutdown_pubkey =
+			match master_key.ckd_priv(&secp_ctx, ChildNumber::from_hardened_idx(2).unwrap()) {
+				Ok(shutdown_key) => {
+					ExtendedPubKey::from_private(&secp_ctx, &shutdown_key).public_key.key
+				}
+				Err(_) => panic!("Your RNG is busted"),
+			};
 		let channel_master_key = master_key
 			.ckd_priv(&secp_ctx, ChildNumber::from_hardened_idx(3).unwrap())
 			.expect("Your RNG is busted");
@@ -138,7 +136,6 @@ impl KeysManager {
 
 		let factory = InMemorySignerFactory::new(&seed, node_secret);
 
-
 		let mut res = KeysManager {
 			secp_ctx,
 			node_secret,
@@ -158,7 +155,7 @@ impl KeysManager {
 			starting_time_secs,
 			starting_time_nanos,
 			factory,
-			sweep_address
+			sweep_address,
 		};
 		let secp_seed = res.get_secure_random_bytes();
 		res.secp_ctx.seeded_randomize(&secp_seed);
@@ -169,7 +166,9 @@ impl KeysManager {
 	/// Key derivation parameters are accessible through a per-channel secrets
 	/// Sign::channel_keys_id and is provided inside DynamicOuputP2WSH in case of
 	/// onchain output detection for which a corresponding delayed_payment_key must be derived.
-	pub fn derive_channel_keys(&self, channel_value_satoshis: u64, params: &[u8; 32]) -> InMemorySigner {
+	pub fn derive_channel_keys(
+		&self, channel_value_satoshis: u64, params: &[u8; 32],
+	) -> InMemorySigner {
 		self.factory.derive_channel_keys(&self.channel_master_key, channel_value_satoshis, params)
 	}
 }
@@ -180,7 +179,7 @@ impl KeysInterface for KeysManager {
 	fn get_node_secret(&self, recipient: Recipient) -> Result<SecretKey, ()> {
 		match recipient {
 			Recipient::Node => Ok(self.node_secret.clone()),
-			Recipient::PhantomNode => Err(())
+			Recipient::PhantomNode => Err(()),
 		}
 	}
 
@@ -226,7 +225,9 @@ impl KeysInterface for KeysManager {
 		Ok(DynSigner { inner: Box::new(signer) })
 	}
 
-	fn sign_invoice(&self, hrp_bytes: &[u8], invoice_data: &[u5], recipient: Recipient) -> Result<RecoverableSignature, ()> {
+	fn sign_invoice(
+		&self, hrp_bytes: &[u8], invoice_data: &[u5], recipient: Recipient,
+	) -> Result<RecoverableSignature, ()> {
 		let invoice_preimage = construct_invoice_preimage(&hrp_bytes, &invoice_data);
 		let hash = Sha256::hash(invoice_preimage.as_slice());
 		let message = secp256k1::Message::from_slice(&hash).unwrap();
@@ -412,10 +413,12 @@ impl SpendableKeysInterface for KeysManager {
 	}
 
 	fn get_node_id(&self) -> PublicKey {
-		PublicKey::from_secret_key(&Secp256k1::new(), &self.get_node_secret(Recipient::Node).unwrap())
+		PublicKey::from_secret_key(
+			&Secp256k1::new(),
+			&self.get_node_secret(Recipient::Node).unwrap(),
+		)
 	}
 }
 
 #[cfg(test)]
-mod tests {
-}
+mod tests {}

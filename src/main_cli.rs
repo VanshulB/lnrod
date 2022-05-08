@@ -97,7 +97,11 @@ fn make_peer_subapp() -> App<'static> {
 			App::new("connect")
 				.about("Connect to peer")
 				.arg(Arg::new("nodeid").about("node ID in hex").required(true))
-				.arg(Arg::new("address").about("host:port - or include with the nodeid argument separated by @").required(false)),
+				.arg(
+					Arg::new("address")
+						.about("host:port - or include with the nodeid argument separated by @")
+						.required(false),
+				),
 		)
 }
 
@@ -105,18 +109,17 @@ fn peer_subcommand(cli: &CLI, matches: &ArgMatches) -> Result<(), Box<dyn std::e
 	match matches.subcommand() {
 		Some(("list", _)) => cli.peer_list()?,
 		Some(("connect", submatches)) => {
-			let (node_id_hex, address) =
-				if submatches.is_present("address") {
-					let node_id_hex: String = submatches.value_of_t("nodeid")?;
-					let address: String = submatches.value_of_t("address")?;
-					(node_id_hex, address)
-				} else {
-					let parts_str: String = submatches.value_of_t("nodeid")?;
-					let mut parts = parts_str.splitn(2, "@");
-					let node_id_hex = parts.next().unwrap().to_string();
-					let address = parts.next().expect("missing @ separator").to_string();
-					(node_id_hex, address)
-				};
+			let (node_id_hex, address) = if submatches.is_present("address") {
+				let node_id_hex: String = submatches.value_of_t("nodeid")?;
+				let address: String = submatches.value_of_t("address")?;
+				(node_id_hex, address)
+			} else {
+				let parts_str: String = submatches.value_of_t("nodeid")?;
+				let mut parts = parts_str.splitn(2, "@");
+				let node_id_hex = parts.next().unwrap().to_string();
+				let address = parts.next().expect("missing @ separator").to_string();
+				(node_id_hex, address)
+			};
 			let node_id = hex::decode(node_id_hex).expect("hex");
 			cli.peer_connect(node_id, address)?
 		}

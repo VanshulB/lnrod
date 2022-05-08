@@ -1,10 +1,14 @@
+use crate::{hex_utils, DynKeysInterface, DynSigner, NetworkGraph};
 use anyhow::Result;
 use bitcoin::hashes::hex::FromHex;
+use bitcoin::secp256k1::PublicKey;
 use bitcoin::{BlockHash, Txid};
 use lightning::chain::channelmonitor::ChannelMonitor;
 use lightning::chain::transaction::OutPoint;
-use lightning::util::ser::{Readable, Writeable, ReadableArgs};
+use lightning::util::ser::{Readable, ReadableArgs, Writeable};
 use lightning_signer::lightning;
+use log::error;
+use regex::Regex;
 use std::collections::HashMap;
 use std::convert::TryInto;
 use std::fmt::{Display, Formatter};
@@ -16,10 +20,6 @@ use std::path::Path;
 use std::str::FromStr;
 use std::sync::Arc;
 use std::time::Duration;
-use bitcoin::secp256k1::PublicKey;
-use log::error;
-use regex::Regex;
-use crate::{hex_utils, NetworkGraph, DynSigner, DynKeysInterface};
 
 const MAX_CHANNEL_MONITOR_FILENAME_LENGTH: usize = 65;
 
@@ -103,15 +103,15 @@ pub(crate) fn persist_network(path: &Path, network_graph: &NetworkGraph) -> std:
 	}
 }
 
-pub(crate) fn start_network_graph_persister(network_graph_path: String, network_graph: &Arc<NetworkGraph>) {
+pub(crate) fn start_network_graph_persister(
+	network_graph_path: String, network_graph: &Arc<NetworkGraph>,
+) {
 	let network_graph_persist = Arc::clone(&network_graph);
 	tokio::spawn(async move {
 		let mut interval = tokio::time::interval(Duration::from_secs(600));
 		loop {
 			interval.tick().await;
-			if persist_network(Path::new(&network_graph_path), &network_graph_persist)
-				.is_err()
-			{
+			if persist_network(Path::new(&network_graph_path), &network_graph_persist).is_err() {
 				error!("Warning: Failed to persist network graph, check your disk and permissions");
 			}
 		}
@@ -122,11 +122,10 @@ pub(crate) fn parse_peer_info(
 	peer_pubkey_and_ip_addr: String,
 ) -> Result<(PublicKey, HostAndPort), std::io::Error> {
 	let regex = Regex::new(r"^(.*)@(.*):(.*)$").expect("regex");
-	let caps = regex.captures(&peer_pubkey_and_ip_addr)
-		.ok_or(std::io::Error::new(
-			std::io::ErrorKind::Other,
-			"ERROR: incorrectly formatted peer info. Should be formatted as: `pubkey@host:port`",
-		))?;
+	let caps = regex.captures(&peer_pubkey_and_ip_addr).ok_or(std::io::Error::new(
+		std::io::ErrorKind::Other,
+		"ERROR: incorrectly formatted peer info. Should be formatted as: `pubkey@host:port`",
+	))?;
 	let pubkey_str = caps.get(1).expect("capture 1").as_str();
 	let host = caps.get(2).expect("capture 2").as_str();
 	let port = caps.get(3).expect("capture 3").as_str().parse().expect("port integer");
@@ -141,7 +140,9 @@ pub(crate) fn parse_peer_info(
 	Ok((pubkey.unwrap(), HostAndPort(host.to_string(), port)))
 }
 
-pub(crate) fn persist_channel_peer(path: &Path, pubkey: PublicKey, addr: HostAndPort) -> std::io::Result<()> {
+pub(crate) fn persist_channel_peer(
+	path: &Path, pubkey: PublicKey, addr: HostAndPort,
+) -> std::io::Result<()> {
 	let mut file = fs::OpenOptions::new().create(true).append(true).open(path)?;
 	file.write_all(format!("{}@{}:{}\n", pubkey, addr.0, addr.1).as_bytes())
 }
@@ -163,7 +164,8 @@ impl FromStr for HostAndPort {
 
 	fn from_str(s: &str) -> core::result::Result<Self, Self::Err> {
 		let regex = Regex::new(r"^(.*):(.*)$").expect("regex");
-		let captures = regex.captures(s)
+		let captures = regex
+			.captures(s)
 			.ok_or(std::io::Error::new(std::io::ErrorKind::Other, "invalid host:port"))?;
 
 		let host = captures.get(1).unwrap().as_str().to_string();
@@ -176,8 +178,8 @@ impl TryInto<SocketAddr> for HostAndPort {
 	type Error = std::io::Error;
 
 	fn try_into(self) -> core::result::Result<SocketAddr, Self::Error> {
-		let ip: IpAddr = self.0.parse()
-			.map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+		let ip: IpAddr =
+			self.0.parse().map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
 		Ok(SocketAddr::from((ip, self.1)))
 	}
 }
@@ -201,5 +203,3 @@ pub(crate) fn read_channel_peer_data(
 	}
 	Ok(peer_data)
 }
-
-

@@ -1,10 +1,10 @@
-use std::{cmp, env};
 use std::collections::HashMap;
 use std::fs;
 use std::fs::read_to_string;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
+use std::{cmp, env};
 
 use log::{self, *};
 
@@ -17,46 +17,49 @@ use bitcoin::{BlockHash, Network};
 use lightning::chain;
 use lightning::chain::chainmonitor::ChainMonitor;
 use lightning::chain::keysinterface::KeysInterface;
+use lightning::chain::BestBlock;
 use lightning::chain::Watch;
-use lightning::ln::msgs::NetAddress;
 use lightning::ln::channelmanager::{
 	ChainParameters, ChannelManagerReadArgs, MIN_FINAL_CLTV_EXPIRY,
 };
+use lightning::ln::msgs::NetAddress;
 use lightning::ln::peer_handler::MessageHandler;
 use lightning::ln::{channelmanager, PaymentHash, PaymentPreimage};
-use lightning::routing::network_graph::{NetGraphMsgHandler, RoutingFees};
-use lightning::util::events::{EventHandler, Event};
-use lightning::util::ser::{ReadableArgs};
-use lightning::chain::BestBlock;
-use lightning::routing::router::RouteHintHop;
 use lightning::routing::network_graph::NetworkGraph;
-use lightning::routing::scoring::{ProbabilisticScorer, ProbabilisticScoringParameters};
+use lightning::routing::network_graph::{NetGraphMsgHandler, RoutingFees};
 use lightning::routing::router::RouteHint;
+use lightning::routing::router::RouteHintHop;
+use lightning::routing::scoring::{ProbabilisticScorer, ProbabilisticScoringParameters};
+use lightning::util::events::{Event, EventHandler};
+use lightning::util::ser::ReadableArgs;
 use lightning_background_processor::BackgroundProcessor;
-use lightning_signer::lightning;
 use lightning_block_sync::{init, poll, SpvClient, UnboundedCache};
-use lightning_invoice::{Invoice, payment};
 use lightning_invoice::payment::PaymentError;
 use lightning_invoice::utils::DefaultRouter;
+use lightning_invoice::{payment, Invoice};
 use lightning_persister::FilesystemPersister;
+use lightning_signer::lightning;
 use lightning_signer::lightning::chain::keysinterface::Recipient;
-use rand::{Rng, thread_rng};
+use rand::{thread_rng, Rng};
 use tokio::runtime::Handle;
 
-use crate::lightning_invoice;
 use crate::bitcoind_client::BitcoindClient;
 use crate::config::Config;
 use crate::convert::BlockchainInfo;
-use crate::fslogger::FilesystemLogger;
-use crate::logadapter::LoggerAdapter;
-use crate::signer::get_keys_manager;
-use crate::DynKeysInterface;
-use crate::{disk, handle_ldk_events, ArcChainMonitor, ChannelManager, HTLCDirection, HTLCStatus, MilliSatoshiAmount, PaymentInfoStorage, PeerManager, IgnoringMessageHandler, Sha256};
 use crate::disk::HostAndPort;
+use crate::fslogger::FilesystemLogger;
+use crate::lightning_invoice;
+use crate::logadapter::LoggerAdapter;
 use crate::net::Connector;
 use crate::node::persister::DataPersister;
+use crate::signer::get_keys_manager;
 use crate::tor::TorManager;
 use crate::util::Shutter;
+use crate::DynKeysInterface;
+use crate::{
+	disk, handle_ldk_events, ArcChainMonitor, ChannelManager, HTLCDirection, HTLCStatus,
+	IgnoringMessageHandler, MilliSatoshiAmount, PaymentInfoStorage, PeerManager, Sha256,
+};
 
 mod persister;
 
@@ -94,17 +97,15 @@ pub struct MyEventHandler {
 
 impl EventHandler for MyEventHandler {
 	fn handle_event(&self, event: &Event) {
-		self.handle.block_on(
-			handle_ldk_events(
-				self.channel_manager.clone(),
-				self.chain_monitor.clone(),
-				self.bitcoind_client.clone(),
-				self.keys_manager.clone(),
-				self.payment_storage.clone(),
-				self.network,
-				event.clone(),
-			)
-		)
+		self.handle.block_on(handle_ldk_events(
+			self.channel_manager.clone(),
+			self.chain_monitor.clone(),
+			self.bitcoind_client.clone(),
+			self.keys_manager.clone(),
+			self.payment_storage.clone(),
+			self.network,
+			event.clone(),
+		))
 	}
 }
 
@@ -133,10 +134,12 @@ pub(crate) struct Node {
 
 pub(crate) struct NetworkController {
 	#[allow(unused)]
-	tor: Option<TorManager>
+	tor: Option<TorManager>,
 }
 
-pub(crate) async fn build_node(args: NodeBuildArgs, shutter: Shutter, p2p_handle: Handle, signer_handle: Handle) -> (Node, NetworkController) {
+pub(crate) async fn build_node(
+	args: NodeBuildArgs, shutter: Shutter, p2p_handle: Handle, signer_handle: Handle,
+) -> (Node, NetworkController) {
 	// Initialize the LDK data directory if necessary.
 	let ldk_data_dir = args.storage_dir_path.clone();
 	fs::create_dir_all(ldk_data_dir.clone()).unwrap();
@@ -150,38 +153,36 @@ pub(crate) async fn build_node(args: NodeBuildArgs, shutter: Shutter, p2p_handle
 		args.disk_log_level,
 		console_log_level,
 	)))
-		.unwrap_or_else(|e| panic!("Failed to create FilesystemLogger: {}", e));
+	.unwrap_or_else(|e| panic!("Failed to create FilesystemLogger: {}", e));
 	log::set_max_level(cmp::max(args.disk_log_level, console_log_level));
 
 	// Initialize our bitcoind client.
-	let (user, pass) =
-		if args.bitcoind_rpc_username.is_empty() {
-			// try to get from cookie file
-			bitcoin_rpc_cookie(args.network)
-		} else {
-			(args.bitcoind_rpc_username.clone(), args.bitcoind_rpc_password.clone())
-		};
-	let bitcoind_client = BitcoindClient::new(
-		args.bitcoind_rpc_host.clone(),
-		args.bitcoind_rpc_port,
-		user,
-		pass,
-	)
-		.await
-		.unwrap_or_else(|e| panic!("Failed to connect to bitcoind client: {}", e));
+	let (user, pass) = if args.bitcoind_rpc_username.is_empty() {
+		// try to get from cookie file
+		bitcoin_rpc_cookie(args.network)
+	} else {
+		(args.bitcoind_rpc_username.clone(), args.bitcoind_rpc_password.clone())
+	};
+	let bitcoind_client =
+		BitcoindClient::new(args.bitcoind_rpc_host.clone(), args.bitcoind_rpc_port, user, pass)
+			.await
+			.unwrap_or_else(|e| panic!("Failed to connect to bitcoind client: {}", e));
 
 	let bitcoind_client_arc = Arc::new(bitcoind_client.clone());
 
 	// Initialize the KeysManager
 
-	let manager =
-		get_keys_manager(shutter,
-						 signer_handle,
-						 args.signer_name.as_str(),
-						 args.vls_port,
-						 args.network,
-						 ldk_data_dir.clone(),
-						 bitcoind_client.clone()).await.unwrap();
+	let manager = get_keys_manager(
+		shutter,
+		signer_handle,
+		args.signer_name.as_str(),
+		args.vls_port,
+		args.network,
+		ldk_data_dir.clone(),
+		bitcoind_client.clone(),
+	)
+	.await
+	.unwrap();
 	let keys_manager = Arc::new(DynKeysInterface::new(manager));
 
 	build_with_signer(keys_manager, args, ldk_data_dir, bitcoind_client_arc, p2p_handle).await
@@ -208,11 +209,8 @@ fn bitcoin_rpc_cookie(network: Network) -> (String, String) {
 }
 
 async fn build_with_signer(
-	keys_manager: Arc<DynKeysInterface>,
-	args: NodeBuildArgs,
-	ldk_data_dir: String,
-	bitcoind_client_arc: Arc<BitcoindClient>,
-	p2p_handle: Handle,
+	keys_manager: Arc<DynKeysInterface>, args: NodeBuildArgs, ldk_data_dir: String,
+	bitcoind_client_arc: Arc<BitcoindClient>, p2p_handle: Handle,
 ) -> (Node, NetworkController) {
 	let mut bitcoind_client = (*bitcoind_client_arc).clone();
 
@@ -308,10 +306,8 @@ async fn build_with_signer(
 		}
 
 		for monitor_listener_info in chain_listener_channel_monitors.iter_mut() {
-			chain_listeners.push((
-				monitor_listener_info.0,
-				&monitor_listener_info.1 as &dyn chain::Listen,
-			));
+			chain_listeners
+				.push((monitor_listener_info.0, &monitor_listener_info.1 as &dyn chain::Listen));
 		}
 		chain_tip = Some(
 			init::synchronize_listeners(
@@ -336,14 +332,10 @@ async fn build_with_signer(
 	// XXX persist routing data
 	let genesis_hash = genesis_block(args.network).header.block_hash();
 	let network_graph_path = format!("{}/network_graph", ldk_data_dir.clone());
-	let network_graph =
-		Arc::new(disk::read_network(Path::new(&network_graph_path), genesis_hash));
+	let network_graph = Arc::new(disk::read_network(Path::new(&network_graph_path), genesis_hash));
 
-	let network_gossip = Arc::new(NetGraphMsgHandler::new(
-		Arc::clone(&network_graph),
-		None,
-		logadapter.clone(),
-	));
+	let network_gossip =
+		Arc::new(NetGraphMsgHandler::new(Arc::clone(&network_graph), None, logadapter.clone()));
 
 	disk::start_network_graph_persister(network_graph_path, &network_graph);
 
@@ -351,8 +343,10 @@ async fn build_with_signer(
 	let channel_manager: Arc<ChannelManager> = Arc::new(channel_manager);
 	let mut ephemeral_bytes = [0; 32];
 	rand::thread_rng().fill_bytes(&mut ephemeral_bytes);
-	let lightning_msg_handler =
-		MessageHandler { chan_handler: channel_manager.clone(), route_handler: network_gossip.clone() };
+	let lightning_msg_handler = MessageHandler {
+		chan_handler: channel_manager.clone(),
+		route_handler: network_gossip.clone(),
+	};
 	let peer_manager: Arc<PeerManager> = Arc::new(PeerManager::new(
 		lightning_msg_handler,
 		keys_manager.get_node_secret(Recipient::Node).unwrap(),
@@ -395,7 +389,11 @@ async fn build_with_signer(
 
 	let params = ProbabilisticScoringParameters::default();
 	let scorer = Arc::new(Mutex::new(ProbabilisticScorer::new(params, network_graph.clone())));
-	let router = DefaultRouter::new(network_graph.clone(), logadapter.clone(), keys_manager.get_secure_random_bytes());
+	let router = DefaultRouter::new(
+		network_graph.clone(),
+		logadapter.clone(),
+		keys_manager.get_secure_random_bytes(),
+	);
 	let handle = tokio::runtime::Handle::current();
 
 	let channel_manager_event_listener = channel_manager.clone();
@@ -431,7 +429,6 @@ async fn build_with_signer(
 		peer_manager.clone(),
 		logadapter.clone(),
 	);
-
 
 	let peer_manager_processor = peer_manager.clone();
 	tokio::spawn(async move {
@@ -488,11 +485,13 @@ async fn build_with_signer(
 						for (pubkey, peer_addr) in info.iter() {
 							if *pubkey == node_id {
 								// ignore errors, we'll retry later and there's logging in do_connect_peer
-								let _ = connect_connector.do_connect_peer(
-									*pubkey,
-									peer_addr.clone(),
-									Arc::clone(&connect_pm),
-								).await;
+								let _ = connect_connector
+									.do_connect_peer(
+										*pubkey,
+										peer_addr.clone(),
+										Arc::clone(&connect_pm),
+									)
+									.await;
 							}
 						}
 					}
@@ -505,7 +504,9 @@ async fn build_with_signer(
 	(node, network_controller)
 }
 
-async fn start_p2p_listener(peer_manager_connection_handler: Arc<PeerManager>, listening_port: u16) {
+async fn start_p2p_listener(
+	peer_manager_connection_handler: Arc<PeerManager>, listening_port: u16,
+) {
 	let listener =
 		tokio::net::TcpListener::bind(format!("0.0.0.0:{}", listening_port)).await.unwrap();
 	loop {
@@ -513,16 +514,16 @@ async fn start_p2p_listener(peer_manager_connection_handler: Arc<PeerManager>, l
 		let peer_mgr = peer_manager_connection_handler.clone();
 		info!("accepted");
 		tokio::spawn(async move {
-			lightning_net_tokio::setup_inbound(
-				peer_mgr,
-				tcp_stream.into_std().unwrap(),
-			).await;
+			lightning_net_tokio::setup_inbound(peer_mgr, tcp_stream.into_std().unwrap()).await;
 		});
 		info!("setup");
 	}
 }
 
-async fn setup_tor(ldk_data_dir: &String, node_name_opt: Option<String>, listening_port: u16, channel_manager: Arc<ChannelManager>) -> (Arc<Connector>, NetworkController) {
+async fn setup_tor(
+	ldk_data_dir: &String, node_name_opt: Option<String>, listening_port: u16,
+	channel_manager: Arc<ChannelManager>,
+) -> (Arc<Connector>, NetworkController) {
 	let tor_manager = TorManager::start(Path::new(&ldk_data_dir)).await;
 	let connector = Arc::new(Connector { tor: Some(tor_manager.get_connector()) });
 
@@ -546,17 +547,19 @@ async fn setup_tor(ldk_data_dir: &String, node_name_opt: Option<String>, listeni
 			let version = raw_address[34];
 			assert_eq!(version, 3);
 
-			let ldk_onion_address =
-				NetAddress::OnionV3 {
-					ed25519_pubkey: pubkey,
-					checksum: u16::from_be_bytes(checksum),
-					version: 3,
-					port: listening_port
-				};
+			let ldk_onion_address = NetAddress::OnionV3 {
+				ed25519_pubkey: pubkey,
+				checksum: u16::from_be_bytes(checksum),
+				version: 3,
+				port: listening_port,
+			};
 
 			loop {
 				interval.tick().await;
-				info!("broadcasting node announcement as {} with {}:{}", node_name, onion_address, listening_port);
+				info!(
+					"broadcasting node announcement as {} with {}:{}",
+					node_name, onion_address, listening_port
+				);
 				chan_manager.broadcast_node_announcement(
 					[0; 3],
 					alias,
@@ -566,9 +569,7 @@ async fn setup_tor(ldk_data_dir: &String, node_name_opt: Option<String>, listeni
 		});
 	}
 
-	let network_controller = NetworkController {
-		tor: Some(tor_manager)
-	};
+	let network_controller = NetworkController { tor: Some(tor_manager) };
 
 	(connector, network_controller)
 }
@@ -598,13 +599,13 @@ impl Node {
 			Network::Regtest => lightning_invoice::Currency::Regtest,
 			Network::Signet => lightning_invoice::Currency::Signet,
 		})
-			.payment_hash(payment_hash)
-			.payment_secret(payment_secret)
-			.description("lnrod invoice".to_string())
-			.amount_milli_satoshis(amt_msat)
-			.current_timestamp()
-			.min_final_cltv_expiry(MIN_FINAL_CLTV_EXPIRY as u64)
-			.payee_pub_key(our_node_pubkey);
+		.payment_hash(payment_hash)
+		.payment_secret(payment_secret)
+		.description("lnrod invoice".to_string())
+		.amount_milli_satoshis(amt_msat)
+		.current_timestamp()
+		.min_final_cltv_expiry(MIN_FINAL_CLTV_EXPIRY as u64)
+		.payee_pub_key(our_node_pubkey);
 
 		// Add route hints to the invoice.
 		let our_channels = self.channel_manager.list_usable_channels();
@@ -635,7 +636,10 @@ impl Node {
 		// Sign the invoice.
 		let invoice = invoice
 			.build_signed(|msg_hash| {
-				secp_ctx.sign_recoverable(msg_hash, &self.keys_manager.get_node_secret(Recipient::Node).unwrap())
+				secp_ctx.sign_recoverable(
+					msg_hash,
+					&self.keys_manager.get_node_secret(Recipient::Node).unwrap(),
+				)
 			})
 			.map_err(|e| format!("{:?}", e))?;
 
@@ -679,7 +683,12 @@ impl Node {
 		let mut payments = self.payment_info.lock().unwrap();
 		payments.insert(
 			payment_hash,
-			(None, HTLCDirection::Outbound, status, MilliSatoshiAmount(Some(invoice.amount_milli_satoshis().unwrap()))),
+			(
+				None,
+				HTLCDirection::Outbound,
+				status,
+				MilliSatoshiAmount(Some(invoice.amount_milli_satoshis().unwrap())),
+			),
 		);
 		Ok(())
 	}
@@ -688,7 +697,12 @@ impl Node {
 		let mut payment_preimage = PaymentPreimage([0; 32]);
 		thread_rng().fill_bytes(&mut payment_preimage.0);
 		let payment_hash = PaymentHash(Sha256::hash(&payment_preimage.0).into_inner());
-		let status = match self.payer.pay_pubkey(node_id, payment_preimage, value_msat, MIN_FINAL_CLTV_EXPIRY) {
+		let status = match self.payer.pay_pubkey(
+			node_id,
+			payment_preimage,
+			value_msat,
+			MIN_FINAL_CLTV_EXPIRY,
+		) {
 			Ok(_payment_id) => {
 				info!("initiated keysend of {} msat to {}", value_msat, node_id);
 				HTLCStatus::Pending
@@ -717,10 +731,7 @@ impl Node {
 	}
 
 	pub(crate) async fn connect_peer_if_necessary(
-		&self,
-		pubkey: PublicKey,
-		peer_addr: HostAndPort,
-		peer_manager: Arc<PeerManager>,
+		&self, pubkey: PublicKey, peer_addr: HostAndPort, peer_manager: Arc<PeerManager>,
 	) -> Result<(), ()> {
 		for node_pubkey in peer_manager.get_peer_node_ids() {
 			if node_pubkey == pubkey {
@@ -731,11 +742,8 @@ impl Node {
 		self.connector.do_connect_peer(pubkey, peer_addr.clone(), peer_manager).await?;
 
 		let peer_data_path = format!("{}/channel_peer_data", self.ldk_data_dir);
-		disk::persist_channel_peer(
-			Path::new(&peer_data_path),
-			pubkey,
-			peer_addr
-		).expect("disk write error");
+		disk::persist_channel_peer(Path::new(&peer_data_path), pubkey, peer_addr)
+			.expect("disk write error");
 
 		Ok(())
 	}

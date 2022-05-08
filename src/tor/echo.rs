@@ -34,7 +34,7 @@ async fn handle_client(mut stream: TcpStream) -> Result<()> {
 					Err(_) => {
 						info!("echo: received {} bytes: invalid UTF-8", bytes);
 						continue;
-					},
+					}
 					Ok(s) => s,
 				};
 

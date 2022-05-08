@@ -8,23 +8,22 @@ use anyhow::Result;
 use serde_json::json;
 use tonic::{transport::Server, Request, Response, Status};
 
-use bitcoin::secp256k1::{PublicKey, Secp256k1};
-use lightning::chain::keysinterface::{KeysInterface, Recipient};
-use lightning::chain::channelmonitor::Balance;
-use lightning::util::config::UserConfig;
-use lightning_signer::lightning;
-use lightning_invoice::Invoice;
 use crate::lightning_invoice;
+use bitcoin::secp256k1::{PublicKey, Secp256k1};
+use lightning::chain::channelmonitor::Balance;
+use lightning::chain::keysinterface::{KeysInterface, Recipient};
+use lightning::util::config::UserConfig;
+use lightning_invoice::Invoice;
+use lightning_signer::lightning;
 
 use crate::admin::admin_api::{
 	Channel, ChannelCloseRequest, ChannelNewReply, ChannelNewRequest, InvoiceNewReply,
-	InvoiceNewRequest, Payment, PaymentListReply, PaymentSendReply, PaymentSendRequest, Peer,
-	PeerConnectReply, PeerConnectRequest, PeerListReply, PeerListRequest,
-	PaymentKeysendRequest
+	InvoiceNewRequest, Payment, PaymentKeysendRequest, PaymentListReply, PaymentSendReply,
+	PaymentSendRequest, Peer, PeerConnectReply, PeerConnectRequest, PeerListReply, PeerListRequest,
 };
 use crate::node::{build_node, Node, NodeBuildArgs};
-use crate::HTLCDirection;
 use crate::util::Shutter;
+use crate::HTLCDirection;
 
 use super::admin_api::admin_server::{Admin, AdminServer};
 use super::admin_api::{ChannelListReply, NodeInfoReply, PingReply, PingRequest, Void};
@@ -64,7 +63,9 @@ impl Admin for AdminHandler {
 		);
 		let shutdown_scriptpubkey = self.node.keys_manager.get_shutdown_scriptpubkey();
 		let shutdown_address =
-			Address::from_script(&shutdown_scriptpubkey.into(), self.node.network).unwrap().to_string();
+			Address::from_script(&shutdown_scriptpubkey.into(), self.node.network)
+				.unwrap()
+				.to_string();
 		let chain_info = self.node.blockchain_info().await;
 		let reply = NodeInfoReply {
 			node_id: node_pubkey.serialize().to_vec(),
@@ -84,18 +85,26 @@ impl Admin for AdminHandler {
 		let mut channels = Vec::new();
 		for details in self.node.channel_manager.list_channels() {
 			let monitor_balance: Option<u64> = if let Some(funding_txo) = details.funding_txo {
-				let monitor_opt =
-					self.node.chain_monitor.get_monitor(funding_txo);
+				let monitor_opt = self.node.chain_monitor.get_monitor(funding_txo);
 				if let Ok(monitor) = monitor_opt {
 					let balances = monitor.get_claimable_balances();
-					Some(balances.into_iter().map(|b| {
-						match b {
-							Balance::ClaimableOnChannelClose { claimable_amount_satoshis, .. } => claimable_amount_satoshis,
-							Balance::ClaimableAwaitingConfirmations { claimable_amount_satoshis, .. } => claimable_amount_satoshis,
-							Balance::ContentiousClaimable { .. } => 0,
-							Balance::MaybeClaimableHTLCAwaitingTimeout { .. } => 0,
-						}
-					}).sum())
+					Some(
+						balances
+							.into_iter()
+							.map(|b| match b {
+								Balance::ClaimableOnChannelClose {
+									claimable_amount_satoshis,
+									..
+								} => claimable_amount_satoshis,
+								Balance::ClaimableAwaitingConfirmations {
+									claimable_amount_satoshis,
+									..
+								} => claimable_amount_satoshis,
+								Balance::ContentiousClaimable { .. } => 0,
+								Balance::MaybeClaimableHTLCAwaitingTimeout { .. } => 0,
+							})
+							.sum(),
+					)
 				} else {
 					None
 				}
@@ -159,13 +168,10 @@ impl Admin for AdminHandler {
 			req.address.parse().map_err(|_| Status::invalid_argument("address parse"))?;
 		let node_id = PublicKey::from_slice(req.node_id.as_slice())
 			.map_err(|_| Status::invalid_argument("failed to parse node_id"))?;
-		self.node.connect_peer_if_necessary(
-			node_id,
-			peer_addr,
-			self.node.peer_manager.clone(),
-		)
-		.await
-		.map_err(|_| Status::aborted("could not connect to peer"))?;
+		self.node
+			.connect_peer_if_necessary(node_id, peer_addr, self.node.peer_manager.clone())
+			.await
+			.map_err(|_| Status::aborted("could not connect to peer"))?;
 
 		info!("connected");
 		let reply = PeerConnectReply {};
@@ -287,37 +293,54 @@ impl Admin for AdminHandler {
 pub fn start(rpc_port: u16, args: NodeBuildArgs) -> Result<(), Box<dyn std::error::Error>> {
 	// Various housekeeping things run on this
 	let runtime = std::thread::spawn(|| {
-		Builder::new_multi_thread().enable_all()
+		Builder::new_multi_thread()
+			.enable_all()
 			.thread_name("main")
 			.worker_threads(2) // for debugging
 			.build()
-	}).join().expect("runtime join").expect("runtime");
+	})
+	.join()
+	.expect("runtime join")
+	.expect("runtime");
 	// The Lightning p2p protocol runs on this
 	let p2p_runtime = std::thread::spawn(|| {
-		Builder::new_multi_thread().enable_all()
+		Builder::new_multi_thread()
+			.enable_all()
 			.thread_name("p2p")
 			.worker_threads(2) // for debugging
 			.build()
-	}).join().expect("runtime join").expect("runtime");
+	})
+	.join()
+	.expect("runtime join")
+	.expect("runtime");
 	let p2p_handle = p2p_runtime.handle().clone();
 
 	let signer_runtime = std::thread::spawn(|| {
-		Builder::new_multi_thread().enable_all()
+		Builder::new_multi_thread()
+			.enable_all()
 			.thread_name("signer")
 			.worker_threads(2) // for debugging
 			.build()
-	}).join().expect("runtime join").expect("runtime");
+	})
+	.join()
+	.expect("runtime join")
+	.expect("runtime");
 	let signer_handle = signer_runtime.handle().clone();
 
 	runtime.block_on(do_start(rpc_port, args, p2p_handle, signer_handle))
 }
 
-pub async fn do_start(rpc_port: u16, args: NodeBuildArgs, p2p_handle: Handle, signer_handle: Handle) -> Result<(), Box<dyn std::error::Error>> {
+pub async fn do_start(
+	rpc_port: u16, args: NodeBuildArgs, p2p_handle: Handle, signer_handle: Handle,
+) -> Result<(), Box<dyn std::error::Error>> {
 	let shutter = Shutter::new();
 
-	let (node, _network_controller) = build_node(args.clone(), shutter.clone(), p2p_handle, signer_handle).await;
-	let node_id =
-		PublicKey::from_secret_key(&Secp256k1::new(), &node.keys_manager.get_node_secret(Recipient::Node).unwrap());
+	let (node, _network_controller) =
+		build_node(args.clone(), shutter.clone(), p2p_handle, signer_handle).await;
+	let node_id = PublicKey::from_secret_key(
+		&Secp256k1::new(),
+		&node.keys_manager.get_node_secret(Recipient::Node).unwrap(),
+	);
 
 	info!("p2p {} 127.0.0.1:{}", node_id, args.peer_listening_port);
 	info!(
@@ -327,8 +350,10 @@ pub async fn do_start(rpc_port: u16, args: NodeBuildArgs, p2p_handle: Handle, si
 	let addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), rpc_port);
 	let handler = AdminHandler::new(node);
 	info!("starting server");
-	Server::builder().add_service(AdminServer::new(handler))
-		.serve_with_shutdown(addr, shutter.signal).await?;
+	Server::builder()
+		.add_service(AdminServer::new(handler))
+		.serve_with_shutdown(addr, shutter.signal)
+		.await?;
 	info!("stopping server");
 	Ok(())
 }

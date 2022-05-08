@@ -5,9 +5,9 @@ use anyhow::Result;
 use log::{info, LevelFilter};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
-use crate::log_utils::ConsoleLogger;
-use super::TorManager;
 use super::echo;
+use super::TorManager;
+use crate::log_utils::ConsoleLogger;
 
 const PORT: u16 = 8007;
 static CONSOLE_LOGGER: ConsoleLogger = ConsoleLogger;
@@ -24,9 +24,7 @@ pub async fn test_onion_server() -> Result<()> {
 	//
 	// Start an echo server
 	//
-	tokio::spawn(async move  {
-		echo::run(echo_addr).await.expect("failed to start echo server")
-	});
+	tokio::spawn(async move { echo::run(echo_addr).await.expect("failed to start echo server") });
 
 	let manager = TorManager::start(data_dir_prefix).await;
 	let onion_address = manager.init_service(PORT).await;
@@ -46,4 +44,3 @@ pub async fn test_onion_server() -> Result<()> {
 
 	Ok(())
 }
-

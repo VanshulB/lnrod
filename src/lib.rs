@@ -18,11 +18,11 @@ use lightning::chain::chainmonitor::ChainMonitor;
 use lightning::chain::transaction::OutPoint;
 use lightning::chain::Filter;
 use lightning::ln::channelmanager::ChannelManager as RLChannelManager;
+use lightning::ln::peer_handler::IgnoringMessageHandler;
 use lightning::ln::peer_handler::PeerManager as RLPeerManager;
 use lightning::ln::{PaymentHash, PaymentPreimage};
-use lightning::ln::peer_handler::IgnoringMessageHandler;
-use lightning::routing::network_graph::NetworkGraph;
 use lightning::routing::network_graph::NetGraphMsgHandler;
+use lightning::routing::network_graph::NetworkGraph;
 use lightning::util::events::Event;
 use lightning_net_tokio::SocketDescriptor;
 use lightning_persister::FilesystemPersister;
@@ -30,7 +30,7 @@ use lightning_signer::lightning;
 use lightning_signer::lightning_invoice;
 use rand::{thread_rng, Rng};
 
-use vls_protocol_client::{DynSigner, InnerSign, DynKeysInterface, SpendableKeysInterface};
+use vls_protocol_client::{DynKeysInterface, DynSigner, InnerSign, SpendableKeysInterface};
 
 use bitcoind_client::BitcoindClient;
 use logadapter::LoggerAdapter;
@@ -49,11 +49,11 @@ mod fslogger;
 mod hex_utils;
 pub mod log_utils;
 mod logadapter;
+pub mod net;
 pub mod node;
 pub mod signer;
-pub mod util;
 pub mod tor;
-pub mod net;
+pub mod util;
 
 #[derive(PartialEq)]
 pub(crate) enum HTLCDirection {
@@ -102,8 +102,13 @@ type ArcChainMonitor = ChainMonitor<
 
 pub(crate) type PeerManager = SimpleArcPeerManager<SocketDescriptor, dyn SyncAccess, LoggerAdapter>;
 
-pub(crate) type SimpleArcPeerManager<SD, C, L> =
-	RLPeerManager<SD, Arc<ChannelManager>, Arc<NetGraphMsgHandler<Arc<NetworkGraph>, Arc<C>, Arc<L>>>, Arc<L>, Arc<IgnoringMessageHandler>>;
+pub(crate) type SimpleArcPeerManager<SD, C, L> = RLPeerManager<
+	SD,
+	Arc<ChannelManager>,
+	Arc<NetGraphMsgHandler<Arc<NetworkGraph>, Arc<C>, Arc<L>>>,
+	Arc<L>,
+	Arc<IgnoringMessageHandler>,
+>;
 
 pub(crate) type ChannelManager = RLChannelManager<
 	DynSigner,
@@ -117,8 +122,7 @@ pub(crate) type ChannelManager = RLChannelManager<
 async fn handle_ldk_events(
 	channel_manager: Arc<ChannelManager>, _chain_monitor: Arc<ArcChainMonitor>,
 	bitcoind_client: Arc<BitcoindClient>, keys_manager: Arc<DynKeysInterface>,
-	payment_storage: PaymentInfoStorage, network: Network,
-	event: Event,
+	payment_storage: PaymentInfoStorage, network: Network, event: Event,
 ) {
 	let mut pending_txs: HashMap<OutPoint, Transaction> = HashMap::new();
 	match event {
@@ -140,8 +144,8 @@ async fn handle_ldk_events(
 					Network::Signet => bitcoin_bech32::constants::Network::Testnet,
 				},
 			)
-				.expect("Lightning funding tx should always be to a SegWit output")
-				.to_address();
+			.expect("Lightning funding tx should always be to a SegWit output")
+			.to_address();
 			let mut outputs = HashMap::with_capacity(1);
 			outputs.insert(addr, channel_value_satoshis);
 			debug!("create_raw_transaction {:?}", outputs);
@@ -154,8 +158,7 @@ async fn handle_ldk_events(
 			assert!(change_output_position == 0 || change_output_position == 1);
 
 			// Sign the final funding transaction and broadcast it.
-			let signed_tx =
-				bitcoind_client.sign_raw_transaction_with_wallet(funded_tx.hex).await;
+			let signed_tx = bitcoind_client.sign_raw_transaction_with_wallet(funded_tx.hex).await;
 			assert_eq!(signed_tx.complete, true);
 			let final_tx: Transaction =
 				encode::deserialize(&hex_utils::to_vec(&signed_tx.hex).unwrap()).unwrap();
@@ -176,20 +179,19 @@ async fn handle_ldk_events(
 
 				if success {
 					info!(
-								"EVENT: received payment from payment_hash {} of {} satoshis",
-								hex_utils::hex_str(&payment_hash.0),
-								amt / 1000
-							);
+						"EVENT: received payment from payment_hash {} of {} satoshis",
+						hex_utils::hex_str(&payment_hash.0),
+						amt / 1000
+					);
 					io::stdout().flush().unwrap();
-					let (_, _, ref mut status, _) =
-						payments.get_mut(&payment_hash).unwrap();
+					let (_, _, ref mut status, _) = payments.get_mut(&payment_hash).unwrap();
 					*status = HTLCStatus::Succeeded;
 				} else {
 					error!(
-								"EVENT: failed to claim payment with {} msat, preimage {}",
-								amt,
-								hex::encode(preimage.0)
-							);
+						"EVENT: failed to claim payment with {} msat, preimage {}",
+						amt,
+						hex::encode(preimage.0)
+					);
 				}
 			} else {
 				error!("ERROR: we received a payment but didn't know the preimage");
@@ -197,30 +199,24 @@ async fn handle_ldk_events(
 				channel_manager.fail_htlc_backwards(&payment_hash);
 				payments.insert(
 					payment_hash,
-					(
-						None,
-						HTLCDirection::Inbound,
-						HTLCStatus::Failed,
-						MilliSatoshiAmount(None),
-					),
+					(None, HTLCDirection::Inbound, HTLCStatus::Failed, MilliSatoshiAmount(None)),
 				);
 			}
 		}
 		Event::PaymentSent { payment_preimage, .. } => {
 			let hashed = PaymentHash(Sha256::hash(&payment_preimage.0).into_inner());
 			let mut payments = payment_storage.lock().unwrap();
-			for (payment_hash, (preimage_option, _, status, amt_msat)) in payments.iter_mut()
-			{
+			for (payment_hash, (preimage_option, _, status, amt_msat)) in payments.iter_mut() {
 				if *payment_hash == hashed {
 					*preimage_option = Some(payment_preimage);
 					*status = HTLCStatus::Succeeded;
 					info!(
-								"EVENT: successfully sent payment of {} milli-satoshis from \
+						"EVENT: successfully sent payment of {} milli-satoshis from \
                                          payment hash {:?} with preimage {:?}",
-								amt_msat,
-								hex_utils::hex_str(&payment_hash.0),
-								hex_utils::hex_str(&payment_preimage.0)
-							);
+						amt_msat,
+						hex_utils::hex_str(&payment_hash.0),
+						hex_utils::hex_str(&payment_preimage.0)
+					);
 					io::stdout().flush().unwrap();
 				}
 			}
@@ -233,10 +229,10 @@ async fn handle_ldk_events(
 			..
 		} => {
 			error!(
-						"EVENT: Failed to send payment{} to payment hash {:?}: ",
-						if all_paths_failed { "" } else { " along MPP path" },
-						hex_utils::hex_str(&payment_hash.0)
-					);
+				"EVENT: Failed to send payment{} to payment hash {:?}: ",
+				if all_paths_failed { "" } else { " along MPP path" },
+				hex_utils::hex_str(&payment_hash.0)
+			);
 			if let Some(scid) = short_channel_id {
 				error!(" because of failure at channel {}", scid);
 			}
@@ -292,12 +288,16 @@ async fn handle_ldk_events(
 			info!("EVENT: discard funding")
 		}
 		Event::PaymentFailed { payment_hash, .. } => {
-			error!("EVENT: payment failed to payment hash {:?}",
-				hex_utils::hex_str(&payment_hash.0));
+			error!(
+				"EVENT: payment failed to payment hash {:?}",
+				hex_utils::hex_str(&payment_hash.0)
+			);
 		}
 		Event::PaymentPathSuccessful { payment_hash, .. } => {
-			info!("EVENT: payment path successful for payment hash {:?}",
-				payment_hash.map(|p| hex_utils::hex_str(&p.0)));
+			info!(
+				"EVENT: payment path successful for payment hash {:?}",
+				payment_hash.map(|p| hex_utils::hex_str(&p.0))
+			);
 		}
 		Event::OpenChannelRequest { .. } => {
 			unimplemented!("OpenChannelRequest");

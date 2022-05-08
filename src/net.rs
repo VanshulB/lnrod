@@ -7,15 +7,17 @@ use log::warn;
 use tokio::net::TcpStream;
 
 use crate::disk::HostAndPort;
-use crate::PeerManager;
 use crate::tor::TorConnector;
+use crate::PeerManager;
 
 pub struct Connector {
 	pub tor: Option<TorConnector>,
 }
 
 impl Connector {
-	pub(crate) async fn do_connect_peer(&self, pubkey: PublicKey, peer_addr: HostAndPort, peer_manager: Arc<PeerManager>) -> Result<(), ()> {
+	pub(crate) async fn do_connect_peer(
+		&self, pubkey: PublicKey, peer_addr: HostAndPort, peer_manager: Arc<PeerManager>,
+	) -> Result<(), ()> {
 		match self.connect_outbound(Arc::clone(&peer_manager), pubkey, peer_addr.to_string()).await
 		{
 			Some(connection_closed_future) => {
@@ -42,22 +44,24 @@ impl Connector {
 		Ok(())
 	}
 
-	async fn connect_outbound(&self, peer_manager: Arc<PeerManager>, their_node_id: PublicKey, address: String) -> Option<impl std::future::Future<Output=()>> {
+	async fn connect_outbound(
+		&self, peer_manager: Arc<PeerManager>, their_node_id: PublicKey, address: String,
+	) -> Option<impl std::future::Future<Output = ()>> {
 		let connection_result = match self.tor.as_ref() {
 			None => {
-				tokio::time::timeout(
-					Duration::from_secs(10),
-					async {
-						TcpStream::connect(address.clone()).await.map(|s| s.into_std().unwrap())
-							.map_err(|e| e.into())
-					}).await
+				tokio::time::timeout(Duration::from_secs(10), async {
+					TcpStream::connect(address.clone())
+						.await
+						.map(|s| s.into_std().unwrap())
+						.map_err(|e| e.into())
+				})
+				.await
 			}
 			Some(tor) => {
-				tokio::time::timeout(
-					Duration::from_secs(10),
-					async {
-						tor.connect_proxy(address.clone()).await.map(|s| s.into_std().unwrap())
-					}).await
+				tokio::time::timeout(Duration::from_secs(10), async {
+					tor.connect_proxy(address.clone()).await.map(|s| s.into_std().unwrap())
+				})
+				.await
 			}
 		};
 		if let Ok(Ok(stream)) = connection_result {

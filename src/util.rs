@@ -36,7 +36,8 @@ impl Shutter {
 		ctrlc::set_handler(move || {
 			info!("got termination signal");
 			ctrlc_trigger.trigger();
-		}).expect("Error setting Ctrl-C handler - do you have more than one?");
+		})
+		.expect("Error setting Ctrl-C handler - do you have more than one?");
 
 		Self { trigger, signal }
 	}

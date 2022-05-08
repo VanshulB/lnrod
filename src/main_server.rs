@@ -68,9 +68,12 @@ fn main() -> Result<()> {
 		.arg(Arg::new("regtest").long("regtest"))
 		.arg(Arg::new("signet").long("signet"))
 		.arg(Arg::new("tor").long("tor"))
-		.arg(Arg::new("name").long("name").takes_value(true)
-			.about("node name for p2p announcements, up to 32 bytes")
-			.validator(|v| if v.len() <= 32 { Ok(()) } else { Err("more than 32 bytes long") })
+		.arg(
+			Arg::new("name")
+				.long("name")
+				.takes_value(true)
+				.about("node name for p2p announcements, up to 32 bytes")
+				.validator(|v| if v.len() <= 32 { Ok(()) } else { Err("more than 32 bytes long") }),
 		)
 		.arg(
 			Arg::new("logleveldisk")
@@ -183,10 +186,7 @@ where
 	}
 }
 
-fn arg_value_or_config_bool(
-	name: &str, matches: &ArgMatches, config_value: &Option<bool>,
-) -> bool
-{
+fn arg_value_or_config_bool(name: &str, matches: &ArgMatches, config_value: &Option<bool>) -> bool {
 	if matches.occurrences_of(name) > 0 {
 		true
 	} else {
@@ -197,11 +197,10 @@ fn arg_value_or_config_bool(
 fn maybe_arg_value_or_config<T: Clone + FromStr>(
 	name: &str, matches: &ArgMatches, config_value: &Option<T>,
 ) -> Option<T>
-	where
-		<T as FromStr>::Err: std::fmt::Display,
+where
+	<T as FromStr>::Err: std::fmt::Display,
 {
-	matches.value_of_t(name).ok()
-		.or_else(|| config_value.clone())
+	matches.value_of_t(name).ok().or_else(|| config_value.clone())
 }
 
 fn get_config(matches: &ArgMatches, config_path: &String) -> Config {

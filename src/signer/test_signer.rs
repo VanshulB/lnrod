@@ -10,10 +10,10 @@ use bitcoin::{Address, Network};
 use lightning::chain::keysinterface::InMemorySigner;
 use lightning_signer::lightning;
 
-use crate::{byte_utils, DynSigner, SpendableKeysInterface};
 use crate::signer::keys::KeysManager;
+use crate::{byte_utils, DynSigner, SpendableKeysInterface};
+use rand::{thread_rng, Rng};
 use std::time::SystemTime;
-use rand::{Rng, thread_rng};
 
 pub struct InMemorySignerFactory {
 	seed: [u8; 32],
@@ -88,9 +88,7 @@ impl InMemorySignerFactory {
 }
 
 pub(crate) fn make_signer(
-	_network: Network,
-	ldk_data_dir: String,
-	sweep_address: Address,
+	_network: Network, ldk_data_dir: String, sweep_address: Address,
 ) -> Box<dyn SpendableKeysInterface<Signer = DynSigner>> {
 	// The key seed that we use to derive the node privkey (that corresponds to the node pubkey) and
 	// other secret key material.
@@ -110,11 +108,7 @@ pub(crate) fn make_signer(
 		key
 	};
 
-	let manager: KeysManager = KeysManager::new(
-		&seed,
-		cur.as_secs(),
-		cur.subsec_nanos(),
-		sweep_address
-	);
+	let manager: KeysManager =
+		KeysManager::new(&seed, cur.as_secs(), cur.subsec_nanos(), sweep_address);
 	Box::new(manager)
 }
