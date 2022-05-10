@@ -62,7 +62,7 @@ impl Transport for NullTransport {
 	fn call(&self, dbid: u64, peer_id: PubKey, message_ser: Vec<u8>) -> Result<Vec<u8>, Error> {
 		let message = msgs::from_vec(message_ser)?;
 		debug!("ENTER call({}) {:?}", dbid, message);
-		let handler = self.handler.for_new_client(0, Some(peer_id), dbid);
+		let handler = self.handler.for_new_client(0, peer_id, dbid);
 		let result = handler.handle(message).map_err(|e| {
 			error!("error in handle: {:?}", e);
 			Error::TransportError
@@ -235,8 +235,7 @@ impl Transport for GrpcTransport {
 	}
 
 	fn call(&self, dbid: u64, peer_id: PubKey, message: Vec<u8>) -> Result<Vec<u8>, Error> {
-		let client_id =
-			Some(ClientId { peer_id: PublicKey::from_slice(&peer_id.0).unwrap(), dbid });
+		let client_id = Some(ClientId { peer_id: peer_id.0, dbid });
 
 		Self::do_call(&self.handle, self.sender.clone(), message, client_id)
 	}
