@@ -107,7 +107,8 @@ integration:
     - pip3 install -r requirements.txt
     - ./scripts/compile-proto
     - export PATH="$PATH:`pwd`/bin"
-#    - SIGNER=vls-local ./tests/integration-test.py
+    - SIGNER=vls-local ./tests/integration-test.py
+    - sleep 5 # wait for bitcoind to stop
     - SIGNER=vls2-grpc  ./tests/integration-test.py
     - sleep 5 # wait for bitcoind to stop
     - SIGNER=vls2-null  ./tests/integration-test.py

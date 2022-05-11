@@ -357,8 +357,8 @@ impl KeysInterface for ClientAdapter {
 
 		let mut channel_id_slice = [0u8; 32];
 		thread_rng().fill_bytes(&mut channel_id_slice);
-		let channel_nonce = Some(ChannelNonce { data: channel_id_slice.to_vec() });
-		let channel_id = ChannelId(channel_id_slice);
+		let channel_id = ChannelId::new(&channel_id_slice);
+		let channel_nonce = Some(ChannelNonce { data: channel_id.inner().clone() });
 
 		let request = NewChannelRequest {
 			node_id: self.proto_node_id(),
@@ -700,7 +700,7 @@ impl BaseSign for ClientSigner {
 	}
 
 	fn channel_keys_id(&self) -> [u8; 32] {
-		self.channel_id.0
+		self.channel_id.as_slice().try_into().unwrap()
 	}
 
 	fn sign_counterparty_commitment(
@@ -891,7 +891,7 @@ impl ClientSigner {
 	}
 
 	fn proto_channel_nonce(&self) -> Option<remotesigner::ChannelNonce> {
-		Some(self.channel_id.into())
+		Some(self.channel_id.clone().into())
 	}
 }
 
