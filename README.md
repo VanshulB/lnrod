@@ -2,17 +2,9 @@
 
 A node implementation using LDK.
 
-## Installation
+## Setup
 ```
-git clone git@gitlab.com:lightning-signer/validating-lightning-signer.git
-git clone git@gitlab.com:lightning-signer/lnrod.git
-```
-
-## Usage
-```
-(cd validating-lightning-signer && cargo install --path=lightning-signer-server --locked)
-
-cd lnrod
+git clone git@gitlab.com:lightning-signer/lnrod.git && cd lnrod
 
 cargo build
 
@@ -21,6 +13,10 @@ rpcuser=user
 rpcpassword=pass
 fallbackfee=0.0000001
 
+```
+
+## Usage
+```
 # Start bitcoind in regtest mode
 bitcoind -regtest -daemon
 
