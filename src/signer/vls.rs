@@ -159,7 +159,7 @@ pub(crate) fn make_signer(
 		Box::new(Adapter { inner: manager, sweep_address })
 	} else {
 		let node_config =
-			SignerNodeConfig { network, key_derivation_style: KeyDerivationStyle::Native };
+			SignerNodeConfig { network, key_derivation_style: KeyDerivationStyle::Ldk };
 		let node_id = signer.new_node(node_config);
 		fs::write(node_id_path, node_id.to_string()).expect("write node_id");
 		let node = signer.get_node(&node_id).unwrap();
