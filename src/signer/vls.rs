@@ -29,8 +29,8 @@ use lightning_signer::channel::ChannelId;
 use lightning_signer::lightning;
 use lightning_signer::node::NodeConfig as SignerNodeConfig;
 use lightning_signer::policy::simple_validator::SimpleValidatorFactory;
+use lightning_signer::signer::derive::KeyDerivationStyle;
 use lightning_signer::signer::multi_signer::MultiSigner;
-use lightning_signer::signer::my_keys_manager::KeyDerivationStyle;
 use lightning_signer::util::crypto_utils::bitcoin_vec_to_signature;
 use lightning_signer::util::loopback::LoopbackSignerKeysInterface;
 use lightning_signer::util::transaction_utils::MAX_VALUE_MSAT;
@@ -159,7 +159,7 @@ pub(crate) fn make_signer(
 		Box::new(Adapter { inner: manager, sweep_address })
 	} else {
 		let node_config =
-			SignerNodeConfig { network, key_derivation_style: KeyDerivationStyle::Native };
+			SignerNodeConfig { network, key_derivation_style: KeyDerivationStyle::Ldk };
 		let node_id = signer.new_node(node_config);
 		fs::write(node_id_path, node_id.to_string()).expect("write node_id");
 		let node = signer.get_node(&node_id).unwrap();
