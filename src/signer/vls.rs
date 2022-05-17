@@ -929,7 +929,7 @@ async fn do_init(
 	vls_port: u16, network: Network, node_id_path: String, node_secret_path: String,
 ) -> (PublicKey, SecretKey) {
 	let init_request = Request::new(InitRequest {
-		node_config: Some(NodeConfig { key_derivation_style: KeyDerivationStyle::Native as i32 }),
+		node_config: Some(NodeConfig { key_derivation_style: KeyDerivationStyle::Ldk as i32 }),
 		chainparams: Some(ChainParams { network_name: network.to_string() }),
 		coldstart: true,
 		hsm_secret: None,
