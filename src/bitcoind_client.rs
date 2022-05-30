@@ -15,7 +15,7 @@ use bitcoin::{Amount, Block, BlockHash};
 use lightning::chain::chaininterface::{BroadcasterInterface, ConfirmationTarget, FeeEstimator};
 use lightning_block_sync::http::JsonResponse;
 use lightning_block_sync::{AsyncBlockSourceResult, BlockHeaderData, BlockSource};
-use lightning_signer::lightning;
+use lightning_signer::{bitcoin, lightning};
 use serde_json::{json, Value};
 use tokio::sync::Mutex;
 
@@ -25,6 +25,7 @@ use jsonrpc_async::error as rpc_error;
 use jsonrpc_async::simple_http::SimpleHttpTransport;
 use jsonrpc_async::Client;
 
+// TODO why are we using tokio mutexes here?
 #[derive(Clone)]
 pub struct BitcoindClient {
 	rpc: Arc<Mutex<Client>>,
@@ -35,7 +36,7 @@ pub struct BitcoindClient {
 	port: u16,
 	fees: Arc<HashMap<Target, AtomicU32>>,
 	queued_transactions: Arc<Mutex<Vec<Transaction>>>,
-	lastest_tip: BlockHash,
+	latest_tip: Arc<Mutex<BlockHash>>,
 }
 
 #[derive(Clone, Eq, Hash, PartialEq)]
@@ -90,7 +91,7 @@ impl BitcoindClient {
 			port,
 			fees: Arc::new(fees),
 			queued_transactions: Arc::new(Mutex::new(Vec::new())),
-			lastest_tip: BlockHash::default(),
+			latest_tip: Arc::new(Mutex::new(BlockHash::default())),
 		};
 		// Fast fail if any connectivity issue
 		client.get_blockchain_info().await;
@@ -217,27 +218,26 @@ impl BroadcasterInterface for BitcoindClient {
 
 impl BlockSource for BitcoindClient {
 	fn get_header<'a>(
-		&'a mut self, header_hash: &'a BlockHash, _height_hint: Option<u32>,
+		&'a self, header_hash: &'a BlockHash, _height_hint: Option<u32>,
 	) -> AsyncBlockSourceResult<'a, BlockHeaderData> {
 		Box::pin(async move {
 			Ok(self.call_into("getblockheader", &[json!(header_hash.to_hex())]).await.unwrap())
 		})
 	}
 
-	fn get_block<'a>(
-		&'a mut self, header_hash: &'a BlockHash,
-	) -> AsyncBlockSourceResult<'a, Block> {
+	fn get_block<'a>(&'a self, header_hash: &'a BlockHash) -> AsyncBlockSourceResult<'a, Block> {
 		Box::pin(async move {
 			Ok(self.call_into("getblock", &[json!(header_hash.to_hex()), json!(0)]).await.unwrap())
 		})
 	}
 
-	fn get_best_block(&mut self) -> AsyncBlockSourceResult<(BlockHash, Option<u32>)> {
+	fn get_best_block(&self) -> AsyncBlockSourceResult<(BlockHash, Option<u32>)> {
 		Box::pin(async move {
 			let info = self.get_blockchain_info().await;
-			if info.latest_blockhash != self.lastest_tip {
+			let mut latest_tip = self.latest_tip.lock().await;
+			if info.latest_blockhash != *latest_tip {
 				self.on_new_block(&info).await;
-				self.lastest_tip = info.latest_blockhash;
+				*latest_tip = info.latest_blockhash;
 			}
 			Ok((info.latest_blockhash, Some(info.latest_height as u32)))
 		})

@@ -3,7 +3,7 @@ use std::net::{Ipv4Addr, SocketAddr};
 use std::sync::Arc;
 
 use bitcoin::bech32::u5;
-use bitcoin::secp256k1::recovery::RecoverableSignature;
+use bitcoin::secp256k1::ecdsa::RecoverableSignature;
 use bitcoin::secp256k1::Secp256k1;
 use bitcoin::secp256k1::{All, PublicKey, SecretKey};
 use bitcoin::{Address, Network, Script, Transaction, TxOut};
@@ -12,8 +12,8 @@ use lightning::chain::keysinterface::{
 };
 use lightning::ln::msgs::DecodeError;
 use lightning::ln::script::ShutdownScript;
-use lightning_signer::lightning;
 use lightning_signer::persist::DummyPersister;
+use lightning_signer::{bitcoin, lightning};
 use log::{debug, error, info};
 use tokio::runtime::Handle;
 use tokio::sync::mpsc::Sender;
@@ -27,6 +27,7 @@ use vls_protocol_signer::vls_protocol::serde_bolt::WireString;
 use vls_proxy::grpc::adapter::{ChannelRequest, ClientId, HsmdService};
 use vls_proxy::grpc::incoming::TcpIncoming;
 
+use crate::bitcoin::Witness;
 use crate::signer::vls::create_spending_transaction;
 use crate::util::Shutter;
 use crate::{DynSigner, SpendableKeysInterface};
@@ -134,7 +135,7 @@ impl SpendableKeysInterface for KeysManager {
 		let witnesses = self.client.sign_onchain_tx(&tx, descriptors);
 		assert_eq!(witnesses.len(), tx.input.len());
 		for (idx, w) in witnesses.into_iter().enumerate() {
-			tx.input[idx].witness = w;
+			tx.input[idx].witness = Witness::from_vec(w);
 		}
 		Ok(tx)
 	}
@@ -249,7 +250,7 @@ pub(crate) async fn make_grpc_signer(
 	let addr = SocketAddr::from((Ipv4Addr::LOCALHOST, vls_port));
 	let incoming = TcpIncoming::new(addr, false, None).expect("listen incoming");
 
-	let server = HsmdService::new(shutter.trigger.clone());
+	let server = HsmdService::new(shutter.trigger.clone(), shutter.signal.clone());
 
 	let sender = server.sender();
 

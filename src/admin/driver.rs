@@ -8,13 +8,12 @@ use anyhow::Result;
 use serde_json::json;
 use tonic::{transport::Server, Request, Response, Status};
 
-use crate::lightning_invoice;
 use bitcoin::secp256k1::{PublicKey, Secp256k1};
 use lightning::chain::channelmonitor::Balance;
 use lightning::chain::keysinterface::{KeysInterface, Recipient};
 use lightning::util::config::UserConfig;
 use lightning_invoice::Invoice;
-use lightning_signer::lightning;
+use lightning_signer::{bitcoin, lightning, lightning_invoice};
 
 use crate::admin::admin_api::{
 	Channel, ChannelCloseRequest, ChannelNewReply, ChannelNewRequest, InvoiceNewReply,
@@ -37,6 +36,13 @@ struct AdminHandler {
 impl AdminHandler {
 	pub fn new(node: Node) -> Self {
 		AdminHandler { node }
+	}
+
+	// TODO pass the counterparty around
+	fn get_channel_counterparty(&self, channel_id: &[u8; 32]) -> PublicKey {
+		let chans = self.node.channel_manager.list_channels();
+		let chan = chans.iter().find(|c| *channel_id == c.channel_id).unwrap();
+		chan.counterparty.node_id
 	}
 }
 
@@ -278,10 +284,11 @@ impl Admin for AdminHandler {
 			.as_slice()
 			.try_into()
 			.map_err(|_| Status::invalid_argument("channel ID must be 32 bytes"))?;
+		let cp_id = self.get_channel_counterparty(&channel_id);
 		if req.is_force {
-			self.node.channel_manager.force_close_channel(channel_id)
+			self.node.channel_manager.force_close_channel(&channel_id, &cp_id)
 		} else {
-			self.node.channel_manager.close_channel(channel_id)
+			self.node.channel_manager.close_channel(&channel_id, &cp_id)
 		}
 		.map_err(|e| Status::aborted(format!("{:?}", e)))?;
 		info!("REPLY channel_close");

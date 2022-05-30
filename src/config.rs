@@ -66,6 +66,7 @@ impl Into<ChannelHandshakeConfig> for ConfigProposeCoinChannel {
 			minimum_depth: self.minimum_depth.unwrap_or(6),
 			our_to_self_delay: self.our_to_self_delay.unwrap_or(144),
 			our_htlc_minimum_msat: self.our_htlc_minimum_msat.unwrap_or(1),
+			max_inbound_htlc_value_in_flight_percent_of_channel: 100,
 			negotiate_scid_privacy: false,
 		}
 	}
@@ -89,6 +90,7 @@ impl Into<ChannelHandshakeLimits> for ConfigLimitCoinChannel {
 	fn into(self) -> ChannelHandshakeLimits {
 		ChannelHandshakeLimits {
 			min_funding_satoshis: self.min_funding_sat.unwrap_or(0),
+			max_funding_satoshis: (1 << 24) - 1,
 			max_htlc_minimum_msat: self.max_htlc_minimum_msat.unwrap_or(u64::max_value()),
 			min_max_htlc_value_in_flight_msat: self.min_max_htlc_value_in_flight_msat.unwrap_or(0),
 			max_channel_reserve_satoshis: self.max_channel_reserve_sat.unwrap_or(u64::max_value()),

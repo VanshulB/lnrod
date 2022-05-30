@@ -3,8 +3,8 @@ use std::path::Path;
 use std::str::FromStr;
 
 use anyhow::Result;
-use bitcoin::Network;
 use clap::{App, Arg, ArgMatches};
+use lightning_signer::bitcoin::Network;
 use url::Url;
 
 use lnrod::admin;
