@@ -1,5 +1,6 @@
 use anyhow::Result;
 use bitcoin::Network;
+use lightning_signer::bitcoin;
 use tokio::runtime::Handle;
 
 use crate::util::Shutter;

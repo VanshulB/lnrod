@@ -6,6 +6,7 @@ use bitcoin::{BlockHash, Txid};
 use lightning::chain::channelmonitor::ChannelMonitor;
 use lightning::chain::transaction::OutPoint;
 use lightning::util::ser::{Readable, ReadableArgs, Writeable};
+use lightning_signer::bitcoin;
 use lightning_signer::lightning;
 use log::error;
 use regex::Regex;

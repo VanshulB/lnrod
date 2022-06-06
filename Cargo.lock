@@ -212,9 +212,9 @@ checksum = "349f9b6a179ed607305526ca489b34ad0a41aed5f7980fa90eb03160b69598fb"
 
 [[package]]
 name = "bitcoin"
-version = "0.27.1"
+version = "0.28.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9a41df6ad9642c5c15ae312dd3d074de38fd3eb7cc87ad4ce10f90292a83fe4d"
+checksum = "05bba324e6baf655b882df672453dbbc527bc938cadd27750ae510aaccc3a66a"
 dependencies = [
  "bech32 0.8.1",
  "bitcoin_hashes 0.10.0",
@@ -263,10 +263,9 @@ dependencies = [
 [[package]]
 name = "bitcoind-client"
 version = "0.1.0-5"
-source = "git+https://gitlab.com/lightning-signer/validating-lightning-signer.git?rev=e616c5127542b57964e7fb5371b4c44727568015#e616c5127542b57964e7fb5371b4c44727568015"
+source = "git+https://gitlab.com/lightning-signer/validating-lightning-signer.git?rev=f45fe5238cf330b36ae29feae7a2219dfac85cdf#f45fe5238cf330b36ae29feae7a2219dfac85cdf"
 dependencies = [
  "async-trait",
- "bitcoin",
  "jsonrpc-async",
  "lightning-signer-core",
  "log",
@@ -301,7 +300,7 @@ checksum = "8d696c370c750c948ada61c69a0ee2cbbb9c50b1019ddb86d9317157a99c2cae"
 [[package]]
 name = "bolt-derive"
 version = "0.1.0"
-source = "git+https://gitlab.com/lightning-signer/validating-lightning-signer.git?rev=e616c5127542b57964e7fb5371b4c44727568015#e616c5127542b57964e7fb5371b4c44727568015"
+source = "git+https://gitlab.com/lightning-signer/validating-lightning-signer.git?rev=f45fe5238cf330b36ae29feae7a2219dfac85cdf#f45fe5238cf330b36ae29feae7a2219dfac85cdf"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -1079,36 +1078,32 @@ checksum = "1bf2e165bb3457c8e098ea76f3e3bc9db55f87aa90d52d0e6be741470916aaa4"
 [[package]]
 name = "lightning"
 version = "0.0.106"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "580647f97f8e6d138ad724027c8ca9b890b1001b05374c270bbee4c10309b641"
+source = "git+https://github.com/lightningdevkit/rust-lightning?rev=08ab6581f1c6254a7765340c5c7a553db58d3a89#08ab6581f1c6254a7765340c5c7a553db58d3a89"
 dependencies = [
  "bitcoin",
  "core2",
  "hashbrown 0.11.2",
  "hex 0.4.3",
  "regex 0.2.11",
- "secp256k1",
 ]
 
 [[package]]
 name = "lightning-background-processor"
 version = "0.0.106"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a4a9c8c4c6e4b9652287d8ce2fc3a168861fdb40eb68793567be5ed77ecce6eb"
+source = "git+https://github.com/lightningdevkit/rust-lightning?rev=08ab6581f1c6254a7765340c5c7a553db58d3a89#08ab6581f1c6254a7765340c5c7a553db58d3a89"
 dependencies = [
  "bitcoin",
  "lightning",
- "lightning-persister",
 ]
 
 [[package]]
 name = "lightning-block-sync"
 version = "0.0.106"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f8731c4f20bd4e0d588db6e849ac2114674a112cdfda65354cf9b4cf6018878a"
+source = "git+https://github.com/lightningdevkit/rust-lightning?rev=08ab6581f1c6254a7765340c5c7a553db58d3a89#08ab6581f1c6254a7765340c5c7a553db58d3a89"
 dependencies = [
  "bitcoin",
  "chunked_transfer",
+ "futures",
  "lightning",
  "serde",
  "serde_json",
@@ -1117,8 +1112,7 @@ dependencies = [
 [[package]]
 name = "lightning-invoice"
 version = "0.14.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f069b6eb46d7639d07977d14dc7d9a40d9d8bc5ac2b47f1924318fec13edd5c0"
+source = "git+https://github.com/lightningdevkit/rust-lightning?rev=08ab6581f1c6254a7765340c5c7a553db58d3a89#08ab6581f1c6254a7765340c5c7a553db58d3a89"
 dependencies = [
  "bech32 0.8.1",
  "bitcoin_hashes 0.10.0",
@@ -1132,8 +1126,7 @@ dependencies = [
 [[package]]
 name = "lightning-net-tokio"
 version = "0.0.106"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "85119f898ac097d46c17a0ad7dda0f6ef6b923e5bcb4d1a5e39d33c3c68aa7bc"
+source = "git+https://github.com/lightningdevkit/rust-lightning?rev=08ab6581f1c6254a7765340c5c7a553db58d3a89#08ab6581f1c6254a7765340c5c7a553db58d3a89"
 dependencies = [
  "bitcoin",
  "lightning",
@@ -1143,8 +1136,7 @@ dependencies = [
 [[package]]
 name = "lightning-persister"
 version = "0.0.106"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5f8aac01a61b302f3928adf235660c38aa5c246113fc7d19cc4cb60b5f53b7ae"
+source = "git+https://github.com/lightningdevkit/rust-lightning?rev=08ab6581f1c6254a7765340c5c7a553db58d3a89#08ab6581f1c6254a7765340c5c7a553db58d3a89"
 dependencies = [
  "bitcoin",
  "libc",
@@ -1155,7 +1147,7 @@ dependencies = [
 [[package]]
 name = "lightning-signer-core"
 version = "0.1.0-5"
-source = "git+https://gitlab.com/lightning-signer/validating-lightning-signer.git?rev=e616c5127542b57964e7fb5371b4c44727568015#e616c5127542b57964e7fb5371b4c44727568015"
+source = "git+https://gitlab.com/lightning-signer/validating-lightning-signer.git?rev=f45fe5238cf330b36ae29feae7a2219dfac85cdf#f45fe5238cf330b36ae29feae7a2219dfac85cdf"
 dependencies = [
  "anyhow",
  "backtrace",
@@ -1169,14 +1161,13 @@ dependencies = [
  "log",
  "rand 0.4.6",
  "scopeguard",
- "secp256k1-xonly",
  "tonic",
 ]
 
 [[package]]
 name = "lightning-signer-server"
 version = "0.1.0-5"
-source = "git+https://gitlab.com/lightning-signer/validating-lightning-signer.git?rev=e616c5127542b57964e7fb5371b4c44727568015#e616c5127542b57964e7fb5371b4c44727568015"
+source = "git+https://gitlab.com/lightning-signer/validating-lightning-signer.git?rev=f45fe5238cf330b36ae29feae7a2219dfac85cdf#f45fe5238cf330b36ae29feae7a2219dfac85cdf"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1216,7 +1207,6 @@ dependencies = [
  "anyhow",
  "base64",
  "bech32 0.7.3",
- "bitcoin",
  "bitcoin-bech32",
  "bugsalot",
  "clap",
@@ -1933,11 +1923,10 @@ checksum = "d29ab0c6d3fc0ee92fe66e2d99f700eab17a8d57d1c1d3b748380fb20baa78cd"
 
 [[package]]
 name = "secp256k1"
-version = "0.20.3"
+version = "0.22.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "97d03ceae636d0fed5bae6a7f4f664354c5f4fcedf6eef053fef17e49f837d0a"
+checksum = "26947345339603ae8395f68e2f3d85a6b0a8ddfe6315818e80b8504415099db0"
 dependencies = [
- "bitcoin_hashes 0.9.7",
  "rand 0.6.5",
  "secp256k1-sys",
  "serde",
@@ -1945,19 +1934,11 @@ dependencies = [
 
 [[package]]
 name = "secp256k1-sys"
-version = "0.4.2"
+version = "0.5.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "957da2573cde917463ece3570eab4a0b3f19de6f1646cde62e6fd3868f566036"
+checksum = "152e20a0fd0519390fc43ab404663af8a0b794273d2a91d60ad4a39f13ffe110"
 dependencies = [
  "cc",
-]
-
-[[package]]
-name = "secp256k1-xonly"
-version = "0.1.0"
-source = "git+https://gitlab.com/lightning-signer/validating-lightning-signer.git?rev=e616c5127542b57964e7fb5371b4c44727568015#e616c5127542b57964e7fb5371b4c44727568015"
-dependencies = [
- "bitcoin",
 ]
 
 [[package]]
@@ -2739,10 +2720,9 @@ checksum = "49874b5167b65d7193b8aba1567f5c7d93d001cafc34600cee003eda787e483f"
 [[package]]
 name = "vls-frontend"
 version = "0.1.0-5"
-source = "git+https://gitlab.com/lightning-signer/validating-lightning-signer.git?rev=e616c5127542b57964e7fb5371b4c44727568015#e616c5127542b57964e7fb5371b4c44727568015"
+source = "git+https://gitlab.com/lightning-signer/validating-lightning-signer.git?rev=f45fe5238cf330b36ae29feae7a2219dfac85cdf#f45fe5238cf330b36ae29feae7a2219dfac85cdf"
 dependencies = [
  "async-trait",
- "bitcoin",
  "bitcoind-client",
  "lightning-signer-core",
  "log",
@@ -2753,7 +2733,7 @@ dependencies = [
 [[package]]
 name = "vls-protocol"
 version = "0.1.0"
-source = "git+https://gitlab.com/lightning-signer/validating-lightning-signer.git?rev=e616c5127542b57964e7fb5371b4c44727568015#e616c5127542b57964e7fb5371b4c44727568015"
+source = "git+https://gitlab.com/lightning-signer/validating-lightning-signer.git?rev=f45fe5238cf330b36ae29feae7a2219dfac85cdf#f45fe5238cf330b36ae29feae7a2219dfac85cdf"
 dependencies = [
  "bolt-derive",
  "log",
@@ -2765,9 +2745,10 @@ dependencies = [
 [[package]]
 name = "vls-protocol-client"
 version = "0.1.0"
-source = "git+https://gitlab.com/lightning-signer/validating-lightning-signer.git?rev=e616c5127542b57964e7fb5371b4c44727568015#e616c5127542b57964e7fb5371b4c44727568015"
+source = "git+https://gitlab.com/lightning-signer/validating-lightning-signer.git?rev=f45fe5238cf330b36ae29feae7a2219dfac85cdf#f45fe5238cf330b36ae29feae7a2219dfac85cdf"
 dependencies = [
  "anyhow",
+ "async-trait",
  "bit-vec",
  "lightning-signer-core",
  "log",
@@ -2777,12 +2758,11 @@ dependencies = [
 [[package]]
 name = "vls-protocol-signer"
 version = "0.1.0"
-source = "git+https://gitlab.com/lightning-signer/validating-lightning-signer.git?rev=e616c5127542b57964e7fb5371b4c44727568015#e616c5127542b57964e7fb5371b4c44727568015"
+source = "git+https://gitlab.com/lightning-signer/validating-lightning-signer.git?rev=f45fe5238cf330b36ae29feae7a2219dfac85cdf#f45fe5238cf330b36ae29feae7a2219dfac85cdf"
 dependencies = [
  "bit-vec",
  "lightning-signer-core",
  "log",
- "secp256k1",
  "serde",
  "vls-protocol",
 ]
@@ -2790,10 +2770,11 @@ dependencies = [
 [[package]]
 name = "vls-proxy"
 version = "0.1.0"
-source = "git+https://gitlab.com/lightning-signer/validating-lightning-signer.git?rev=e616c5127542b57964e7fb5371b4c44727568015#e616c5127542b57964e7fb5371b4c44727568015"
+source = "git+https://gitlab.com/lightning-signer/validating-lightning-signer.git?rev=f45fe5238cf330b36ae29feae7a2219dfac85cdf#f45fe5238cf330b36ae29feae7a2219dfac85cdf"
 dependencies = [
  "anyhow",
  "async-stream",
+ "async-trait",
  "chrono",
  "clap",
  "clap_derive",
@@ -2807,13 +2788,16 @@ dependencies = [
  "log",
  "nix 0.22.3",
  "prost",
- "secp256k1",
  "serde",
  "tokio",
  "tokio-stream",
  "tonic",
  "tonic-build",
  "triggered",
+ "url",
+ "vls-frontend",
+ "vls-protocol",
+ "vls-protocol-client",
  "vls-protocol-signer",
 ]
 

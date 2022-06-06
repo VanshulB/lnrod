@@ -3,6 +3,7 @@ use std::time::Duration;
 
 use bitcoin::secp256k1::PublicKey;
 use lightning_net_tokio::setup_outbound;
+use lightning_signer::bitcoin;
 use log::warn;
 use tokio::net::TcpStream;
 

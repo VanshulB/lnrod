@@ -26,8 +26,7 @@ use lightning::routing::network_graph::NetworkGraph;
 use lightning::util::events::Event;
 use lightning_net_tokio::SocketDescriptor;
 use lightning_persister::FilesystemPersister;
-use lightning_signer::lightning;
-use lightning_signer::lightning_invoice;
+use lightning_signer::{bitcoin, lightning, lightning_invoice};
 use rand::{thread_rng, Rng};
 
 use vls_protocol_client::{DynKeysInterface, DynSigner, InnerSign, SpendableKeysInterface};
@@ -130,6 +129,7 @@ async fn handle_ldk_events(
 			temporary_channel_id,
 			channel_value_satoshis,
 			output_script,
+			counterparty_node_id,
 			..
 		} => {
 			info!("EVENT: funding generation ready");
@@ -168,7 +168,11 @@ async fn handle_ldk_events(
 			};
 			// Give the funding transaction back to LDK for opening the channel.
 			channel_manager
-				.funding_transaction_generated(&temporary_channel_id, final_tx.clone())
+				.funding_transaction_generated(
+					&temporary_channel_id,
+					&counterparty_node_id,
+					final_tx.clone(),
+				)
 				.unwrap();
 			pending_txs.insert(outpoint, final_tx);
 		}

@@ -1,17 +1,18 @@
 //! Validating Lightning Signer integration
 
+use crate::bitcoin::Witness;
 use crate::{hex_utils, DynSigner, InnerSign, PaymentPreimage, SpendableKeysInterface};
 use anyhow::{anyhow, Result};
 use bitcoin::bech32::u5;
 use bitcoin::hashes::hex::ToHex;
 use bitcoin::hashes::Hash;
-use bitcoin::secp256k1::recovery::RecoverableSignature;
-use bitcoin::secp256k1::{All, PublicKey, Secp256k1, SecretKey, Signature};
+use bitcoin::secp256k1::ecdsa::RecoverableSignature;
+use bitcoin::secp256k1::{ecdsa::Signature, All, PublicKey, Secp256k1, SecretKey};
 use bitcoin::util::bip32::{ChildNumber, ExtendedPubKey};
 use bitcoin::util::psbt::serialize::Serialize;
 use bitcoin::PublicKey as BitcoinPublicKey;
 use bitcoin::{
-	consensus, Address, Network, Script, SigHashType, Transaction, TxIn, TxOut, WPubkeyHash,
+	consensus, Address, EcdsaSighashType, Network, Script, Transaction, TxIn, TxOut, WPubkeyHash,
 };
 use lightning::chain::keysinterface::{BaseSign, KeyMaterial, Recipient};
 use lightning::chain::keysinterface::{
@@ -26,7 +27,6 @@ use lightning::ln::msgs::{DecodeError, UnsignedChannelAnnouncement};
 use lightning::ln::script::ShutdownScript;
 use lightning::util::ser::Writeable;
 use lightning_signer::channel::ChannelId;
-use lightning_signer::lightning;
 use lightning_signer::node::NodeConfig as SignerNodeConfig;
 use lightning_signer::policy::simple_validator::SimpleValidatorFactory;
 use lightning_signer::signer::derive::KeyDerivationStyle;
@@ -35,6 +35,7 @@ use lightning_signer::util::crypto_utils::bitcoin_vec_to_signature;
 use lightning_signer::util::loopback::LoopbackSignerKeysInterface;
 use lightning_signer::util::transaction_utils::MAX_VALUE_MSAT;
 use lightning_signer::util::{transaction_utils, INITIAL_COMMITMENT_NUMBER};
+use lightning_signer::{bitcoin, lightning};
 use lightning_signer_server::persist::persist_json::KVJsonPersister;
 use lightning_signer_server::server::remotesigner::ready_channel_request::CommitmentType;
 use lightning_signer_server::server::remotesigner::signer_client::SignerClient;
@@ -307,7 +308,9 @@ impl ClientAdapter {
 			.into_iter()
 			.map(|i| ChildNumber::from_normal_idx(i).unwrap())
 			.collect();
-		let pubkey = xkey.derive_pub(&secp_ctx, &wallet_path).expect("derive").public_key;
+		let pubkey = BitcoinPublicKey::new(
+			xkey.derive_pub(&secp_ctx, &wallet_path).expect("derive").public_key,
+		);
 		pubkey
 	}
 }
@@ -338,7 +341,7 @@ impl KeysInterface for ClientAdapter {
 
 	fn get_destination_script(&self) -> Script {
 		let pubkey = self.get_destination_pubkey();
-		Script::new_v0_wpkh(&WPubkeyHash::hash(&pubkey.serialize()))
+		Script::new_v0_p2wpkh(&WPubkeyHash::hash(&pubkey.serialize()))
 	}
 
 	fn get_shutdown_scriptpubkey(&self) -> ShutdownScript {
@@ -535,7 +538,7 @@ impl SpendableKeysInterface for ClientAdapter {
 		let reply = response.into_inner();
 		assert_eq!(reply.witnesses.len(), tx.input.len());
 		for (idx, w) in reply.witnesses.into_iter().enumerate() {
-			tx.input[idx].witness = w.stack;
+			tx.input[idx].witness = Witness::from_vec(w.stack);
 		}
 		Ok(tx)
 	}
@@ -564,7 +567,7 @@ pub fn create_spending_transaction(
 					previous_output: descriptor.outpoint.into_bitcoin_outpoint(),
 					script_sig: Script::new(),
 					sequence: 0,
-					witness: Vec::new(),
+					witness: Witness::default(),
 				});
 				witness_weight += StaticPaymentOutputDescriptor::MAX_WITNESS_LENGTH;
 				input_value += descriptor.output.value;
@@ -577,7 +580,7 @@ pub fn create_spending_transaction(
 					previous_output: descriptor.outpoint.into_bitcoin_outpoint(),
 					script_sig: Script::new(),
 					sequence: descriptor.to_self_delay as u32,
-					witness: Vec::new(),
+					witness: Witness::default(),
 				});
 				witness_weight += DelayedPaymentOutputDescriptor::MAX_WITNESS_LENGTH;
 				input_value += descriptor.output.value;
@@ -590,7 +593,7 @@ pub fn create_spending_transaction(
 					previous_output: outpoint.into_bitcoin_outpoint(),
 					script_sig: Script::new(),
 					sequence: 0,
-					witness: Vec::new(),
+					witness: Witness::default(),
 				});
 				witness_weight += 1 + 73 + 34;
 				input_value += output.value;
@@ -717,14 +720,16 @@ impl BaseSign for ClientSigner {
 			h.block_on(client.sign_counterparty_commitment_tx_phase2(r))
 		});
 		let reply = response.into_inner();
-		let sig =
-			bitcoin_vec_to_signature(&reply.signature.as_ref().unwrap().data, SigHashType::All)
-				.unwrap();
-		// FIXME anchor sighashtype
+		let sig = bitcoin_vec_to_signature(
+			&reply.signature.as_ref().unwrap().data,
+			EcdsaSighashType::All,
+		)
+		.unwrap();
+		// FIXME anchor EcdsaSighashType
 		let htlc_sigs = reply
 			.htlc_signatures
 			.iter()
-			.map(|s| bitcoin_vec_to_signature(&s.data, SigHashType::All).unwrap())
+			.map(|s| bitcoin_vec_to_signature(&s.data, EcdsaSighashType::All).unwrap())
 			.collect();
 
 		info!("EXIT sign_counterparty_commitment");
@@ -761,14 +766,16 @@ impl BaseSign for ClientSigner {
 			h.block_on(client.sign_holder_commitment_tx_phase2(r))
 		});
 		let reply = response.into_inner();
-		let sig =
-			bitcoin_vec_to_signature(&reply.signature.as_ref().unwrap().data, SigHashType::All)
-				.unwrap();
-		// FIXME anchor sighashtype
+		let sig = bitcoin_vec_to_signature(
+			&reply.signature.as_ref().unwrap().data,
+			EcdsaSighashType::All,
+		)
+		.unwrap();
+		// FIXME anchor EcdsaSighashType
 		let htlc_sigs = reply
 			.htlc_signatures
 			.iter()
-			.map(|s| bitcoin_vec_to_signature(&s.data, SigHashType::All).unwrap())
+			.map(|s| bitcoin_vec_to_signature(&s.data, EcdsaSighashType::All).unwrap())
 			.collect();
 
 		info!("EXIT sign_holder_commitment_and_htlcs");
@@ -820,7 +827,8 @@ impl BaseSign for ClientSigner {
 			.runner
 			.call(request, |r, mut client, h| h.block_on(client.sign_mutual_close_tx_phase2(r)));
 		let reply = response.into_inner();
-		Ok(bitcoin_vec_to_signature(&reply.signature.expect("sig").data, SigHashType::All).unwrap())
+		Ok(bitcoin_vec_to_signature(&reply.signature.expect("sig").data, EcdsaSighashType::All)
+			.unwrap())
 	}
 
 	fn sign_channel_announcement(
@@ -952,7 +960,8 @@ async fn do_init(
 	let node_id = PublicKey::from_slice(&node_id_bytes).expect("node_id as public key");
 	let node_secret = SecretKey::from_slice(&node_secret_bytes).expect("node_secret as secret key");
 
-	fs::write(node_secret_path, node_secret.to_string()).expect("write node_secret");
+	fs::write(node_secret_path, node_secret.display_secret().to_string())
+		.expect("write node_secret");
 	fs::write(node_id_path, node_id.to_string()).expect("write node_id");
 	(node_id, node_secret)
 }

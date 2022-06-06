@@ -8,7 +8,7 @@ use bitcoin::secp256k1::{All, Secp256k1, SecretKey};
 use bitcoin::util::bip32::{ChildNumber, ExtendedPrivKey};
 use bitcoin::{Address, Network};
 use lightning::chain::keysinterface::InMemorySigner;
-use lightning_signer::lightning;
+use lightning_signer::{bitcoin, lightning};
 
 use crate::signer::keys::KeysManager;
 use crate::{byte_utils, DynSigner, SpendableKeysInterface};
@@ -40,7 +40,7 @@ impl InMemorySignerFactory {
 				ChildNumber::from_hardened_idx(chan_id as u32).expect("key space exhausted"),
 			)
 			.expect("Your RNG is busted");
-		unique_start.input(&child_privkey.private_key.key[..]);
+		unique_start.input(child_privkey.private_key.as_ref());
 
 		let seed = Sha256::from_engine(unique_start).into_inner();
 

@@ -9,12 +9,12 @@ use bitcoin::hash_types::WPubkeyHash;
 use bitcoin::hashes::sha256::Hash as Sha256;
 use bitcoin::hashes::sha256::HashEngine as Sha256State;
 use bitcoin::hashes::{Hash, HashEngine};
-use bitcoin::secp256k1::recovery::RecoverableSignature;
-use bitcoin::secp256k1::{All, PublicKey, Secp256k1, SecretKey};
-use bitcoin::util::bip143;
+use bitcoin::secp256k1::ecdsa::RecoverableSignature;
+use bitcoin::secp256k1::{PublicKey, Secp256k1, SecretKey};
 use bitcoin::util::bip32::{ChildNumber, ExtendedPrivKey, ExtendedPubKey};
-use bitcoin::{secp256k1, Address};
-use bitcoin::{Network, Script, SigHashType, Transaction, TxIn, TxOut};
+use bitcoin::util::sighash;
+use bitcoin::{secp256k1, Address, Witness};
+use bitcoin::{EcdsaSighashType, Network, Script, Transaction, TxIn, TxOut};
 use lightning::chain::keysinterface::{
 	DelayedPaymentOutputDescriptor, InMemorySigner, KeysInterface, Recipient,
 	SpendableOutputDescriptor, StaticPaymentOutputDescriptor,
@@ -23,9 +23,9 @@ use lightning::ln::msgs::DecodeError;
 use lightning::ln::script::ShutdownScript;
 use lightning::util::invoice::construct_invoice_preimage;
 use lightning::util::ser::ReadableArgs;
-use lightning_signer::lightning;
 use lightning_signer::util::transaction_utils;
 use lightning_signer::util::transaction_utils::MAX_VALUE_MSAT;
+use lightning_signer::{bitcoin, lightning};
 
 use crate::chain::keysinterface::KeyMaterial;
 use crate::signer::test_signer::InMemorySignerFactory;
@@ -90,28 +90,24 @@ impl KeysManager {
 		let node_secret = master_key
 			.ckd_priv(&secp_ctx, ChildNumber::from_hardened_idx(0).unwrap())
 			.expect("Your RNG is busted")
-			.private_key
-			.key;
-		let destination_script =
-			match master_key.ckd_priv(&secp_ctx, ChildNumber::from_hardened_idx(1).unwrap()) {
-				Ok(destination_key) => {
-					let wpubkey_hash = WPubkeyHash::hash(
-						&ExtendedPubKey::from_private(&secp_ctx, &destination_key)
-							.public_key
-							.to_bytes(),
-					);
-					Builder::new()
-						.push_opcode(opcodes::all::OP_PUSHBYTES_0)
-						.push_slice(&wpubkey_hash.into_inner())
-						.into_script()
-				}
-				Err(_) => panic!("Your RNG is busted"),
-			};
+			.private_key;
+		let destination_script = match master_key
+			.ckd_priv(&secp_ctx, ChildNumber::from_hardened_idx(1).unwrap())
+		{
+			Ok(destination_key) => {
+				let wpubkey_hash = WPubkeyHash::hash(
+					&ExtendedPubKey::from_priv(&secp_ctx, &destination_key).public_key.serialize(),
+				);
+				Builder::new()
+					.push_opcode(opcodes::all::OP_PUSHBYTES_0)
+					.push_slice(&wpubkey_hash.into_inner())
+					.into_script()
+			}
+			Err(_) => panic!("Your RNG is busted"),
+		};
 		let shutdown_pubkey =
 			match master_key.ckd_priv(&secp_ctx, ChildNumber::from_hardened_idx(2).unwrap()) {
-				Ok(shutdown_key) => {
-					ExtendedPubKey::from_private(&secp_ctx, &shutdown_key).public_key.key
-				}
+				Ok(shutdown_key) => ExtendedPubKey::from_priv(&secp_ctx, &shutdown_key).public_key,
 				Err(_) => panic!("Your RNG is busted"),
 			};
 		let channel_master_key = master_key
@@ -129,10 +125,9 @@ impl KeysManager {
 		let inbound_payment_key: SecretKey = master_key
 			.ckd_priv(&secp_ctx, ChildNumber::from_hardened_idx(5).unwrap())
 			.expect("Your RNG is busted")
-			.private_key
-			.key;
+			.private_key;
 		let mut inbound_pmt_key_bytes = [0; 32];
-		inbound_pmt_key_bytes.copy_from_slice(&inbound_payment_key[..]);
+		inbound_pmt_key_bytes.copy_from_slice(inbound_payment_key.as_ref());
 
 		let factory = InMemorySignerFactory::new(&seed, node_secret);
 
@@ -212,7 +207,7 @@ impl KeysInterface for KeysManager {
 				ChildNumber::from_hardened_idx(child_ix as u32).expect("key space exhausted"),
 			)
 			.expect("Your RNG is busted");
-		sha.input(&child_privkey.private_key.key[..]);
+		sha.input(child_privkey.private_key.as_ref());
 
 		sha.input(b"Unique Secure Random Bytes Salt");
 		Sha256::from_engine(sha).into_inner()
@@ -231,7 +226,9 @@ impl KeysInterface for KeysManager {
 		let invoice_preimage = construct_invoice_preimage(&hrp_bytes, &invoice_data);
 		let hash = Sha256::hash(invoice_preimage.as_slice());
 		let message = secp256k1::Message::from_slice(&hash).unwrap();
-		Ok(self.secp_ctx.sign_recoverable(&message, &self.get_node_secret(recipient).unwrap()))
+		Ok(self
+			.secp_ctx
+			.sign_ecdsa_recoverable(&message, &self.get_node_secret(recipient).unwrap()))
 	}
 
 	fn get_inbound_payment_key_material(&self) -> KeyMaterial {
@@ -254,8 +251,8 @@ impl SpendableKeysInterface for KeysManager {
 	fn spend_spendable_outputs(
 		&self, descriptors: &[&SpendableOutputDescriptor], outputs: Vec<TxOut>,
 		change_destination_script: Script, feerate_sat_per_1000_weight: u32,
-		secp_ctx: &Secp256k1<All>,
-	) -> anyhow::Result<Transaction> {
+		secp_ctx: &Secp256k1<secp256k1::All>,
+	) -> Result<Transaction> {
 		let mut input = Vec::new();
 		let mut input_value = 0;
 		let mut witness_weight = 0;
@@ -267,7 +264,7 @@ impl SpendableKeysInterface for KeysManager {
 						previous_output: descriptor.outpoint.into_bitcoin_outpoint(),
 						script_sig: Script::new(),
 						sequence: 0,
-						witness: Vec::new(),
+						witness: Witness::default(),
 					});
 					witness_weight += StaticPaymentOutputDescriptor::MAX_WITNESS_LENGTH;
 					input_value += descriptor.output.value;
@@ -280,7 +277,7 @@ impl SpendableKeysInterface for KeysManager {
 						previous_output: descriptor.outpoint.into_bitcoin_outpoint(),
 						script_sig: Script::new(),
 						sequence: descriptor.to_self_delay as u32,
-						witness: Vec::new(),
+						witness: Witness::default(),
 					});
 					witness_weight += DelayedPaymentOutputDescriptor::MAX_WITNESS_LENGTH;
 					input_value += descriptor.output.value;
@@ -293,7 +290,7 @@ impl SpendableKeysInterface for KeysManager {
 						previous_output: outpoint.into_bitcoin_outpoint(),
 						script_sig: Script::new(),
 						sequence: 0,
-						witness: Vec::new(),
+						witness: Witness::default(),
 					});
 					witness_weight += 1 + 73 + 34;
 					input_value += output.value;
@@ -332,17 +329,19 @@ impl SpendableKeysInterface for KeysManager {
 							descriptor.channel_keys_id,
 						));
 					}
-					spend_tx.input[input_idx].witness = keys_cache
-						.as_ref()
-						.unwrap()
-						.0
-						.sign_counterparty_payment_input(
-							&spend_tx,
-							input_idx,
-							&descriptor,
-							&secp_ctx,
-						)
-						.unwrap();
+					spend_tx.input[input_idx].witness = Witness::from_vec(
+						keys_cache
+							.as_ref()
+							.unwrap()
+							.0
+							.sign_counterparty_payment_input(
+								&spend_tx,
+								input_idx,
+								&descriptor,
+								&secp_ctx,
+							)
+							.unwrap(),
+					);
 				}
 				SpendableOutputDescriptor::DelayedPaymentOutput(descriptor) => {
 					if keys_cache.is_none()
@@ -356,12 +355,14 @@ impl SpendableKeysInterface for KeysManager {
 							descriptor.channel_keys_id,
 						));
 					}
-					spend_tx.input[input_idx].witness = keys_cache
-						.as_ref()
-						.unwrap()
-						.0
-						.sign_dynamic_p2wsh_input(&spend_tx, input_idx, &descriptor, &secp_ctx)
-						.unwrap();
+					spend_tx.input[input_idx].witness = Witness::from_vec(
+						keys_cache
+							.as_ref()
+							.unwrap()
+							.0
+							.sign_dynamic_p2wsh_input(&spend_tx, input_idx, &descriptor, &secp_ctx)
+							.unwrap(),
+					);
 				}
 				SpendableOutputDescriptor::StaticOutput { ref output, .. } => {
 					let derivation_idx =
@@ -382,25 +383,30 @@ impl SpendableKeysInterface for KeysManager {
 							Err(_) => panic!("Your rng is busted"),
 						}
 					};
-					let pubkey = ExtendedPubKey::from_private(&secp_ctx, &secret).public_key;
+					let pubkey = bitcoin::PublicKey::new(
+						ExtendedPubKey::from_priv(&secp_ctx, &secret).public_key,
+					);
 					if derivation_idx == 2 {
-						assert_eq!(pubkey.key, self.shutdown_pubkey);
+						assert_eq!(pubkey.inner, self.shutdown_pubkey);
 					}
-					let witness_script =
-						bitcoin::Address::p2pkh(&pubkey, Network::Testnet).script_pubkey();
-					let sighash = ::bitcoin::secp256k1::Message::from_slice(
-						&bip143::SigHashCache::new(&spend_tx).signature_hash(
-							input_idx,
-							&witness_script,
-							output.value,
-							SigHashType::All,
-						)[..],
+					let witness_script = Address::p2pkh(&pubkey, Network::Testnet).script_pubkey();
+					let sighash = secp256k1::Message::from_slice(
+						&sighash::SighashCache::new(&spend_tx)
+							.segwit_signature_hash(
+								input_idx,
+								&witness_script,
+								output.value,
+								EcdsaSighashType::All,
+							)
+							.unwrap()
+							.as_ref(),
 					)
 					.unwrap();
-					let sig = secp_ctx.sign(&sighash, &secret.private_key.key);
-					spend_tx.input[input_idx].witness.push(sig.serialize_der().to_vec());
-					spend_tx.input[input_idx].witness[0].push(SigHashType::All as u8);
-					spend_tx.input[input_idx].witness.push(pubkey.key.serialize().to_vec());
+					let sig = secp_ctx.sign_ecdsa(&sighash, &secret.private_key);
+					let mut sig_ser = sig.serialize_der().to_vec();
+					sig_ser.push(EcdsaSighashType::All as u8);
+					spend_tx.input[input_idx].witness.push(sig_ser);
+					spend_tx.input[input_idx].witness.push(pubkey.inner.serialize().to_vec());
 				}
 			}
 			input_idx += 1;

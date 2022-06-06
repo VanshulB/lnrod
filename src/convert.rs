@@ -3,6 +3,7 @@ use std::convert::TryFrom;
 use bitcoin::hashes::hex::FromHex;
 use bitcoin::BlockHash;
 use lightning_block_sync::http::JsonResponse;
+use lightning_signer::bitcoin;
 
 pub struct FundedTx {
 	pub changepos: i64,

@@ -17,6 +17,7 @@ use bitcoin::{BlockHash, Network};
 use lightning::chain;
 use lightning::chain::chainmonitor::ChainMonitor;
 use lightning::chain::keysinterface::KeysInterface;
+use lightning::chain::keysinterface::Recipient;
 use lightning::chain::BestBlock;
 use lightning::chain::Watch;
 use lightning::ln::channelmanager::{
@@ -24,7 +25,7 @@ use lightning::ln::channelmanager::{
 };
 use lightning::ln::msgs::NetAddress;
 use lightning::ln::peer_handler::MessageHandler;
-use lightning::ln::{channelmanager, PaymentHash, PaymentPreimage};
+use lightning::ln::{PaymentHash, PaymentPreimage};
 use lightning::routing::network_graph::NetworkGraph;
 use lightning::routing::network_graph::{NetGraphMsgHandler, RoutingFees};
 use lightning::routing::router::RouteHint;
@@ -38,8 +39,7 @@ use lightning_invoice::payment::PaymentError;
 use lightning_invoice::utils::DefaultRouter;
 use lightning_invoice::{payment, Invoice};
 use lightning_persister::FilesystemPersister;
-use lightning_signer::lightning;
-use lightning_signer::lightning::chain::keysinterface::Recipient;
+use lightning_signer::{bitcoin, lightning};
 use rand::{thread_rng, Rng};
 use tokio::runtime::Handle;
 
@@ -51,7 +51,6 @@ use crate::fslogger::FilesystemLogger;
 use crate::lightning_invoice;
 use crate::logadapter::LoggerAdapter;
 use crate::net::Connector;
-use crate::node::persister::DataPersister;
 use crate::signer::get_keys_manager;
 use crate::tor::TorManager;
 use crate::util::Shutter;
@@ -60,8 +59,6 @@ use crate::{
 	disk, handle_ldk_events, ArcChainMonitor, ChannelManager, HTLCDirection, HTLCStatus,
 	IgnoringMessageHandler, MilliSatoshiAmount, PaymentInfoStorage, PeerManager, Sha256,
 };
-
-mod persister;
 
 #[derive(Clone)]
 pub struct NodeBuildArgs {
@@ -72,8 +69,8 @@ pub struct NodeBuildArgs {
 	pub storage_dir_path: String,
 	pub peer_listening_port: u16,
 	pub network: Network,
-	pub disk_log_level: log::LevelFilter,
-	pub console_log_level: log::LevelFilter,
+	pub disk_log_level: LevelFilter,
+	pub console_log_level: LevelFilter,
 	pub signer_name: String,
 	/// Whether to turn on Tor support
 	pub tor: bool,
@@ -112,7 +109,7 @@ impl EventHandler for MyEventHandler {
 pub(crate) type InvoicePayer = payment::InvoicePayer<
 	Arc<ChannelManager>,
 	Router,
-	Arc<Mutex<ProbabilisticScorer<Arc<NetworkGraph>>>>,
+	Arc<Mutex<ProbabilisticScorer<Arc<NetworkGraph>, Arc<LoggerAdapter>>>>,
 	Arc<LoggerAdapter>,
 	MyEventHandler,
 >;
@@ -147,8 +144,8 @@ pub(crate) async fn build_node(
 	// Initialize the Logger
 	// TODO(ksedgwic) - Resolve data_dir setup and move this to main_server because earlier.
 	let is_daemon = false;
-	let console_log_level = if is_daemon { log::LevelFilter::Off } else { args.console_log_level };
-	log::set_boxed_logger(Box::new(FilesystemLogger::new(
+	let console_log_level = if is_daemon { LevelFilter::Off } else { args.console_log_level };
+	set_boxed_logger(Box::new(FilesystemLogger::new(
 		ldk_data_dir.clone(),
 		args.disk_log_level,
 		console_log_level,
@@ -274,7 +271,7 @@ async fn build_with_signer(
 			let best_block =
 				BestBlock::new(getinfo_resp.latest_blockhash, getinfo_resp.latest_height as u32);
 			let chain_params = ChainParameters { network: args.network, best_block };
-			let fresh_channel_manager = channelmanager::ChannelManager::new(
+			let fresh_channel_manager = ChannelManager::new(
 				fee_estimator.clone(),
 				chain_monitor.clone(),
 				broadcaster.clone(),
@@ -342,7 +339,7 @@ async fn build_with_signer(
 	// Step 14: Initialize the PeerManager
 	let channel_manager: Arc<ChannelManager> = Arc::new(channel_manager);
 	let mut ephemeral_bytes = [0; 32];
-	rand::thread_rng().fill_bytes(&mut ephemeral_bytes);
+	thread_rng().fill_bytes(&mut ephemeral_bytes);
 	let lightning_msg_handler = MessageHandler {
 		chan_handler: channel_manager.clone(),
 		route_handler: network_gossip.clone(),
@@ -383,18 +380,22 @@ async fn build_with_signer(
 
 	// Step 17 & 18: Initialize ChannelManager persistence & Once Per Minute: ChannelManager's
 	// timer_chan_freshness_every_min() and PeerManager's timer_tick_occurred
-	let persister = DataPersister { data_dir: ldk_data_dir.clone() };
+	let persister = Arc::new(FilesystemPersister::new(ldk_data_dir.clone()));
 
 	let payment_info: PaymentInfoStorage = Arc::new(Mutex::new(HashMap::new()));
 
 	let params = ProbabilisticScoringParameters::default();
-	let scorer = Arc::new(Mutex::new(ProbabilisticScorer::new(params, network_graph.clone())));
+	let scorer = Arc::new(Mutex::new(ProbabilisticScorer::new(
+		params,
+		network_graph.clone(),
+		logadapter.clone(),
+	)));
 	let router = DefaultRouter::new(
 		network_graph.clone(),
 		logadapter.clone(),
 		keys_manager.get_secure_random_bytes(),
 	);
-	let handle = tokio::runtime::Handle::current();
+	let handle = Handle::current();
 
 	let channel_manager_event_listener = channel_manager.clone();
 	let chain_monitor_event_listener = chain_monitor.clone();
@@ -417,7 +418,7 @@ async fn build_with_signer(
 		scorer.clone(),
 		logadapter.clone(),
 		event_handler,
-		payment::RetryAttempts(5),
+		payment::Retry::Attempts(5),
 	));
 
 	let background_processor = BackgroundProcessor::start(
@@ -428,6 +429,7 @@ async fn build_with_signer(
 		Some(network_gossip.clone()),
 		peer_manager.clone(),
 		logadapter.clone(),
+		Some(scorer.clone()),
 	);
 
 	let peer_manager_processor = peer_manager.clone();
@@ -580,7 +582,7 @@ impl Node {
 		let secp_ctx = Secp256k1::new();
 
 		let mut preimage = [0; 32];
-		rand::thread_rng().fill_bytes(&mut preimage);
+		thread_rng().fill_bytes(&mut preimage);
 		let payment_hash = Sha256Hash::hash(&preimage);
 
 		let payment_secret = self
@@ -636,7 +638,7 @@ impl Node {
 		// Sign the invoice.
 		let invoice = invoice
 			.build_signed(|msg_hash| {
-				secp_ctx.sign_recoverable(
+				secp_ctx.sign_ecdsa_recoverable(
 					msg_hash,
 					&self.keys_manager.get_node_secret(Recipient::Node).unwrap(),
 				)
