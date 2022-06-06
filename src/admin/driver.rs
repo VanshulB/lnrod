@@ -38,7 +38,8 @@ impl AdminHandler {
 		AdminHandler { node }
 	}
 
-	// TODO pass the counterparty around
+	// TODO use (cp_id, channel_id) pairs for looking up channels, since channel ID set by counterparties
+	// is not guaranteed to be unique
 	fn get_channel_counterparty(&self, channel_id: &[u8; 32]) -> PublicKey {
 		let chans = self.node.channel_manager.list_channels();
 		let chan = chans.iter().find(|c| *channel_id == c.channel_id).unwrap();
