@@ -26,19 +26,19 @@ use lightning::ln::channelmanager::{
 use lightning::ln::msgs::NetAddress;
 use lightning::ln::peer_handler::MessageHandler;
 use lightning::ln::{PaymentHash, PaymentPreimage};
-use lightning::routing::network_graph::NetworkGraph;
-use lightning::routing::network_graph::{NetGraphMsgHandler, RoutingFees};
+use lightning::routing::gossip::{NetworkGraph, P2PGossipSync, RoutingFees};
 use lightning::routing::router::RouteHint;
 use lightning::routing::router::RouteHintHop;
 use lightning::routing::scoring::{ProbabilisticScorer, ProbabilisticScoringParameters};
 use lightning::util::events::{Event, EventHandler};
 use lightning::util::ser::ReadableArgs;
-use lightning_background_processor::BackgroundProcessor;
+use lightning_background_processor::{BackgroundProcessor, GossipSync as LdkGossipSync};
 use lightning_block_sync::{init, poll, SpvClient, UnboundedCache};
 use lightning_invoice::payment::PaymentError;
 use lightning_invoice::utils::DefaultRouter;
 use lightning_invoice::{payment, Invoice};
 use lightning_persister::FilesystemPersister;
+use lightning_rapid_gossip_sync::RapidGossipSync;
 use lightning_signer::{bitcoin, lightning};
 use rand::{thread_rng, Rng};
 use tokio::runtime::Handle;
@@ -48,7 +48,6 @@ use crate::config::Config;
 use crate::convert::BlockchainInfo;
 use crate::disk::HostAndPort;
 use crate::fslogger::FilesystemLogger;
-use crate::lightning_invoice;
 use crate::logadapter::LoggerAdapter;
 use crate::net::Connector;
 use crate::signer::get_keys_manager;
@@ -56,9 +55,10 @@ use crate::tor::TorManager;
 use crate::util::Shutter;
 use crate::DynKeysInterface;
 use crate::{
-	disk, handle_ldk_events, ArcChainMonitor, ChannelManager, HTLCDirection, HTLCStatus,
-	IgnoringMessageHandler, MilliSatoshiAmount, PaymentInfoStorage, PeerManager, Sha256,
+	disk, handle_ldk_events, ArcChainMonitor, ChannelManager, HTLCStatus, IgnoringMessageHandler,
+	MilliSatoshiAmount, PaymentInfoStorage, PeerManager, Sha256,
 };
+use crate::{lightning_invoice, PaymentInfo};
 
 #[derive(Clone)]
 pub struct NodeBuildArgs {
@@ -80,7 +80,9 @@ pub struct NodeBuildArgs {
 	pub vls_port: u16,
 }
 
-type Router = DefaultRouter<Arc<NetworkGraph>, Arc<LoggerAdapter>>;
+type Router = DefaultRouter<Arc<NetworkGraph<Arc<LoggerAdapter>>>, Arc<LoggerAdapter>>;
+
+type GossipSync<P, G, A, L> = LdkGossipSync<P, Arc<RapidGossipSync<G, L>>, G, A, L>;
 
 pub struct MyEventHandler {
 	handle: Handle,
@@ -88,7 +90,8 @@ pub struct MyEventHandler {
 	chain_monitor: Arc<ArcChainMonitor>,
 	bitcoind_client: Arc<BitcoindClient>,
 	keys_manager: Arc<DynKeysInterface>,
-	payment_storage: PaymentInfoStorage,
+	inbound_payments: PaymentInfoStorage,
+	outbound_payments: PaymentInfoStorage,
 	network: Network,
 }
 
@@ -99,7 +102,8 @@ impl EventHandler for MyEventHandler {
 			self.chain_monitor.clone(),
 			self.bitcoind_client.clone(),
 			self.keys_manager.clone(),
-			self.payment_storage.clone(),
+			self.inbound_payments.clone(),
+			self.outbound_payments.clone(),
 			self.network,
 			event.clone(),
 		))
@@ -109,7 +113,7 @@ impl EventHandler for MyEventHandler {
 pub(crate) type InvoicePayer = payment::InvoicePayer<
 	Arc<ChannelManager>,
 	Router,
-	Arc<Mutex<ProbabilisticScorer<Arc<NetworkGraph>, Arc<LoggerAdapter>>>>,
+	Arc<Mutex<ProbabilisticScorer<Arc<NetworkGraph<Arc<LoggerAdapter>>>, Arc<LoggerAdapter>>>>,
 	Arc<LoggerAdapter>,
 	MyEventHandler,
 >;
@@ -119,7 +123,8 @@ pub(crate) struct Node {
 	pub(crate) peer_manager: Arc<PeerManager>,
 	pub(crate) channel_manager: Arc<ChannelManager>,
 	pub(crate) payer: Arc<InvoicePayer>,
-	pub(crate) payment_info: PaymentInfoStorage,
+	pub(crate) inbound_payments: PaymentInfoStorage,
+	pub(crate) outbound_payments: PaymentInfoStorage,
 	pub(crate) keys_manager: Arc<DynKeysInterface>,
 	pub(crate) ldk_data_dir: String,
 	pub(crate) bitcoind_client: Arc<BitcoindClient>,
@@ -246,6 +251,7 @@ async fn build_with_signer(
 
 	// Step 9: Initialize the ChannelManager
 	let user_config = args.config.bitcoin_channel().into();
+	println!("CONFIG {:?}", user_config);
 
 	let mut restarting_node = true;
 	let (channel_manager_blockhash, channel_manager) = {
@@ -325,14 +331,18 @@ async fn build_with_signer(
 		chain_monitor.watch_channel(funding_outpoint, channel_monitor).unwrap();
 	}
 
-	// Step 13: Optional: Initialize the NetGraphMsgHandler
+	// Step 13: Optional: Initialize the P2PGossipSync
 	// XXX persist routing data
 	let genesis_hash = genesis_block(args.network).header.block_hash();
 	let network_graph_path = format!("{}/network_graph", ldk_data_dir.clone());
-	let network_graph = Arc::new(disk::read_network(Path::new(&network_graph_path), genesis_hash));
+	let network_graph = Arc::new(disk::read_network(
+		Path::new(&network_graph_path),
+		genesis_hash,
+		logadapter.clone(),
+	));
 
 	let network_gossip =
-		Arc::new(NetGraphMsgHandler::new(Arc::clone(&network_graph), None, logadapter.clone()));
+		Arc::new(P2PGossipSync::new(Arc::clone(&network_graph), None, logadapter.clone()));
 
 	disk::start_network_graph_persister(network_graph_path, &network_graph);
 
@@ -382,7 +392,8 @@ async fn build_with_signer(
 	// timer_chan_freshness_every_min() and PeerManager's timer_tick_occurred
 	let persister = Arc::new(FilesystemPersister::new(ldk_data_dir.clone()));
 
-	let payment_info: PaymentInfoStorage = Arc::new(Mutex::new(HashMap::new()));
+	let inbound_payments: PaymentInfoStorage = Arc::new(Mutex::new(HashMap::new()));
+	let outbound_payments: PaymentInfoStorage = Arc::new(Mutex::new(HashMap::new()));
 
 	let params = ProbabilisticScoringParameters::default();
 	let scorer = Arc::new(Mutex::new(ProbabilisticScorer::new(
@@ -400,7 +411,8 @@ async fn build_with_signer(
 	let channel_manager_event_listener = channel_manager.clone();
 	let chain_monitor_event_listener = chain_monitor.clone();
 	let keys_manager_listener = keys_manager.clone();
-	let payment_info_for_events = payment_info.clone();
+	let inbound_payments_for_events = inbound_payments.clone();
+	let outbound_payments_for_events = outbound_payments.clone();
 
 	let event_handler = MyEventHandler {
 		handle,
@@ -408,7 +420,8 @@ async fn build_with_signer(
 		chain_monitor: chain_monitor_event_listener,
 		bitcoind_client: bitcoind_client_arc.clone(),
 		keys_manager: keys_manager_listener,
-		payment_storage: payment_info_for_events,
+		inbound_payments: inbound_payments_for_events,
+		outbound_payments: outbound_payments_for_events,
 		network,
 	};
 
@@ -426,7 +439,7 @@ async fn build_with_signer(
 		invoice_payer.clone(),
 		chain_monitor.clone(),
 		channel_manager.clone(),
-		Some(network_gossip.clone()),
+		GossipSync::P2P(network_gossip.clone()),
 		peer_manager.clone(),
 		logadapter.clone(),
 		Some(scorer.clone()),
@@ -461,7 +474,8 @@ async fn build_with_signer(
 		peer_manager,
 		channel_manager,
 		payer: invoice_payer,
-		payment_info,
+		inbound_payments,
+		outbound_payments,
 		keys_manager,
 		ldk_data_dir,
 		bitcoind_client: bitcoind_client_arc,
@@ -577,22 +591,12 @@ async fn setup_tor(
 }
 
 impl Node {
-	pub fn new_invoice(&self, amt_msat: u64) -> Result<Invoice, String> {
-		let mut payments = self.payment_info.lock().unwrap();
+	pub fn new_invoice(&self, amount_msat: u64) -> Result<Invoice, String> {
+		let mut payments = self.inbound_payments.lock().unwrap();
 		let secp_ctx = Secp256k1::new();
 
-		let mut preimage = [0; 32];
-		thread_rng().fill_bytes(&mut preimage);
-		let payment_hash = Sha256Hash::hash(&preimage);
-
-		let payment_secret = self
-			.channel_manager
-			.create_inbound_payment_for_hash(
-				PaymentHash(payment_hash.into_inner()),
-				Some(amt_msat),
-				7200,
-			)
-			.map_err(|e| format!("{:?}", e))?;
+		let (payment_hash, payment_secret) =
+			self.channel_manager.create_inbound_payment(Some(amount_msat), 7200).unwrap();
 
 		let our_node_pubkey = self.channel_manager.get_our_node_id();
 		let mut invoice = lightning_invoice::InvoiceBuilder::new(match self.network {
@@ -601,10 +605,10 @@ impl Node {
 			Network::Regtest => lightning_invoice::Currency::Regtest,
 			Network::Signet => lightning_invoice::Currency::Signet,
 		})
-		.payment_hash(payment_hash)
+		.payment_hash(Sha256Hash::from_inner(payment_hash.0))
 		.payment_secret(payment_secret)
 		.description("lnrod invoice".to_string())
-		.amount_milli_satoshis(amt_msat)
+		.amount_milli_satoshis(amount_msat)
 		.current_timestamp()
 		.min_final_cltv_expiry(MIN_FINAL_CLTV_EXPIRY as u64)
 		.payee_pub_key(our_node_pubkey);
@@ -647,18 +651,16 @@ impl Node {
 
 		info!(
 			"generated invoice with hash {} secret {}",
-			hex::encode(payment_hash),
+			hex::encode(payment_hash.0),
 			hex::encode(payment_secret.0)
 		);
-		payments.insert(
-			PaymentHash(payment_hash.into_inner()),
-			(
-				Some(PaymentPreimage(preimage)),
-				HTLCDirection::Inbound,
-				HTLCStatus::Pending,
-				MilliSatoshiAmount(Some(amt_msat)),
-			),
-		);
+		let payment_info = PaymentInfo {
+			preimage: None,
+			secret: None,
+			status: HTLCStatus::Pending,
+			amt_msat: MilliSatoshiAmount(Some(amount_msat)),
+		};
+		payments.insert(PaymentHash(payment_hash.0), payment_info);
 		Ok(invoice)
 	}
 
@@ -682,16 +684,14 @@ impl Node {
 			}
 		};
 		let payment_hash = PaymentHash(invoice.payment_hash().clone().into_inner());
-		let mut payments = self.payment_info.lock().unwrap();
-		payments.insert(
-			payment_hash,
-			(
-				None,
-				HTLCDirection::Outbound,
-				status,
-				MilliSatoshiAmount(Some(invoice.amount_milli_satoshis().unwrap())),
-			),
-		);
+		let mut payments = self.outbound_payments.lock().unwrap();
+		let payment = PaymentInfo {
+			preimage: None,
+			secret: Some(invoice.payment_secret().clone()),
+			status,
+			amt_msat: MilliSatoshiAmount(Some(invoice.amount_milli_satoshis().unwrap())),
+		};
+		payments.insert(payment_hash, payment);
 		Ok(())
 	}
 
@@ -720,11 +720,14 @@ impl Node {
 				HTLCStatus::Failed
 			}
 		};
-		let mut payments = self.payment_info.lock().unwrap();
-		payments.insert(
-			payment_hash,
-			(None, HTLCDirection::Outbound, status, MilliSatoshiAmount(Some(value_msat))),
-		);
+		let mut payments = self.outbound_payments.lock().unwrap();
+		let payment_info = PaymentInfo {
+			preimage: None,
+			secret: None,
+			status,
+			amt_msat: MilliSatoshiAmount(Some(value_msat)),
+		};
+		payments.insert(payment_hash, payment_info);
 		Ok(())
 	}
 

@@ -96,6 +96,7 @@ impl Into<ChannelHandshakeLimits> for ConfigLimitCoinChannel {
 			max_channel_reserve_satoshis: self.max_channel_reserve_sat.unwrap_or(u64::max_value()),
 			min_max_accepted_htlcs: self.min_max_accepted_htlcs.unwrap_or(0),
 			max_minimum_depth: self.max_minimum_depth.unwrap_or(144),
+			trust_own_funding_0conf: false,
 			force_announced_channel_preference: self
 				.force_announced_channel_preference
 				.unwrap_or(false),

@@ -52,53 +52,56 @@ triggered = "0.1"
 ctrlc = { version = "3.1", features = ["termination"] }
 
 [dependencies.lightning-net-tokio]
-#version = "0.0.106"
-git = "https://github.com/lightningdevkit/rust-lightning"
-rev = "08ab6581f1c6254a7765340c5c7a553db58d3a89"
+version = "0.0.107"
+#git = "https://github.com/lightningdevkit/rust-lightning"
+#rev = "08ab6581f1c6254a7765340c5c7a553db58d3a89"
 #path = "../rust-lightning/lightning-net-tokio"
 
+[dependencies.lightning-rapid-gossip-sync]
+version = "0.0.107"
+
 [dependencies.lightning-background-processor]
-#version = "0.0.106"
-git = "https://github.com/lightningdevkit/rust-lightning"
-rev = "08ab6581f1c6254a7765340c5c7a553db58d3a89"
+version = "0.0.107"
+#git = "https://github.com/lightningdevkit/rust-lightning"
+#rev = "08ab6581f1c6254a7765340c5c7a553db58d3a89"
 #path = "../rust-lightning/lightning-background-processor"
 
 [dependencies.lightning-persister]
-#version = "0.0.106"
-git = "https://github.com/lightningdevkit/rust-lightning"
-rev = "08ab6581f1c6254a7765340c5c7a553db58d3a89"
+version = "0.0.107"
+#git = "https://github.com/lightningdevkit/rust-lightning"
+#rev = "08ab6581f1c6254a7765340c5c7a553db58d3a89"
 #path = "../rust-lightning/lightning-persister"
 
 [dependencies.lightning-block-sync]
 features = ["rpc-client"]
-#version = "0.0.106"
-git = "https://github.com/lightningdevkit/rust-lightning"
-rev = "08ab6581f1c6254a7765340c5c7a553db58d3a89"
+version = "0.0.107"
+#git = "https://github.com/lightningdevkit/rust-lightning"
+#rev = "08ab6581f1c6254a7765340c5c7a553db58d3a89"
 #path = "../rust-lightning/lightning-block-sync"
 
 [dependencies.lightning-signer-core]
 git = "https://gitlab.com/lightning-signer/validating-lightning-signer.git"
-rev = "63ae96e0cb64629b5e7bdeb9453ba84b1697ccfe"
+rev = "4ecbd78865c2992c500208538844ddb55813eba2"
 #path = "../vls/lightning-signer-core"
 
 [dependencies.lightning-signer-server]
 git = "https://gitlab.com/lightning-signer/validating-lightning-signer.git"
-rev = "63ae96e0cb64629b5e7bdeb9453ba84b1697ccfe" # VLS VERSION
+rev = "4ecbd78865c2992c500208538844ddb55813eba2" # VLS VERSION
 #path = "../vls/lightning-signer-server"
 
 [dependencies.vls-protocol-signer]
 git = "https://gitlab.com/lightning-signer/validating-lightning-signer.git"
-rev = "63ae96e0cb64629b5e7bdeb9453ba84b1697ccfe"
+rev = "4ecbd78865c2992c500208538844ddb55813eba2"
 #path = "../vls/vls-protocol-signer"
 
 [dependencies.vls-protocol-client]
 git = "https://gitlab.com/lightning-signer/validating-lightning-signer.git"
-rev = "63ae96e0cb64629b5e7bdeb9453ba84b1697ccfe"
+rev = "4ecbd78865c2992c500208538844ddb55813eba2"
 #path = "../vls/vls-protocol-client"
 
 [dependencies.vls-proxy]
 git = "https://gitlab.com/lightning-signer/validating-lightning-signer.git"
-rev = "63ae96e0cb64629b5e7bdeb9453ba84b1697ccfe"
+rev = "4ecbd78865c2992c500208538844ddb55813eba2"
 #path = "../vls/vls-proxy"
 
 [build-dependencies]

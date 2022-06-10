@@ -1,3 +1,4 @@
+use std::collections::hash_map::Entry;
 use std::collections::HashMap;
 use std::io::Write;
 use std::sync::{Arc, Mutex};
@@ -21,8 +22,7 @@ use lightning::ln::channelmanager::ChannelManager as RLChannelManager;
 use lightning::ln::peer_handler::IgnoringMessageHandler;
 use lightning::ln::peer_handler::PeerManager as RLPeerManager;
 use lightning::ln::{PaymentHash, PaymentPreimage};
-use lightning::routing::network_graph::NetGraphMsgHandler;
-use lightning::routing::network_graph::NetworkGraph;
+use lightning::routing::gossip::{NetworkGraph, P2PGossipSync};
 use lightning::util::events::Event;
 use lightning_net_tokio::SocketDescriptor;
 use lightning_persister::FilesystemPersister;
@@ -31,6 +31,8 @@ use rand::{thread_rng, Rng};
 
 use vls_protocol_client::{DynKeysInterface, DynSigner, InnerSign, SpendableKeysInterface};
 
+use crate::lightning::ln::PaymentSecret;
+use crate::lightning::util::events::PaymentPurpose;
 use bitcoind_client::BitcoindClient;
 use logadapter::LoggerAdapter;
 
@@ -54,12 +56,6 @@ pub mod signer;
 pub mod tor;
 pub mod util;
 
-#[derive(PartialEq)]
-pub(crate) enum HTLCDirection {
-	Inbound,
-	Outbound,
-}
-
 #[derive(Clone)]
 pub(crate) enum HTLCStatus {
 	Pending = 0,
@@ -81,14 +77,14 @@ impl fmt::Display for MilliSatoshiAmount {
 	}
 }
 
-pub(crate) type PaymentInfoStorage = Arc<
-	Mutex<
-		HashMap<
-			PaymentHash,
-			(Option<PaymentPreimage>, HTLCDirection, HTLCStatus, MilliSatoshiAmount),
-		>,
-	>,
->;
+pub(crate) struct PaymentInfo {
+	preimage: Option<PaymentPreimage>,
+	secret: Option<PaymentSecret>,
+	status: HTLCStatus,
+	amt_msat: MilliSatoshiAmount,
+}
+
+pub(crate) type PaymentInfoStorage = Arc<Mutex<HashMap<PaymentHash, PaymentInfo>>>;
 
 type ArcChainMonitor = ChainMonitor<
 	DynSigner,
@@ -104,7 +100,7 @@ pub(crate) type PeerManager = SimpleArcPeerManager<SocketDescriptor, dyn SyncAcc
 pub(crate) type SimpleArcPeerManager<SD, C, L> = RLPeerManager<
 	SD,
 	Arc<ChannelManager>,
-	Arc<NetGraphMsgHandler<Arc<NetworkGraph>, Arc<C>, Arc<L>>>,
+	Arc<P2PGossipSync<Arc<NetworkGraph<Arc<L>>>, Arc<C>, Arc<L>>>,
 	Arc<L>,
 	Arc<IgnoringMessageHandler>,
 >;
@@ -121,7 +117,8 @@ pub(crate) type ChannelManager = RLChannelManager<
 async fn handle_ldk_events(
 	channel_manager: Arc<ChannelManager>, _chain_monitor: Arc<ArcChainMonitor>,
 	bitcoind_client: Arc<BitcoindClient>, keys_manager: Arc<DynKeysInterface>,
-	payment_storage: PaymentInfoStorage, network: Network, event: Event,
+	inbound_payments: PaymentInfoStorage, outbound_payments: PaymentInfoStorage, network: Network,
+	event: Event,
 ) {
 	let mut pending_txs: HashMap<OutPoint, Transaction> = HashMap::new();
 	match event {
@@ -176,49 +173,62 @@ async fn handle_ldk_events(
 				.unwrap();
 			pending_txs.insert(outpoint, final_tx);
 		}
-		Event::PaymentReceived { amt, payment_hash, .. } => {
-			let mut payments = payment_storage.lock().unwrap();
-			if let Some((Some(preimage), _, _, _)) = payments.get(&payment_hash) {
-				let success = channel_manager.claim_funds(preimage.clone());
-
-				if success {
-					info!(
-						"EVENT: received payment from payment_hash {} of {} satoshis",
-						hex_utils::hex_str(&payment_hash.0),
-						amt / 1000
-					);
-					io::stdout().flush().unwrap();
-					let (_, _, ref mut status, _) = payments.get_mut(&payment_hash).unwrap();
-					*status = HTLCStatus::Succeeded;
-				} else {
-					error!(
-						"EVENT: failed to claim payment with {} msat, preimage {}",
-						amt,
-						hex::encode(preimage.0)
-					);
+		Event::PaymentReceived { amount_msat, purpose, payment_hash } => {
+			let payment_preimage = match purpose {
+				PaymentPurpose::InvoicePayment { payment_preimage, .. } => payment_preimage,
+				PaymentPurpose::SpontaneousPayment(preimage) => Some(preimage),
+			};
+			info!(
+				"EVENT: received payment from payment_hash {} of {} satoshis",
+				hex_utils::hex_str(&payment_hash.0),
+				amount_msat / 1000
+			);
+			io::stdout().flush().unwrap();
+			channel_manager.claim_funds(payment_preimage.unwrap());
+		}
+		Event::PaymentClaimed { payment_hash, purpose, amount_msat } => {
+			info!(
+				"EVENT: claimed payment from payment_hash {} of {} satoshis",
+				hex_utils::hex_str(&payment_hash.0),
+				amount_msat / 1000
+			);
+			io::stdout().flush().unwrap();
+			let (payment_preimage, payment_secret) = match purpose {
+				PaymentPurpose::InvoicePayment { payment_preimage, payment_secret, .. } => {
+					(payment_preimage, Some(payment_secret))
 				}
-			} else {
-				error!("ERROR: we received a payment but didn't know the preimage");
-				io::stdout().flush().unwrap();
-				channel_manager.fail_htlc_backwards(&payment_hash);
-				payments.insert(
-					payment_hash,
-					(None, HTLCDirection::Inbound, HTLCStatus::Failed, MilliSatoshiAmount(None)),
-				);
+				PaymentPurpose::SpontaneousPayment(preimage) => (Some(preimage), None),
+			};
+			let mut payments = inbound_payments.lock().unwrap();
+			match payments.entry(payment_hash) {
+				Entry::Occupied(mut e) => {
+					let payment = e.get_mut();
+					payment.status = HTLCStatus::Succeeded;
+					payment.preimage = payment_preimage;
+					payment.secret = payment_secret;
+				}
+				Entry::Vacant(e) => {
+					e.insert(PaymentInfo {
+						preimage: payment_preimage,
+						secret: payment_secret,
+						status: HTLCStatus::Succeeded,
+						amt_msat: MilliSatoshiAmount(Some(amount_msat)),
+					});
+				}
 			}
 		}
 		Event::PaymentSent { payment_preimage, .. } => {
 			let hashed = PaymentHash(Sha256::hash(&payment_preimage.0).into_inner());
-			let mut payments = payment_storage.lock().unwrap();
-			for (payment_hash, (preimage_option, _, status, amt_msat)) in payments.iter_mut() {
-				if *payment_hash == hashed {
-					*preimage_option = Some(payment_preimage);
-					*status = HTLCStatus::Succeeded;
+			let mut payments = outbound_payments.lock().unwrap();
+			for (hash, payment) in payments.iter_mut() {
+				if *hash == hashed {
+					payment.preimage = Some(payment_preimage);
+					payment.status = HTLCStatus::Succeeded;
 					info!(
 						"EVENT: successfully sent payment of {} milli-satoshis from \
                                          payment hash {:?} with preimage {:?}",
-						amt_msat,
-						hex_utils::hex_str(&payment_hash.0),
+						payment.amt_msat,
+						hex_utils::hex_str(&hash.0),
 						hex_utils::hex_str(&payment_preimage.0)
 					);
 					io::stdout().flush().unwrap();
@@ -247,10 +257,10 @@ async fn handle_ldk_events(
 			}
 			io::stdout().flush().unwrap();
 
-			let mut payments = payment_storage.lock().unwrap();
+			let mut payments = outbound_payments.lock().unwrap();
 			if payments.contains_key(&payment_hash) {
-				let (_, _, ref mut status, _) = payments.get_mut(&payment_hash).unwrap();
-				*status = HTLCStatus::Failed;
+				let payment = payments.get_mut(&payment_hash).unwrap();
+				payment.status = HTLCStatus::Failed;
 			}
 		}
 		Event::PendingHTLCsForwardable { time_forwardable } => {

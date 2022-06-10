@@ -21,11 +21,11 @@ processes: [Popen] = []
 OUTPUT_DIR = 'test-output'
 NUM_PAYMENTS = 200
 WAIT_TIMEOUT = 10
-CHANNEL_BALANCE_SYNC_INTERVAL = 50
+CHANNEL_BALANCE_SYNC_INTERVAL = 25
 CHANNEL_VALUE_SAT = 10_000_000
 EXPECTED_FEE_SAT = 1458
 PAYMENT_MSAT = 4_000_000  # FIXME 2_000_000 fails with dust limit policy violation
-SLEEP_ON_FAIL = False
+DEBUG_ON_FAIL = False
 USE_RELEASE_BINARIES = False
 
 # options: test, vls, vls-local, vls2-null, vls2-grpc
@@ -97,9 +97,9 @@ def wait_until(name, func):
         time.sleep(0.1)
         timeout -= 1
     if timeout <= 0:
-        if SLEEP_ON_FAIL:
+        if DEBUG_ON_FAIL:
             print(f'failed with exc={exc}')
-            time.sleep(1000000)
+            import pdb; pdb.set_trace()
         if exc:
             raise exc
         raise Exception('Timeout')
@@ -189,6 +189,9 @@ def run():
 
     assert alice.ChannelList(Void()).channels[0].is_active
     assert bob.ChannelList(Void()).channels[0].is_active
+
+    print(f'Alice initial balance {alice.ChannelList(Void()).channels[0].outbound_msat}')
+    print(PAYMENT_MSAT * CHANNEL_BALANCE_SYNC_INTERVAL)
 
     for i in range(1, NUM_PAYMENTS + 1):
         print(f'Pay invoice {i}')
