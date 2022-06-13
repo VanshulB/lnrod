@@ -19,13 +19,13 @@ from admin_pb2 import PingRequest, ChannelNewRequest, ChannelCloseRequest, Void,
 
 processes: [Popen] = []
 OUTPUT_DIR = 'test-output'
-NUM_PAYMENTS = 200
+NUM_PAYMENTS = 250
 WAIT_TIMEOUT = 10
 CHANNEL_BALANCE_SYNC_INTERVAL = 50
 CHANNEL_VALUE_SAT = 10_000_000
 EXPECTED_FEE_SAT = 1458
 PAYMENT_MSAT = 4_000_000  # FIXME 2_000_000 fails with dust limit policy violation
-SLEEP_ON_FAIL = False
+DEBUG_ON_FAIL = os.environ.get('DEBUG_ON_FAIL', '0') == '1'
 USE_RELEASE_BINARIES = False
 
 # options: test, vls, vls-local, vls2-null, vls2-grpc
@@ -97,9 +97,9 @@ def wait_until(name, func):
         time.sleep(0.1)
         timeout -= 1
     if timeout <= 0:
-        if SLEEP_ON_FAIL:
+        if DEBUG_ON_FAIL:
             print(f'failed with exc={exc}')
-            time.sleep(1000000)
+            import pdb; pdb.set_trace()
         if exc:
             raise exc
         raise Exception('Timeout')
@@ -146,7 +146,8 @@ def run():
 
     # we have to wait here to prevent a race condition on the bitcoin wallet UTXOs
     # TODO UTXO locking
-    wait_until('channel at bob', lambda: bob.ChannelList(Void()).channels[0])
+    wait_until('channel at bob', lambda: bob.ChannelList(Void()).channels[0].is_pending)
+    wait_until('channel at alice', lambda: alice.ChannelList(Void()).channels[0].is_pending)
 
     print('Create channel bob -> charlie')
     try:
@@ -156,11 +157,7 @@ def run():
         print(e)
         raise
 
-    wait_until('channel at charlie', lambda: charlie.ChannelList(Void()).channels[0])
-
-    assert alice.ChannelList(Void()).channels[0].is_pending
-    assert bob.ChannelList(Void()).channels[0].is_pending
-    assert charlie.ChannelList(Void()).channels[0].is_pending
+    wait_until('channel at charlie', lambda: charlie.ChannelList(Void()).channels[0].is_pending)
 
     btc.mine(6)
 
@@ -190,14 +187,24 @@ def run():
     assert alice.ChannelList(Void()).channels[0].is_active
     assert bob.ChannelList(Void()).channels[0].is_active
 
+    print(f'Alice initial balance {alice.ChannelList(Void()).channels[0].outbound_msat}')
+    print(PAYMENT_MSAT * CHANNEL_BALANCE_SYNC_INTERVAL)
+
     for i in range(1, NUM_PAYMENTS + 1):
         print(f'Pay invoice {i}')
         invoice = charlie.InvoiceNew(InvoiceNewRequest(value_msat=PAYMENT_MSAT)).invoice
         alice.PaymentSend(PaymentSendRequest(invoice=invoice))
 
         if i % CHANNEL_BALANCE_SYNC_INTERVAL == 0:
-            print('*** SYNC TO CHANNEL BALANCE')
-            # check within 0.5%, due to fees
+            def check_payments():
+                payments = alice.PaymentList(Void()).payments
+                assert len(payments) == i
+                return all(p.status == Payment.PaymentStatus.Succeeded for p in payments)
+
+            print('*** SYNC TO PAYMENT STATUS')
+            wait_until('payments succeed', check_payments)
+
+            print('*** CHECK CHANNEL BALANCE')
 
             wait_until('channel balance alice',
                        lambda: assert_equal_delta(CHANNEL_VALUE_SAT * 1000 - EXPECTED_FEE_SAT * 1000 - alice.ChannelList(Void()).channels[0].outbound_msat,
@@ -205,16 +212,6 @@ def run():
             wait_until('channel balance charlie',
                        lambda: assert_equal_delta(charlie.ChannelList(Void()).channels[0].outbound_msat,
                                                   max(0, i * PAYMENT_MSAT)))
-
-    def check_payments():
-        payment_list = alice.PaymentList(Void())
-        assert len(payment_list.payments) == NUM_PAYMENTS
-        for payment in payment_list.payments:
-            assert payment.is_outbound
-            assert payment.status == Payment.PaymentStatus.Succeeded, payment
-        return True
-
-    wait_until('check payments', check_payments)
 
     def wait_received(node_id, minimum=1):
         btc.mine(2)

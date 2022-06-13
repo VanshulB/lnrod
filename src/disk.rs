@@ -1,11 +1,11 @@
-use crate::{hex_utils, DynKeysInterface, DynSigner, NetworkGraph};
+use crate::{hex_utils, DynKeysInterface, DynSigner, LoggerAdapter, NetworkGraph};
 use anyhow::Result;
 use bitcoin::hashes::hex::FromHex;
 use bitcoin::secp256k1::PublicKey;
 use bitcoin::{BlockHash, Txid};
 use lightning::chain::channelmonitor::ChannelMonitor;
 use lightning::chain::transaction::OutPoint;
-use lightning::util::ser::{Readable, ReadableArgs, Writeable};
+use lightning::util::ser::{ReadableArgs, Writeable};
 use lightning_signer::bitcoin;
 use lightning_signer::lightning;
 use log::error;
@@ -82,16 +82,20 @@ pub(crate) fn read_channelmonitors(
 	Ok(outpoint_to_channelmonitor)
 }
 
-pub(crate) fn read_network(path: &Path, genesis_hash: BlockHash) -> NetworkGraph {
+pub(crate) fn read_network(
+	path: &Path, genesis_hash: BlockHash, logger: Arc<LoggerAdapter>,
+) -> NetworkGraph<Arc<LoggerAdapter>> {
 	if let Ok(file) = File::open(path) {
-		if let Ok(graph) = NetworkGraph::read(&mut BufReader::new(file)) {
+		if let Ok(graph) = NetworkGraph::read(&mut BufReader::new(file), logger.clone()) {
 			return graph;
 		}
 	}
-	NetworkGraph::new(genesis_hash)
+	NetworkGraph::new(genesis_hash, logger)
 }
 
-pub(crate) fn persist_network(path: &Path, network_graph: &NetworkGraph) -> std::io::Result<()> {
+pub(crate) fn persist_network(
+	path: &Path, network_graph: &NetworkGraph<Arc<LoggerAdapter>>,
+) -> std::io::Result<()> {
 	let mut tmp_path = path.to_path_buf().into_os_string();
 	tmp_path.push(".tmp");
 	let file = fs::OpenOptions::new().write(true).create(true).open(&tmp_path)?;
@@ -105,7 +109,7 @@ pub(crate) fn persist_network(path: &Path, network_graph: &NetworkGraph) -> std:
 }
 
 pub(crate) fn start_network_graph_persister(
-	network_graph_path: String, network_graph: &Arc<NetworkGraph>,
+	network_graph_path: String, network_graph: &Arc<NetworkGraph<Arc<LoggerAdapter>>>,
 ) {
 	let network_graph_persist = Arc::clone(&network_graph);
 	tokio::spawn(async move {

@@ -22,7 +22,6 @@ use crate::admin::admin_api::{
 };
 use crate::node::{build_node, Node, NodeBuildArgs};
 use crate::util::Shutter;
-use crate::HTLCDirection;
 
 use super::admin_api::admin_server::{Admin, AdminServer};
 use super::admin_api::{ChannelListReply, NodeInfoReply, PingReply, PingRequest, Void};
@@ -255,19 +254,34 @@ impl Admin for AdminHandler {
 	) -> Result<Response<PaymentListReply>, Status> {
 		let _req = request.into_inner();
 		info!("ENTER payment_list");
-		let payments = self
+		let outbound_payments = self
 			.node
-			.payment_info
+			.outbound_payments
 			.lock()
 			.map_err(|_| Status::unavailable("Failed to acquire lock on payment info"))?
 			.iter()
-			.map(|(payment_hash, (_, direction, status, value_msat))| Payment {
-				value_msat: value_msat.0.unwrap(),
+			.map(|(payment_hash, info)| Payment {
+				value_msat: info.amt_msat.0.unwrap(),
 				payment_hash: payment_hash.0.to_vec(),
-				is_outbound: *direction == HTLCDirection::Outbound,
-				status: status.clone() as i32,
+				is_outbound: true,
+				status: info.status.clone() as i32,
 			})
-			.collect();
+			.collect::<Vec<_>>();
+		let inbound_payments = self
+			.node
+			.inbound_payments
+			.lock()
+			.map_err(|_| Status::unavailable("Failed to acquire lock on payment info"))?
+			.iter()
+			.map(|(payment_hash, info)| Payment {
+				value_msat: info.amt_msat.0.unwrap(),
+				payment_hash: payment_hash.0.to_vec(),
+				is_outbound: false,
+				status: info.status.clone() as i32,
+			})
+			.collect::<Vec<_>>();
+		let mut payments = inbound_payments;
+		payments.extend(outbound_payments);
 		let reply = PaymentListReply { payments };
 		debug!("{}", type_and_value!(&reply));
 		info!("REPLY payment_list");
