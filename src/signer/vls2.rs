@@ -3,6 +3,7 @@ use std::net::{Ipv4Addr, SocketAddr};
 use std::sync::Arc;
 
 use bitcoin::bech32::u5;
+use bitcoin::psbt::PartiallySignedTransaction;
 use bitcoin::secp256k1::ecdsa::RecoverableSignature;
 use bitcoin::secp256k1::Secp256k1;
 use bitcoin::secp256k1::{All, PublicKey, SecretKey};
@@ -43,7 +44,8 @@ impl NullTransport {
 		let persister = Arc::new(DummyPersister);
 		let allowlist = vec![address.to_string()];
 		info!("allowlist {:?}", allowlist);
-		let handler = RootHandler::new(0, None, persister, allowlist);
+		let network = Network::Regtest; // TODO - get from config, env or args
+		let handler = RootHandler::new(network, 0, None, persister, allowlist);
 		NullTransport { handler }
 	}
 }
@@ -147,6 +149,14 @@ impl SpendableKeysInterface for KeysManager {
 	fn get_node_id(&self) -> PublicKey {
 		self.node_id
 	}
+
+    fn sign_from_wallet(
+        &self,
+        _psbt: &PartiallySignedTransaction,
+        _derivations: Vec<u32>,
+    ) -> PartiallySignedTransaction {
+        unimplemented!("TODO")
+    }
 }
 
 pub(crate) async fn make_null_signer(
