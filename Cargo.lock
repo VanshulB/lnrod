@@ -25,12 +25,6 @@ checksum = "e8fd72866655d1904d6b0997d0b07ba561047d070fbe29de039031c641b61217"
 
 [[package]]
 name = "ahash"
-version = "0.4.7"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "739f4a8db6605981345c5654f3a85b056ce52f37a39d34da03f25bf2151ea16e"
-
-[[package]]
-name = "ahash"
 version = "0.7.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "fcb51a0695d8f838b1ee009b3fbf66bda078cd64590202a864a8f3e8c4315c47"
@@ -183,36 +177,10 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cf9ff0bbfd639f15c74af777d81383cf53efb7c93613f6cab67c6c11e05bbf8b"
 
 [[package]]
-name = "bip39"
-version = "1.0.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b9e89470017230c38e52b82b3ee3f530db1856ba1d434e3a67a3456a8a8dec5f"
-dependencies = [
- "bitcoin_hashes 0.9.7",
- "rand 0.6.5",
- "rand_core 0.4.2",
- "serde",
- "unicode-normalization",
-]
-
-[[package]]
 name = "bit-vec"
 version = "0.6.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "349f9b6a179ed607305526ca489b34ad0a41aed5f7980fa90eb03160b69598fb"
-
-[[package]]
-name = "bitcoin"
-version = "0.27.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9a41df6ad9642c5c15ae312dd3d074de38fd3eb7cc87ad4ce10f90292a83fe4d"
-dependencies = [
- "bech32 0.8.1",
- "bitcoin_hashes 0.10.0",
- "core2",
- "hashbrown 0.8.2",
- "secp256k1 0.20.3",
-]
 
 [[package]]
 name = "bitcoin"
@@ -221,11 +189,11 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "05bba324e6baf655b882df672453dbbc527bc938cadd27750ae510aaccc3a66a"
 dependencies = [
  "bech32 0.8.1",
- "bitcoin_hashes 0.10.0",
+ "bitcoin_hashes",
  "bitcoinconsensus",
  "core2",
  "hashbrown 0.8.2",
- "secp256k1 0.22.1",
+ "secp256k1",
  "serde",
 ]
 
@@ -237,12 +205,6 @@ checksum = "b5791779c83cf6bde070a92c22505f2faa06487fc8f372e4d485c41a71351105"
 dependencies = [
  "bech32 0.4.1",
 ]
-
-[[package]]
-name = "bitcoin_hashes"
-version = "0.9.7"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7ce18265ec2324ad075345d5814fbeed4f41f0a660055dc78840b74d19b874b1"
 
 [[package]]
 name = "bitcoin_hashes"
@@ -267,7 +229,7 @@ dependencies = [
 [[package]]
 name = "bitcoind-client"
 version = "0.1.0-5"
-source = "git+https://gitlab.com/lightning-signer/validating-lightning-signer.git?rev=eccbebe8ef1b94542bf6ef8e38c90ab7dcf16fd4#eccbebe8ef1b94542bf6ef8e38c90ab7dcf16fd4"
+source = "git+https://gitlab.com/lightning-signer/validating-lightning-signer.git?rev=8b0c44b123bffcd6e890f1960d53e9bc3962ece2#8b0c44b123bffcd6e890f1960d53e9bc3962ece2"
 dependencies = [
  "async-trait",
  "jsonrpc-async",
@@ -276,7 +238,6 @@ dependencies = [
  "serde",
  "serde_json",
  "tokio",
- "url",
 ]
 
 [[package]]
@@ -304,7 +265,7 @@ checksum = "8d696c370c750c948ada61c69a0ee2cbbb9c50b1019ddb86d9317157a99c2cae"
 [[package]]
 name = "bolt-derive"
 version = "0.1.0"
-source = "git+https://gitlab.com/lightning-signer/validating-lightning-signer.git?rev=eccbebe8ef1b94542bf6ef8e38c90ab7dcf16fd4#eccbebe8ef1b94542bf6ef8e38c90ab7dcf16fd4"
+source = "git+https://gitlab.com/lightning-signer/validating-lightning-signer.git?rev=8b0c44b123bffcd6e890f1960d53e9bc3962ece2#8b0c44b123bffcd6e890f1960d53e9bc3962ece2"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -854,15 +815,6 @@ dependencies = [
 
 [[package]]
 name = "hashbrown"
-version = "0.9.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d7afe4a420e3fe79967a00898cc1f4db7c8a49a9333a29f8a4bd76a253d5cd04"
-dependencies = [
- "ahash 0.4.7",
-]
-
-[[package]]
-name = "hashbrown"
 version = "0.11.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ab5ef0d4909ef3724cc8cce6ccc8572c5c817592e9285f5464f8e86f8bd3726e"
@@ -1024,15 +976,6 @@ dependencies = [
 
 [[package]]
 name = "itertools"
-version = "0.9.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "284f18f85651fe11e8a991b2adb42cb078325c996ed026d994719efcfca1d54b"
-dependencies = [
- "either",
-]
-
-[[package]]
-name = "itertools"
 version = "0.10.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a9a9d19fa1e79b6215ff29b9d6880b706147f16e9b1dbb1e4e5947b5b02bc5e3"
@@ -1097,11 +1040,9 @@ version = "0.0.108"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d885bf509066af86ae85354c8959028ad6192c22a2657ef8271e94029d30f9d0"
 dependencies = [
- "bitcoin 0.28.1",
+ "bitcoin",
  "core2",
  "hashbrown 0.11.2",
- "hex 0.4.3",
- "regex",
 ]
 
 [[package]]
@@ -1110,7 +1051,7 @@ version = "0.0.108"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0ba6fcb3cef50ae1027a89b40f847b771e831fad843673a350586e29b01b618b"
 dependencies = [
- "bitcoin 0.28.1",
+ "bitcoin",
  "lightning",
  "lightning-rapid-gossip-sync",
 ]
@@ -1121,7 +1062,7 @@ version = "0.0.108"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b8f1ed50f41785af19f5cd1225b668e87ef0d59bb84e6f8ef2542933e6082a2c"
 dependencies = [
- "bitcoin 0.28.1",
+ "bitcoin",
  "chunked_transfer",
  "futures",
  "lightning",
@@ -1136,12 +1077,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "eaafc1cebaf9ea8d2a57e60aae9fe6095554b8305714f8452cd8a20a3aa5b7ba"
 dependencies = [
  "bech32 0.8.1",
- "bitcoin_hashes 0.10.0",
+ "bitcoin_hashes",
  "core2",
  "hashbrown 0.11.2",
  "lightning",
  "num-traits",
- "secp256k1 0.22.1",
+ "secp256k1",
 ]
 
 [[package]]
@@ -1150,7 +1091,7 @@ version = "0.0.108"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2f0170619152c4d6b947d5ed0de427b85691482a293e0cae52d4336a2220a776"
 dependencies = [
- "bitcoin 0.28.1",
+ "bitcoin",
  "lightning",
  "tokio",
 ]
@@ -1161,7 +1102,7 @@ version = "0.0.108"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6e9f154ee5b60e576973da61379767569e2ad7b61a361d716a7d15f37df7e0bc"
 dependencies = [
- "bitcoin 0.28.1",
+ "bitcoin",
  "libc",
  "lightning",
  "winapi",
@@ -1173,22 +1114,22 @@ version = "0.0.108"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "08b9947e17c7b97bb267bf3fe6bd51493c1b03a104ab81b246ef3f3ac9077ed9"
 dependencies = [
- "bitcoin 0.28.1",
+ "bitcoin",
  "lightning",
 ]
 
 [[package]]
 name = "lightning-signer-core"
 version = "0.1.0-5"
-source = "git+https://gitlab.com/lightning-signer/validating-lightning-signer.git?rev=eccbebe8ef1b94542bf6ef8e38c90ab7dcf16fd4#eccbebe8ef1b94542bf6ef8e38c90ab7dcf16fd4"
+source = "git+https://gitlab.com/lightning-signer/validating-lightning-signer.git?rev=8b0c44b123bffcd6e890f1960d53e9bc3962ece2#8b0c44b123bffcd6e890f1960d53e9bc3962ece2"
 dependencies = [
  "anyhow",
  "backtrace",
- "bitcoin 0.28.1",
+ "bitcoin",
  "core2",
  "env_logger",
- "hashbrown 0.9.1",
- "itertools 0.9.0",
+ "hashbrown 0.11.2",
+ "itertools",
  "lightning",
  "lightning-invoice",
  "log",
@@ -1200,24 +1141,17 @@ dependencies = [
 [[package]]
 name = "lightning-signer-server"
 version = "0.1.0-5"
-source = "git+https://gitlab.com/lightning-signer/validating-lightning-signer.git?rev=eccbebe8ef1b94542bf6ef8e38c90ab7dcf16fd4#eccbebe8ef1b94542bf6ef8e38c90ab7dcf16fd4"
+source = "git+https://gitlab.com/lightning-signer/validating-lightning-signer.git?rev=8b0c44b123bffcd6e890f1960d53e9bc3962ece2#8b0c44b123bffcd6e890f1960d53e9bc3962ece2"
 dependencies = [
  "anyhow",
  "async-trait",
  "backtrace",
- "bip39",
- "bitcoin 0.28.1",
- "bitcoind-client",
- "clap",
- "ctrlc",
  "env_logger",
  "hex 0.3.2",
- "hyper",
  "kv",
  "lightning-signer-core",
  "log",
  "prost",
- "rand 0.4.6",
  "serde",
  "serde_json",
  "serde_with",
@@ -1226,10 +1160,6 @@ dependencies = [
  "tokio",
  "tonic",
  "tonic-build",
- "tracing",
- "tracing-subscriber",
- "triggered",
- "url",
  "vls-frontend",
 ]
 
@@ -1591,7 +1521,7 @@ checksum = "62941722fb675d463659e49c4f3fe1fe792ff24fe5bbaa9c08cd3b98a1c354f5"
 dependencies = [
  "bytes",
  "heck",
- "itertools 0.10.3",
+ "itertools",
  "lazy_static",
  "log",
  "multimap",
@@ -1610,7 +1540,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f9cc1a3263e07e0bf68e96268f37665207b49560d98739662cdfaae215c720fe"
 dependencies = [
  "anyhow",
- "itertools 0.10.3",
+ "itertools",
  "proc-macro2",
  "quote",
  "syn",
@@ -1624,14 +1554,6 @@ checksum = "534b7a0e836e3c482d2693070f982e39e7611da9695d4d1f5a4b186b51faef0a"
 dependencies = [
  "bytes",
  "prost",
-]
-
-[[package]]
-name = "psbt-fixup"
-version = "0.1.0"
-source = "git+https://gitlab.com/lightning-signer/validating-lightning-signer.git?rev=eccbebe8ef1b94542bf6ef8e38c90ab7dcf16fd4#eccbebe8ef1b94542bf6ef8e38c90ab7dcf16fd4"
-dependencies = [
- "bitcoin 0.27.1",
 ]
 
 [[package]]
@@ -1915,31 +1837,13 @@ checksum = "d29ab0c6d3fc0ee92fe66e2d99f700eab17a8d57d1c1d3b748380fb20baa78cd"
 
 [[package]]
 name = "secp256k1"
-version = "0.20.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "97d03ceae636d0fed5bae6a7f4f664354c5f4fcedf6eef053fef17e49f837d0a"
-dependencies = [
- "secp256k1-sys 0.4.2",
-]
-
-[[package]]
-name = "secp256k1"
 version = "0.22.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "26947345339603ae8395f68e2f3d85a6b0a8ddfe6315818e80b8504415099db0"
 dependencies = [
  "rand 0.6.5",
- "secp256k1-sys 0.5.2",
+ "secp256k1-sys",
  "serde",
-]
-
-[[package]]
-name = "secp256k1-sys"
-version = "0.4.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "957da2573cde917463ece3570eab4a0b3f19de6f1646cde62e6fd3868f566036"
-dependencies = [
- "cc",
 ]
 
 [[package]]
@@ -2714,7 +2618,7 @@ checksum = "49874b5167b65d7193b8aba1567f5c7d93d001cafc34600cee003eda787e483f"
 [[package]]
 name = "vls-frontend"
 version = "0.1.0-5"
-source = "git+https://gitlab.com/lightning-signer/validating-lightning-signer.git?rev=eccbebe8ef1b94542bf6ef8e38c90ab7dcf16fd4#eccbebe8ef1b94542bf6ef8e38c90ab7dcf16fd4"
+source = "git+https://gitlab.com/lightning-signer/validating-lightning-signer.git?rev=8b0c44b123bffcd6e890f1960d53e9bc3962ece2#8b0c44b123bffcd6e890f1960d53e9bc3962ece2"
 dependencies = [
  "async-trait",
  "bitcoind-client",
@@ -2727,7 +2631,7 @@ dependencies = [
 [[package]]
 name = "vls-protocol"
 version = "0.1.0"
-source = "git+https://gitlab.com/lightning-signer/validating-lightning-signer.git?rev=eccbebe8ef1b94542bf6ef8e38c90ab7dcf16fd4#eccbebe8ef1b94542bf6ef8e38c90ab7dcf16fd4"
+source = "git+https://gitlab.com/lightning-signer/validating-lightning-signer.git?rev=8b0c44b123bffcd6e890f1960d53e9bc3962ece2#8b0c44b123bffcd6e890f1960d53e9bc3962ece2"
 dependencies = [
  "bolt-derive",
  "log",
@@ -2739,7 +2643,7 @@ dependencies = [
 [[package]]
 name = "vls-protocol-client"
 version = "0.1.0"
-source = "git+https://gitlab.com/lightning-signer/validating-lightning-signer.git?rev=eccbebe8ef1b94542bf6ef8e38c90ab7dcf16fd4#eccbebe8ef1b94542bf6ef8e38c90ab7dcf16fd4"
+source = "git+https://gitlab.com/lightning-signer/validating-lightning-signer.git?rev=8b0c44b123bffcd6e890f1960d53e9bc3962ece2#8b0c44b123bffcd6e890f1960d53e9bc3962ece2"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -2753,12 +2657,11 @@ dependencies = [
 [[package]]
 name = "vls-protocol-signer"
 version = "0.1.0"
-source = "git+https://gitlab.com/lightning-signer/validating-lightning-signer.git?rev=eccbebe8ef1b94542bf6ef8e38c90ab7dcf16fd4#eccbebe8ef1b94542bf6ef8e38c90ab7dcf16fd4"
+source = "git+https://gitlab.com/lightning-signer/validating-lightning-signer.git?rev=8b0c44b123bffcd6e890f1960d53e9bc3962ece2#8b0c44b123bffcd6e890f1960d53e9bc3962ece2"
 dependencies = [
  "bit-vec",
  "lightning-signer-core",
  "log",
- "psbt-fixup",
  "serde",
  "vls-protocol",
 ]
@@ -2766,7 +2669,7 @@ dependencies = [
 [[package]]
 name = "vls-proxy"
 version = "0.1.0"
-source = "git+https://gitlab.com/lightning-signer/validating-lightning-signer.git?rev=eccbebe8ef1b94542bf6ef8e38c90ab7dcf16fd4#eccbebe8ef1b94542bf6ef8e38c90ab7dcf16fd4"
+source = "git+https://gitlab.com/lightning-signer/validating-lightning-signer.git?rev=8b0c44b123bffcd6e890f1960d53e9bc3962ece2#8b0c44b123bffcd6e890f1960d53e9bc3962ece2"
 dependencies = [
  "anyhow",
  "async-stream",

@@ -6,6 +6,7 @@ use anyhow::{anyhow, Result};
 use bitcoin::bech32::u5;
 use bitcoin::hashes::hex::ToHex;
 use bitcoin::hashes::Hash;
+use bitcoin::psbt::PartiallySignedTransaction;
 use bitcoin::secp256k1::ecdsa::RecoverableSignature;
 use bitcoin::secp256k1::{ecdsa::Signature, All, PublicKey, Secp256k1, SecretKey};
 use bitcoin::util::bip32::{ChildNumber, ExtendedPubKey};
@@ -37,9 +38,9 @@ use lightning_signer::util::transaction_utils::MAX_VALUE_MSAT;
 use lightning_signer::util::{transaction_utils, INITIAL_COMMITMENT_NUMBER};
 use lightning_signer::{bitcoin, lightning};
 use lightning_signer_server::persist::persist_json::KVJsonPersister;
-use lightning_signer_server::server::remotesigner::ready_channel_request::CommitmentType;
-use lightning_signer_server::server::remotesigner::signer_client::SignerClient;
-use lightning_signer_server::server::remotesigner::{
+use lightning_signer_server::grpc::remotesigner::ready_channel_request::CommitmentType;
+use lightning_signer_server::grpc::remotesigner::signer_client::SignerClient;
+use lightning_signer_server::grpc::remotesigner::{
 	self, AddAllowlistRequest, Basepoints, ChainParams, ChannelNonce, GetChannelBasepointsRequest,
 	GetNodeParamRequest, GetPerCommitmentPointRequest, InitRequest, InputDescriptor, KeyLocator,
 	NewChannelRequest, NodeConfig, OutputDescriptor, PingRequest, PubKey, ReadyChannelRequest,
@@ -141,6 +142,14 @@ impl SpendableKeysInterface for Adapter {
 	fn get_node_id(&self) -> PublicKey {
 		self.inner.node_id
 	}
+
+    fn sign_from_wallet(
+        &self,
+        _psbt: &PartiallySignedTransaction,
+        _derivations: Vec<u32>,
+    ) -> PartiallySignedTransaction {
+        unimplemented!("TODO")
+    }
 }
 
 pub(crate) fn make_signer(
@@ -550,6 +559,14 @@ impl SpendableKeysInterface for ClientAdapter {
 	fn get_node_id(&self) -> PublicKey {
 		self.node_id
 	}
+
+    fn sign_from_wallet(
+        &self,
+        psbt: &PartiallySignedTransaction,
+        derivations: Vec<u32>,
+    ) -> PartiallySignedTransaction {
+        unimplemented!("TODO")
+    }
 }
 
 pub fn create_spending_transaction(
@@ -780,12 +797,6 @@ impl BaseSign for ClientSigner {
 
 		info!("EXIT sign_holder_commitment_and_htlcs");
 		Ok((sig, htlc_sigs))
-	}
-
-	fn unsafe_sign_holder_commitment_and_htlcs(
-		&self, commitment_tx: &HolderCommitmentTransaction, secp_ctx: &Secp256k1<All>,
-	) -> StdResult<(Signature, Vec<Signature>), ()> {
-		unimplemented!("no unsafe signing in production")
 	}
 
 	fn sign_justice_revoked_output(

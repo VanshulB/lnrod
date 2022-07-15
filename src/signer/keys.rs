@@ -9,6 +9,7 @@ use bitcoin::hash_types::WPubkeyHash;
 use bitcoin::hashes::sha256::Hash as Sha256;
 use bitcoin::hashes::sha256::HashEngine as Sha256State;
 use bitcoin::hashes::{Hash, HashEngine};
+use bitcoin::psbt::PartiallySignedTransaction;
 use bitcoin::secp256k1::ecdsa::RecoverableSignature;
 use bitcoin::secp256k1::{PublicKey, Secp256k1, SecretKey};
 use bitcoin::util::bip32::{ChildNumber, ExtendedPrivKey, ExtendedPubKey};
@@ -424,6 +425,14 @@ impl SpendableKeysInterface for KeysManager {
 			&self.get_node_secret(Recipient::Node).unwrap(),
 		)
 	}
+
+    fn sign_from_wallet(
+        &self,
+        _psbt: &PartiallySignedTransaction,
+        _derivations: Vec<u32>,
+    ) -> PartiallySignedTransaction {
+        unimplemented!("TODO")
+    }
 }
 
 #[cfg(test)]
