@@ -81,28 +81,28 @@ version = "0.0.108"
 
 [dependencies.lightning-signer-core]
 git = "https://gitlab.com/lightning-signer/validating-lightning-signer.git"
-rev = "8b0c44b123bffcd6e890f1960d53e9bc3962ece2"
+rev = "7b5b4a24687d5e74cf93f31cf119aaa7911c45db"
 #path = "../vls/lightning-signer-core"
 
 [dependencies.lightning-signer-server]
 features = ["grpc"]
 git = "https://gitlab.com/lightning-signer/validating-lightning-signer.git"
-rev = "8b0c44b123bffcd6e890f1960d53e9bc3962ece2" # VLS VERSION
+rev = "7b5b4a24687d5e74cf93f31cf119aaa7911c45db" # VLS VERSION
 #path = "../vls/lightning-signer-server"
 
 [dependencies.vls-protocol-signer]
 git = "https://gitlab.com/lightning-signer/validating-lightning-signer.git"
-rev = "8b0c44b123bffcd6e890f1960d53e9bc3962ece2"
+rev = "7b5b4a24687d5e74cf93f31cf119aaa7911c45db"
 #path = "../vls/vls-protocol-signer"
 
 [dependencies.vls-protocol-client]
 git = "https://gitlab.com/lightning-signer/validating-lightning-signer.git"
-rev = "8b0c44b123bffcd6e890f1960d53e9bc3962ece2"
+rev = "7b5b4a24687d5e74cf93f31cf119aaa7911c45db"
 #path = "../vls/vls-protocol-client"
 
 [dependencies.vls-proxy]
 git = "https://gitlab.com/lightning-signer/validating-lightning-signer.git"
-rev = "8b0c44b123bffcd6e890f1960d53e9bc3962ece2"
+rev = "7b5b4a24687d5e74cf93f31cf119aaa7911c45db"
 #path = "../vls/vls-proxy"
 
 [build-dependencies]

@@ -13,8 +13,12 @@ use lightning::chain::keysinterface::{
 };
 use lightning::ln::msgs::DecodeError;
 use lightning::ln::script::ShutdownScript;
+use lightning_signer::node::NodeServices;
 use lightning_signer::persist::DummyPersister;
+use lightning_signer::policy::simple_validator::{SimpleValidatorFactory, make_simple_policy};
 use lightning_signer::{bitcoin, lightning};
+use lightning_signer::signer::ClockStartingTimeFactory;
+use lightning_signer::util::clock::StandardClock;
 use log::{debug, error, info};
 use tokio::runtime::Handle;
 use tokio::sync::mpsc::Sender;
@@ -45,7 +49,12 @@ impl NullTransport {
 		let allowlist = vec![address.to_string()];
 		info!("allowlist {:?}", allowlist);
 		let network = Network::Regtest; // TODO - get from config, env or args
-		let handler = RootHandler::new(network, 0, None, persister, allowlist);
+		let policy = make_simple_policy(network);
+        let validator_factory = Arc::new(SimpleValidatorFactory::new_with_policy(policy));
+        let starting_time_factory = ClockStartingTimeFactory::new();
+        let clock = Arc::new(StandardClock());
+        let services = NodeServices { validator_factory, starting_time_factory, persister, clock };
+        let handler = RootHandler::new(network, 0, None, allowlist, services);
 		NullTransport { handler }
 	}
 }
