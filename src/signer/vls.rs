@@ -29,9 +29,12 @@ use lightning::ln::script::ShutdownScript;
 use lightning::util::ser::Writeable;
 use lightning_signer::channel::ChannelId;
 use lightning_signer::node::NodeConfig as SignerNodeConfig;
+use lightning_signer::node::NodeServices;
 use lightning_signer::policy::simple_validator::SimpleValidatorFactory;
+use lightning_signer::signer::ClockStartingTimeFactory;
 use lightning_signer::signer::derive::KeyDerivationStyle;
 use lightning_signer::signer::multi_signer::MultiSigner;
+use lightning_signer::util::clock::StandardClock;
 use lightning_signer::util::crypto_utils::bitcoin_vec_to_signature;
 use lightning_signer::util::loopback::LoopbackSignerKeysInterface;
 use lightning_signer::util::transaction_utils::MAX_VALUE_MSAT;
@@ -158,9 +161,12 @@ pub(crate) fn make_signer(
 	let node_id_path = format!("{}/node_id", ldk_data_dir);
 	let signer_path = format!("{}/signer", ldk_data_dir);
 	let persister = Arc::new(KVJsonPersister::new(&signer_path));
-	// FIXME use Node directly - requires rework of LoopbackSignerKeysInterface in the rls crate
 	let validator_factory = Arc::new(SimpleValidatorFactory::new());
-	let signer = MultiSigner::new_with_persister(persister, false, vec![], validator_factory);
+	let starting_time_factory = ClockStartingTimeFactory::new();
+    let clock = Arc::new(StandardClock());
+    let services = NodeServices { validator_factory, starting_time_factory, persister, clock };
+	// FIXME use Node directly - requires rework of LoopbackSignerKeysInterface in the rls crate
+	let signer = MultiSigner::new(services);
 	if let Ok(node_id_hex) = fs::read_to_string(node_id_path.clone()) {
 		let node_id = PublicKey::from_str(&node_id_hex).unwrap();
 		assert!(signer.get_node(&node_id).is_ok());
