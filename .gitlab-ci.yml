@@ -23,7 +23,7 @@ compile:
     key: lnrod-compile
     paths:
       - .cache/cargo
-  image: rust:1.58.1
+  image: rust:1.60.0
   timeout: 30m
   script:
     - rustup component add rustfmt
@@ -45,7 +45,7 @@ compile-vls:
     key: lnrod-vls
     paths:
       - .cache/cargo
-  image: rust:1.58.1
+  image: rust:1.60.0
   timeout: 30m
   script:
     - rustup component add rustfmt
