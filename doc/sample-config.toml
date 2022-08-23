@@ -15,6 +15,8 @@ minimum_depth = 6
 our_to_self_delay = 144
 # Set to the smallest value HTLC we will accept to process.
 our_htlc_minimum_msat = 1
+announced_channel = false
+commit_upfront_shutdown_pubkey = true
 
 [channel.bitcoin.limit]
 min_funding_sat = 0
@@ -33,5 +35,3 @@ their_to_self_delay = 2016
 [channel.bitcoin.default]
 fee_proportional_millionths = 0
 cltv_expiry_delta = 10
-announced_channel = false
-commit_upfront_shutdown_pubkey = true

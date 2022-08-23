@@ -16,6 +16,7 @@ use lightning::chain::chaininterface::{BroadcasterInterface, ConfirmationTarget,
 use lightning_block_sync::http::JsonResponse;
 use lightning_block_sync::{AsyncBlockSourceResult, BlockHeaderData, BlockSource};
 use lightning_signer::{bitcoin, lightning};
+use lightning_signer::bitcoin::hashes::Hash;
 use serde_json::{json, Value};
 use tokio::sync::Mutex;
 
@@ -91,7 +92,7 @@ impl BitcoindClient {
 			port,
 			fees: Arc::new(fees),
 			queued_transactions: Arc::new(Mutex::new(Vec::new())),
-			latest_tip: Arc::new(Mutex::new(BlockHash::default())),
+			latest_tip: Arc::new(Mutex::new(BlockHash::all_zeros())),
 		};
 		// Fast fail if any connectivity issue
 		client.get_blockchain_info().await;
@@ -101,7 +102,7 @@ impl BitcoindClient {
 	pub async fn create_raw_transaction(&self, outputs: HashMap<String, u64>) -> RawTx {
 		let outs_converted =
 			serde_json::to_value([serde_json::Map::from_iter(outputs.iter().map(|(k, v)| {
-				(k.clone(), serde_json::Value::from(Amount::from_sat(*v).as_btc()))
+				(k.clone(), serde_json::Value::from(Amount::from_sat(*v).to_btc()))
 			}))])
 			.unwrap();
 

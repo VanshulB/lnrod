@@ -8,12 +8,15 @@ use bitcoin::hashes::hex::ToHex;
 use bitcoin::hashes::Hash;
 use bitcoin::psbt::PartiallySignedTransaction;
 use bitcoin::secp256k1::ecdsa::RecoverableSignature;
-use bitcoin::secp256k1::{ecdsa::Signature, All, PublicKey, Secp256k1, SecretKey};
+use bitcoin::secp256k1::{
+    ecdh::SharedSecret, ecdsa::Signature, All, PublicKey, Secp256k1, SecretKey, Scalar,
+};
 use bitcoin::util::bip32::{ChildNumber, ExtendedPubKey};
 use bitcoin::util::psbt::serialize::Serialize;
 use bitcoin::PublicKey as BitcoinPublicKey;
 use bitcoin::{
 	consensus, Address, EcdsaSighashType, Network, Script, Transaction, TxIn, TxOut, WPubkeyHash,
+	Sequence, PackedLockTime,
 };
 use lightning::chain::keysinterface::{BaseSign, KeyMaterial, Recipient};
 use lightning::chain::keysinterface::{
@@ -40,7 +43,7 @@ use lightning_signer::util::loopback::LoopbackSignerKeysInterface;
 use lightning_signer::util::transaction_utils::MAX_VALUE_MSAT;
 use lightning_signer::util::{transaction_utils, INITIAL_COMMITMENT_NUMBER};
 use lightning_signer::{bitcoin, lightning};
-use lightning_signer_server::persist::persist_json::KVJsonPersister;
+use lightning_signer_server::persist::kv_json::KVJsonPersister;
 use lightning_signer_server::grpc::remotesigner::ready_channel_request::CommitmentType;
 use lightning_signer_server::grpc::remotesigner::signer_client::SignerClient;
 use lightning_signer_server::grpc::remotesigner::{
@@ -82,6 +85,11 @@ impl KeysInterface for Adapter {
 
 	fn get_node_secret(&self, recipient: Recipient) -> Result<SecretKey, ()> {
 		self.inner.get_node_secret(recipient)
+	}
+
+	fn ecdh(&self, recipient: Recipient, other_key: &PublicKey, tweak: Option<&Scalar>,
+	) -> Result<SharedSecret, ()> {
+		self.inner.ecdh(recipient, other_key, tweak)
 	}
 
 	fn get_destination_script(&self) -> Script {
@@ -176,7 +184,7 @@ pub(crate) fn make_signer(
 	} else {
 		let node_config =
 			SignerNodeConfig { network, key_derivation_style: KeyDerivationStyle::Ldk };
-		let node_id = signer.new_node(node_config);
+		let node_id = signer.new_node(node_config).unwrap();
 		fs::write(node_id_path, node_id.to_string()).expect("write node_id");
 		let node = signer.get_node(&node_id).unwrap();
 
@@ -352,6 +360,19 @@ impl KeysInterface for ClientAdapter {
 			Recipient::Node => Ok(self.node_secret),
 			Recipient::PhantomNode => Err(()),
 		}
+	}
+
+	fn ecdh(
+		&self,
+		recipient: Recipient,
+		other_key: &PublicKey,
+		tweak: Option<&Scalar>,
+	) -> Result<SharedSecret, ()> {
+		let mut node_secret = self.get_node_secret(recipient)?;
+		if let Some(tweak) = tweak {
+			node_secret = node_secret.mul_tweak(tweak).map_err(|_| ())?;
+		}
+		Ok(SharedSecret::new(other_key, &node_secret))
 	}
 
 	fn get_destination_script(&self) -> Script {
@@ -589,7 +610,7 @@ pub fn create_spending_transaction(
 				input.push(TxIn {
 					previous_output: descriptor.outpoint.into_bitcoin_outpoint(),
 					script_sig: Script::new(),
-					sequence: 0,
+					sequence: Sequence::ZERO,
 					witness: Witness::default(),
 				});
 				witness_weight += StaticPaymentOutputDescriptor::MAX_WITNESS_LENGTH;
@@ -602,7 +623,7 @@ pub fn create_spending_transaction(
 				input.push(TxIn {
 					previous_output: descriptor.outpoint.into_bitcoin_outpoint(),
 					script_sig: Script::new(),
-					sequence: descriptor.to_self_delay as u32,
+					sequence: Sequence(descriptor.to_self_delay as u32),
 					witness: Witness::default(),
 				});
 				witness_weight += DelayedPaymentOutputDescriptor::MAX_WITNESS_LENGTH;
@@ -615,7 +636,7 @@ pub fn create_spending_transaction(
 				input.push(TxIn {
 					previous_output: outpoint.into_bitcoin_outpoint(),
 					script_sig: Script::new(),
-					sequence: 0,
+					sequence: Sequence::ZERO,
 					witness: Witness::default(),
 				});
 				witness_weight += 1 + 73 + 34;
@@ -629,7 +650,7 @@ pub fn create_spending_transaction(
 			return Err(anyhow!("overflow"));
 		}
 	}
-	let mut spend_tx = Transaction { version: 2, lock_time: 0, input, output: outputs };
+	let mut spend_tx = Transaction { version: 2, lock_time: PackedLockTime(0), input, output: outputs };
 	transaction_utils::maybe_add_change_output(
 		&mut spend_tx,
 		input_value,

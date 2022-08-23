@@ -4,9 +4,9 @@ use std::sync::Arc;
 
 use bitcoin::bech32::u5;
 use bitcoin::psbt::PartiallySignedTransaction;
-use bitcoin::secp256k1::ecdsa::RecoverableSignature;
-use bitcoin::secp256k1::Secp256k1;
-use bitcoin::secp256k1::{All, PublicKey, SecretKey};
+use bitcoin::secp256k1::{
+	ecdh::SharedSecret, ecdsa::RecoverableSignature, Secp256k1, All, PublicKey, SecretKey, Scalar,
+};
 use bitcoin::{Address, Network, Script, Transaction, TxOut};
 use lightning::chain::keysinterface::{
 	KeyMaterial, KeysInterface, Recipient, SpendableOutputDescriptor,
@@ -95,6 +95,15 @@ impl KeysInterface for KeysManager {
 
 	fn get_node_secret(&self, recipient: Recipient) -> Result<SecretKey, ()> {
 		self.client.get_node_secret(recipient)
+	}
+
+	fn ecdh(
+		&self,
+		recipient: Recipient,
+		other_key: &PublicKey,
+		tweak: Option<&Scalar>,
+	) -> Result<SharedSecret, ()> {
+		self.client.ecdh(recipient, other_key, tweak)
 	}
 
 	fn get_destination_script(&self) -> Script {

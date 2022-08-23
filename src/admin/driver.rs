@@ -106,6 +106,10 @@ impl Admin for AdminHandler {
 									claimable_amount_satoshis,
 									..
 								} => claimable_amount_satoshis,
+								Balance::CounterpartyRevokedOutputClaimable {
+									claimable_amount_satoshis,
+									..
+								} => claimable_amount_satoshis,
 								Balance::ContentiousClaimable { .. } => 0,
 								Balance::MaybeClaimableHTLCAwaitingTimeout { .. } => 0,
 							})
@@ -145,10 +149,10 @@ impl Admin for AdminHandler {
 
 		let mut config = UserConfig::default();
 		if req.is_public {
-			config.channel_options.announced_channel = true;
+			config.channel_handshake_config.announced_channel = true;
 		}
 		// lnd's max to_self_delay is 2016, so we want to be compatible.
-		config.peer_channel_config_limits.their_to_self_delay = 2016;
+		config.channel_handshake_limits.their_to_self_delay = 2016;
 		self.node
 			.channel_manager
 			.create_channel(node_id, req.value_sat, req.push_msat, 0, Some(config))
@@ -301,7 +305,7 @@ impl Admin for AdminHandler {
 			.map_err(|_| Status::invalid_argument("channel ID must be 32 bytes"))?;
 		let cp_id = self.get_channel_counterparty(&channel_id);
 		if req.is_force {
-			self.node.channel_manager.force_close_channel(&channel_id, &cp_id)
+			self.node.channel_manager.force_close_broadcasting_latest_txn(&channel_id, &cp_id)
 		} else {
 			self.node.channel_manager.close_channel(&channel_id, &cp_id)
 		}
