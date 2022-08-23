@@ -43,9 +43,9 @@ pub struct ConfigCoinChannel {
 impl Into<UserConfig> for ConfigCoinChannel {
 	fn into(self) -> UserConfig {
 		UserConfig {
-			own_channel_config: self.propose.unwrap_or(Default::default()).into(),
-			peer_channel_config_limits: self.limit.unwrap_or(Default::default()).into(),
-			channel_options: self.default.unwrap_or(Default::default()).into(),
+			channel_handshake_config: self.propose.unwrap_or(Default::default()).into(),
+			channel_handshake_limits: self.limit.unwrap_or(Default::default()).into(),
+			channel_config: self.default.unwrap_or(Default::default()).into(),
 			accept_forwards_to_priv_channels: true,
 			accept_inbound_channels: true,
 			manually_accept_inbound_channels: false,
@@ -58,6 +58,9 @@ pub struct ConfigProposeCoinChannel {
 	pub minimum_depth: Option<u32>,
 	pub our_to_self_delay: Option<u16>,
 	pub our_htlc_minimum_msat: Option<u64>,
+	pub announced_channel: Option<bool>,
+	pub commit_upfront_shutdown_pubkey: Option<bool>,
+
 }
 
 impl Into<ChannelHandshakeConfig> for ConfigProposeCoinChannel {
@@ -68,6 +71,9 @@ impl Into<ChannelHandshakeConfig> for ConfigProposeCoinChannel {
 			our_htlc_minimum_msat: self.our_htlc_minimum_msat.unwrap_or(1),
 			max_inbound_htlc_value_in_flight_percent_of_channel: 100,
 			negotiate_scid_privacy: false,
+			announced_channel: self.announced_channel.unwrap_or(false),
+			commit_upfront_shutdown_pubkey: self.commit_upfront_shutdown_pubkey.unwrap_or(true),
+			their_channel_reserve_proportional_millionths: 0
 		}
 	}
 }
@@ -109,8 +115,6 @@ impl Into<ChannelHandshakeLimits> for ConfigLimitCoinChannel {
 pub struct DefaultCoinChannelConfig {
 	fee_proportional_millionths: Option<u32>,
 	cltv_expiry_delta: Option<u16>,
-	announced_channel: Option<bool>,
-	commit_upfront_shutdown_pubkey: Option<bool>,
 }
 
 impl Into<ChannelConfig> for DefaultCoinChannelConfig {
@@ -119,8 +123,6 @@ impl Into<ChannelConfig> for DefaultCoinChannelConfig {
 			forwarding_fee_proportional_millionths: self.fee_proportional_millionths.unwrap_or(0),
 			forwarding_fee_base_msat: 0,
 			cltv_expiry_delta: self.cltv_expiry_delta.unwrap_or(10),
-			announced_channel: self.announced_channel.unwrap_or(false),
-			commit_upfront_shutdown_pubkey: self.commit_upfront_shutdown_pubkey.unwrap_or(true),
 			max_dust_htlc_exposure_msat: 1000000,            // FIXME
 			force_close_avoidance_max_fee_satoshis: 1000000, // FIXME
 		}

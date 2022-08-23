@@ -122,6 +122,7 @@ async fn handle_ldk_events(
 ) {
 	let mut pending_txs: HashMap<OutPoint, Transaction> = HashMap::new();
 	match event {
+		Event::ProbeSuccessful { .. } | Event::ProbeFailed { .. } | Event::HTLCHandlingFailed { .. } => todo!(),
 		Event::FundingGenerationReady {
 			temporary_channel_id,
 			channel_value_satoshis,
