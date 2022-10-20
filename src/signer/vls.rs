@@ -9,14 +9,14 @@ use bitcoin::hashes::Hash;
 use bitcoin::psbt::PartiallySignedTransaction;
 use bitcoin::secp256k1::ecdsa::RecoverableSignature;
 use bitcoin::secp256k1::{
-    ecdh::SharedSecret, ecdsa::Signature, All, PublicKey, Secp256k1, SecretKey, Scalar,
+	ecdh::SharedSecret, ecdsa::Signature, All, PublicKey, Scalar, Secp256k1, SecretKey,
 };
 use bitcoin::util::bip32::{ChildNumber, ExtendedPubKey};
 use bitcoin::util::psbt::serialize::Serialize;
 use bitcoin::PublicKey as BitcoinPublicKey;
 use bitcoin::{
-	consensus, Address, EcdsaSighashType, Network, Script, Transaction, TxIn, TxOut, WPubkeyHash,
-	Sequence, PackedLockTime,
+	consensus, Address, EcdsaSighashType, Network, PackedLockTime, Script, Sequence, Transaction,
+	TxIn, TxOut, WPubkeyHash,
 };
 use lightning::chain::keysinterface::{BaseSign, KeyMaterial, Recipient};
 use lightning::chain::keysinterface::{
@@ -33,17 +33,17 @@ use lightning::util::ser::Writeable;
 use lightning_signer::channel::ChannelId;
 use lightning_signer::node::NodeConfig as SignerNodeConfig;
 use lightning_signer::node::NodeServices;
+use lightning_signer::persist::fs::FileSeedPersister;
 use lightning_signer::policy::simple_validator::SimpleValidatorFactory;
-use lightning_signer::signer::ClockStartingTimeFactory;
 use lightning_signer::signer::derive::KeyDerivationStyle;
 use lightning_signer::signer::multi_signer::MultiSigner;
+use lightning_signer::signer::ClockStartingTimeFactory;
 use lightning_signer::util::clock::StandardClock;
 use lightning_signer::util::crypto_utils::bitcoin_vec_to_signature;
 use lightning_signer::util::loopback::LoopbackSignerKeysInterface;
 use lightning_signer::util::transaction_utils::MAX_VALUE_MSAT;
 use lightning_signer::util::{transaction_utils, INITIAL_COMMITMENT_NUMBER};
 use lightning_signer::{bitcoin, lightning};
-use lightning_signer_server::persist::kv_json::KVJsonPersister;
 use lightning_signer_server::grpc::remotesigner::ready_channel_request::CommitmentType;
 use lightning_signer_server::grpc::remotesigner::signer_client::SignerClient;
 use lightning_signer_server::grpc::remotesigner::{
@@ -55,6 +55,7 @@ use lightning_signer_server::grpc::remotesigner::{
 	SignOnchainTxRequest, UnilateralCloseInfo, ValidateCounterpartyRevocationRequest,
 	ValidateHolderCommitmentTxPhase2Request,
 };
+use lightning_signer_server::persist::kv_json::KVJsonPersister;
 use log::{info, trace};
 use rand::{thread_rng, Rng};
 use std::any::Any;
@@ -87,7 +88,8 @@ impl KeysInterface for Adapter {
 		self.inner.get_node_secret(recipient)
 	}
 
-	fn ecdh(&self, recipient: Recipient, other_key: &PublicKey, tweak: Option<&Scalar>,
+	fn ecdh(
+		&self, recipient: Recipient, other_key: &PublicKey, tweak: Option<&Scalar>,
 	) -> Result<SharedSecret, ()> {
 		self.inner.ecdh(recipient, other_key, tweak)
 	}
@@ -154,13 +156,11 @@ impl SpendableKeysInterface for Adapter {
 		self.inner.node_id
 	}
 
-    fn sign_from_wallet(
-        &self,
-        _psbt: &PartiallySignedTransaction,
-        _derivations: Vec<u32>,
-    ) -> PartiallySignedTransaction {
-        unimplemented!("TODO")
-    }
+	fn sign_from_wallet(
+		&self, _psbt: &PartiallySignedTransaction, _derivations: Vec<u32>,
+	) -> PartiallySignedTransaction {
+		unimplemented!("TODO")
+	}
 }
 
 pub(crate) fn make_signer(
@@ -169,10 +169,11 @@ pub(crate) fn make_signer(
 	let node_id_path = format!("{}/node_id", ldk_data_dir);
 	let signer_path = format!("{}/signer", ldk_data_dir);
 	let persister = Arc::new(KVJsonPersister::new(&signer_path));
+	let seed_persister = Arc::new(FileSeedPersister::new(&signer_path));
 	let validator_factory = Arc::new(SimpleValidatorFactory::new());
 	let starting_time_factory = ClockStartingTimeFactory::new();
-    let clock = Arc::new(StandardClock());
-    let services = NodeServices { validator_factory, starting_time_factory, persister, clock };
+	let clock = Arc::new(StandardClock());
+	let services = NodeServices { validator_factory, starting_time_factory, persister, clock };
 	// FIXME use Node directly - requires rework of LoopbackSignerKeysInterface in the rls crate
 	let signer = MultiSigner::new(services);
 	if let Ok(node_id_hex) = fs::read_to_string(node_id_path.clone()) {
@@ -184,7 +185,7 @@ pub(crate) fn make_signer(
 	} else {
 		let node_config =
 			SignerNodeConfig { network, key_derivation_style: KeyDerivationStyle::Ldk };
-		let node_id = signer.new_node(node_config).unwrap();
+		let (node_id, _seed) = signer.new_node(node_config, seed_persister).unwrap();
 		fs::write(node_id_path, node_id.to_string()).expect("write node_id");
 		let node = signer.get_node(&node_id).unwrap();
 
@@ -363,10 +364,7 @@ impl KeysInterface for ClientAdapter {
 	}
 
 	fn ecdh(
-		&self,
-		recipient: Recipient,
-		other_key: &PublicKey,
-		tweak: Option<&Scalar>,
+		&self, recipient: Recipient, other_key: &PublicKey, tweak: Option<&Scalar>,
 	) -> Result<SharedSecret, ()> {
 		let mut node_secret = self.get_node_secret(recipient)?;
 		if let Some(tweak) = tweak {
@@ -587,13 +585,11 @@ impl SpendableKeysInterface for ClientAdapter {
 		self.node_id
 	}
 
-    fn sign_from_wallet(
-        &self,
-        psbt: &PartiallySignedTransaction,
-        derivations: Vec<u32>,
-    ) -> PartiallySignedTransaction {
-        unimplemented!("TODO")
-    }
+	fn sign_from_wallet(
+		&self, psbt: &PartiallySignedTransaction, derivations: Vec<u32>,
+	) -> PartiallySignedTransaction {
+		unimplemented!("TODO")
+	}
 }
 
 pub fn create_spending_transaction(
@@ -650,7 +646,8 @@ pub fn create_spending_transaction(
 			return Err(anyhow!("overflow"));
 		}
 	}
-	let mut spend_tx = Transaction { version: 2, lock_time: PackedLockTime(0), input, output: outputs };
+	let mut spend_tx =
+		Transaction { version: 2, lock_time: PackedLockTime(0), input, output: outputs };
 	transaction_utils::maybe_add_change_output(
 		&mut spend_tx,
 		input_value,
