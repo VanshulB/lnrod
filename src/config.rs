@@ -60,7 +60,6 @@ pub struct ConfigProposeCoinChannel {
 	pub our_htlc_minimum_msat: Option<u64>,
 	pub announced_channel: Option<bool>,
 	pub commit_upfront_shutdown_pubkey: Option<bool>,
-
 }
 
 impl Into<ChannelHandshakeConfig> for ConfigProposeCoinChannel {
@@ -73,7 +72,7 @@ impl Into<ChannelHandshakeConfig> for ConfigProposeCoinChannel {
 			negotiate_scid_privacy: false,
 			announced_channel: self.announced_channel.unwrap_or(false),
 			commit_upfront_shutdown_pubkey: self.commit_upfront_shutdown_pubkey.unwrap_or(true),
-			their_channel_reserve_proportional_millionths: 0
+			their_channel_reserve_proportional_millionths: 0,
 		}
 	}
 }
