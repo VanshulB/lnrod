@@ -4,6 +4,7 @@ import logging
 import os
 import signal
 import subprocess
+import argparse
 
 import sys
 import time
@@ -27,6 +28,9 @@ EXPECTED_FEE_SAT = 1458
 PAYMENT_MSAT = 4_000_000  # FIXME 2_000_000 fails with dust limit policy violation
 DEBUG_ON_FAIL = os.environ.get('DEBUG_ON_FAIL', '0') == '1'
 USE_RELEASE_BINARIES = False
+OPTIMIZATION = 'release' if USE_RELEASE_BINARIES else 'debug'
+DEV_MODE = False
+DEV_BINARIES_PATH = f'../vls/target/{OPTIMIZATION}'
 
 # options: test, vls, vls-local, vls2-null, vls2-grpc
 SIGNER = os.environ.get("SIGNER", "vls2-null")
@@ -279,9 +283,7 @@ def start_vlsd(n):
     global processes
 
     stdout_log = open(OUTPUT_DIR + f'/vls{n}.log', 'w')
-    optimization = 'release' if USE_RELEASE_BINARIES else 'debug'
-    # vlsd = f'../vls/target/{optimization}/vlsd'
-    vlsd = 'vlsd'
+    vlsd = DEV_BINARIES_PATH + '/vlsd' if DEV_MODE else 'vlsd'
     p = Popen([vlsd,
                # '--log-level-console=TRACE',
                '--network=regtest',
@@ -297,9 +299,7 @@ def start_vlsd2(n):
     global processes
 
     stdout_log = open(OUTPUT_DIR + f'/vls{n}.log', 'w')
-    optimization = 'release' if USE_RELEASE_BINARIES else 'debug'
-    vlsd = 'vlsd2'
-    # vlsd = f'../vls/target/{optimization}/vlsd2'
+    vlsd = DEV_BINARIES_PATH + '/vlsd2' if DEV_MODE else 'vlsd2'
     p = Popen([vlsd,
                # '--log-level-console=TRACE',
                '--network=regtest',
@@ -336,4 +336,9 @@ def start_node(n):
 
 if __name__ == '__main__':
     logging.basicConfig(level=logging.INFO)
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--dev", help=f"use VLS binaries from {DEV_BINARIES_PATH} instead of $PATH", action="store_true")
+    args = parser.parse_args()
+    if args.dev:
+        DEV_MODE = True
     run()
