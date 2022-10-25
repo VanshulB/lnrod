@@ -15,8 +15,8 @@ use bitcoin::{Amount, Block, BlockHash};
 use lightning::chain::chaininterface::{BroadcasterInterface, ConfirmationTarget, FeeEstimator};
 use lightning_block_sync::http::JsonResponse;
 use lightning_block_sync::{AsyncBlockSourceResult, BlockHeaderData, BlockSource};
-use lightning_signer::{bitcoin, lightning};
 use lightning_signer::bitcoin::hashes::Hash;
+use lightning_signer::{bitcoin, lightning};
 use serde_json::{json, Value};
 use tokio::sync::Mutex;
 

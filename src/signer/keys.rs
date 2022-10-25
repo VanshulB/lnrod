@@ -11,12 +11,12 @@ use bitcoin::hashes::sha256::HashEngine as Sha256State;
 use bitcoin::hashes::{Hash, HashEngine};
 use bitcoin::psbt::PartiallySignedTransaction;
 use bitcoin::secp256k1::ecdsa::RecoverableSignature;
-use bitcoin::secp256k1::{ecdh::SharedSecret, PublicKey, Secp256k1, SecretKey, Scalar};
+use bitcoin::secp256k1::{ecdh::SharedSecret, PublicKey, Scalar, Secp256k1, SecretKey};
 use bitcoin::util::bip32::{ChildNumber, ExtendedPrivKey, ExtendedPubKey};
 use bitcoin::util::sighash;
 use bitcoin::{secp256k1, Address, Witness};
 use bitcoin::{
-    Sequence, PackedLockTime, EcdsaSighashType, Network, Script, Transaction, TxIn, TxOut,
+	EcdsaSighashType, Network, PackedLockTime, Script, Sequence, Transaction, TxIn, TxOut,
 };
 use lightning::chain::keysinterface::{
 	DelayedPaymentOutputDescriptor, InMemorySigner, KeysInterface, Recipient,
@@ -181,18 +181,15 @@ impl KeysInterface for KeysManager {
 		}
 	}
 
-    fn ecdh(
-        &self,
-        recipient: Recipient,
-        other_key: &PublicKey,
-        tweak: Option<&Scalar>,
-    ) -> Result<SharedSecret, ()> {
-        let mut node_secret = self.get_node_secret(recipient)?;
-        if let Some(tweak) = tweak {
-            node_secret = node_secret.mul_tweak(tweak).map_err(|_| ())?;
-        }
-        Ok(SharedSecret::new(other_key, &node_secret))
-    }
+	fn ecdh(
+		&self, recipient: Recipient, other_key: &PublicKey, tweak: Option<&Scalar>,
+	) -> Result<SharedSecret, ()> {
+		let mut node_secret = self.get_node_secret(recipient)?;
+		if let Some(tweak) = tweak {
+			node_secret = node_secret.mul_tweak(tweak).map_err(|_| ())?;
+		}
+		Ok(SharedSecret::new(other_key, &node_secret))
+	}
 
 	fn get_destination_script(&self) -> Script {
 		self.destination_script.clone()
@@ -319,7 +316,8 @@ impl SpendableKeysInterface for KeysManager {
 				bail!("Input value greater than max satoshis");
 			}
 		}
-		let mut spend_tx = Transaction { version: 2, lock_time: PackedLockTime(0), input, output: outputs };
+		let mut spend_tx =
+			Transaction { version: 2, lock_time: PackedLockTime(0), input, output: outputs };
 		transaction_utils::maybe_add_change_output(
 			&mut spend_tx,
 			input_value,
@@ -441,13 +439,11 @@ impl SpendableKeysInterface for KeysManager {
 		)
 	}
 
-    fn sign_from_wallet(
-        &self,
-        _psbt: &PartiallySignedTransaction,
-        _derivations: Vec<u32>,
-    ) -> PartiallySignedTransaction {
-        unimplemented!("TODO")
-    }
+	fn sign_from_wallet(
+		&self, _psbt: &PartiallySignedTransaction, _derivations: Vec<u32>,
+	) -> PartiallySignedTransaction {
+		unimplemented!("TODO")
+	}
 }
 
 #[cfg(test)]

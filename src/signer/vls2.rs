@@ -5,7 +5,7 @@ use std::sync::Arc;
 use bitcoin::bech32::u5;
 use bitcoin::psbt::PartiallySignedTransaction;
 use bitcoin::secp256k1::{
-	ecdh::SharedSecret, ecdsa::RecoverableSignature, Secp256k1, All, PublicKey, SecretKey, Scalar,
+	ecdh::SharedSecret, ecdsa::RecoverableSignature, All, PublicKey, Scalar, Secp256k1, SecretKey,
 };
 use bitcoin::{Address, Network, Script, Transaction, TxOut};
 use lightning::chain::keysinterface::{
@@ -15,17 +15,18 @@ use lightning::ln::msgs::DecodeError;
 use lightning::ln::script::ShutdownScript;
 use lightning_signer::node::NodeServices;
 use lightning_signer::persist::DummyPersister;
-use lightning_signer::policy::simple_validator::{SimpleValidatorFactory, make_simple_policy};
-use lightning_signer::{bitcoin, lightning};
+use lightning_signer::policy::simple_validator::{make_simple_policy, SimpleValidatorFactory};
 use lightning_signer::signer::ClockStartingTimeFactory;
 use lightning_signer::util::clock::StandardClock;
+use lightning_signer::util::crypto_utils::generate_seed;
+use lightning_signer::{bitcoin, lightning};
 use log::{debug, error, info};
 use tokio::runtime::Handle;
 use tokio::sync::mpsc::Sender;
 use tokio::sync::oneshot;
 use tokio::{runtime, task};
 use vls_protocol_client::{Error, KeysManagerClient, Transport};
-use vls_protocol_signer::handler::{Handler, RootHandler};
+use vls_protocol_signer::handler::{Handler, RootHandler, RootHandlerBuilder};
 use vls_protocol_signer::vls_protocol::model::PubKey;
 use vls_protocol_signer::vls_protocol::msgs::{self, DeBolt, SerBolt};
 use vls_protocol_signer::vls_protocol::serde_bolt::WireString;
@@ -38,7 +39,8 @@ use crate::util::Shutter;
 use crate::{DynSigner, SpendableKeysInterface};
 
 // A VLS client with a null transport.
-// Actually runs VLS in-process, but still performs the protocol
+// Actually runs VLS in-process, but still performs the protocol.
+// No persistence.
 struct NullTransport {
 	handler: RootHandler,
 }
@@ -50,11 +52,13 @@ impl NullTransport {
 		info!("allowlist {:?}", allowlist);
 		let network = Network::Regtest; // TODO - get from config, env or args
 		let policy = make_simple_policy(network);
-        let validator_factory = Arc::new(SimpleValidatorFactory::new_with_policy(policy));
-        let starting_time_factory = ClockStartingTimeFactory::new();
-        let clock = Arc::new(StandardClock());
-        let services = NodeServices { validator_factory, starting_time_factory, persister, clock };
-        let handler = RootHandler::new(network, 0, None, allowlist, services);
+		let validator_factory = Arc::new(SimpleValidatorFactory::new_with_policy(policy));
+		let starting_time_factory = ClockStartingTimeFactory::new();
+		let clock = Arc::new(StandardClock());
+		let services = NodeServices { validator_factory, starting_time_factory, persister, clock };
+		let seed = generate_seed();
+		let builder = RootHandlerBuilder::new(network, 0, services, seed).allowlist(allowlist);
+		let (handler, _) = builder.build();
 		NullTransport { handler }
 	}
 }
@@ -63,7 +67,7 @@ impl Transport for NullTransport {
 	fn node_call(&self, message_ser: Vec<u8>) -> Result<Vec<u8>, Error> {
 		let message = msgs::from_vec(message_ser)?;
 		debug!("ENTER node_call {:?}", message);
-		let result = self.handler.handle(message).map_err(|e| {
+		let (result, _) = self.handler.handle(message).map_err(|e| {
 			error!("error in handle: {:?}", e);
 			Error::TransportError
 		})?;
@@ -75,7 +79,7 @@ impl Transport for NullTransport {
 		let message = msgs::from_vec(message_ser)?;
 		debug!("ENTER call({}) {:?}", dbid, message);
 		let handler = self.handler.for_new_client(0, peer_id, dbid);
-		let result = handler.handle(message).map_err(|e| {
+		let (result, _) = handler.handle(message).map_err(|e| {
 			error!("error in handle: {:?}", e);
 			Error::TransportError
 		})?;
@@ -98,10 +102,7 @@ impl KeysInterface for KeysManager {
 	}
 
 	fn ecdh(
-		&self,
-		recipient: Recipient,
-		other_key: &PublicKey,
-		tweak: Option<&Scalar>,
+		&self, recipient: Recipient, other_key: &PublicKey, tweak: Option<&Scalar>,
 	) -> Result<SharedSecret, ()> {
 		self.client.ecdh(recipient, other_key, tweak)
 	}
@@ -168,13 +169,11 @@ impl SpendableKeysInterface for KeysManager {
 		self.node_id
 	}
 
-    fn sign_from_wallet(
-        &self,
-        _psbt: &PartiallySignedTransaction,
-        _derivations: Vec<u32>,
-    ) -> PartiallySignedTransaction {
-        unimplemented!("TODO")
-    }
+	fn sign_from_wallet(
+		&self, _psbt: &PartiallySignedTransaction, _derivations: Vec<u32>,
+	) -> PartiallySignedTransaction {
+		unimplemented!("TODO")
+	}
 }
 
 pub(crate) async fn make_null_signer(
