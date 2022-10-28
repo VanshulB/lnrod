@@ -185,7 +185,7 @@ pub(crate) async fn make_null_signer(
 		unimplemented!("read from disk {}", node_id_path);
 	} else {
 		let transport = NullTransport::new(sweep_address.clone());
-		let node_id = transport.handler.node.get_id();
+		let node_id = transport.handler.node().get_id();
 		let client = KeysManagerClient::new(Arc::new(transport), network.to_string());
 		let keys_manager = KeysManager { client, sweep_address, node_id };
 		fs::write(node_id_path, node_id.to_string()).expect("write node_id");
