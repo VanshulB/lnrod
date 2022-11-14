@@ -60,6 +60,7 @@ class Bitcoind(jsonrpc_requests.Server):
     def __init__(self, name, url, **kwargs):
         self.name = name
         self.mine_address = None
+        self.url = url
         super().__init__(url, **kwargs)
 
     def wait_for_ready(self):
@@ -79,13 +80,21 @@ class Bitcoind(jsonrpc_requests.Server):
             raise Exception('Timeout')
 
     def setup(self):
-        self.createwallet('default')
+        try:
+            self.createwallet('default')
+        except:
+            print('wallet already exists, skipping creation')
         # unload and reload with autoload, in case dev wants to play with it later
-        self.unloadwallet('default')
+        try:
+            # it is possible that the wallet is not loaded, so we ignore the error
+            self.unloadwallet('default')
+        except:
+            pass
         self.loadwallet('default', True)
-        self.mine_address = self.getnewaddress()
 
     def mine(self, count=1):
+        if self.mine_address is None:
+            self.mine_address = self.getnewaddress()
         self.generatetoaddress(count, self.mine_address)
 
 
@@ -120,16 +129,23 @@ def wait_until(name, func):
     logger.debug(f'done {name}')
 
 
-def run(test_disaster):
+def run(disaster_recovery_block_explorer, existing_bitcoin_rpc):
     # ensure we sync after the last payment
     assert NUM_PAYMENTS % CHANNEL_BALANCE_SYNC_INTERVAL == 0
-    assert not test_disaster or SIGNER == 'vls2-grpc', "test_disaster only works with vls2-grpc"
+    assert disaster_recovery_block_explorer is None or SIGNER == 'vls2-grpc', "test_disaster only works with vls2-grpc"
 
     atexit.register(kill_procs)
     rmtree(OUTPUT_DIR, ignore_errors=True)
     os.mkdir(OUTPUT_DIR)
-    print('Starting bitcoind')
-    btc, btc_proc = start_bitcoind()
+
+    if existing_bitcoin_rpc:
+        print('Connecting to bitcoind')
+        btc = connect_bitcoind(existing_bitcoin_rpc)
+        bitcoin_rpc = existing_bitcoin_rpc + "/wallet/default"
+    else:
+        print('Starting bitcoind')
+        btc, _ = start_bitcoind()
+        bitcoin_rpc = 'http://user:pass@localhost:18443/wallet/default'
 
     if SIGNER == 'vls':
         print('Starting signers')
@@ -138,9 +154,9 @@ def run(test_disaster):
         charlie_signer = start_vlsd(3)
 
     print('Starting nodes')
-    alice, _, _ = start_node(1)
-    bob, _, _ = start_node(2)
-    charlie, charlie_proc, charlie_proc1 = start_node(3)
+    alice, _, _ = start_node(1, bitcoin_rpc)
+    bob, _, _ = start_node(2, bitcoin_rpc)
+    charlie, charlie_proc, charlie_proc1 = start_node(3, bitcoin_rpc)
 
     print('Generate initial blocks')
     btc.mine(110)
@@ -248,27 +264,40 @@ def run(test_disaster):
     assert_equal_delta(CHANNEL_VALUE_SAT - (NUM_PAYMENTS * PAYMENT_MSAT) / 1000 - 1000, alice_sweep)
     assert_equal_delta((NUM_PAYMENTS * PAYMENT_MSAT) / 1000 - 1000, bob_sweep)
 
-    if test_disaster:
+    if disaster_recovery_block_explorer is not None:
         print('Disaster recovery at charlie')
         stop_proc(charlie_proc)
         stop_proc(charlie_proc1)
         destination = btc.getnewaddress(label=f"sweep-{charlie_id.hex()}")
         stdout_log = open(OUTPUT_DIR + f'/vls3-recover.log', 'w')
         vlsd = DEV_BINARIES_PATH + '/vlsd2' if DEV_MODE else 'vlsd2'
+        if disaster_recovery_block_explorer == 'bitcoind':
+            recover_rpc = bitcoin_rpc
+            recover_type = 'bitcoind'
+        elif disaster_recovery_block_explorer == 'esplora':
+            recover_rpc = 'http://localhost:8094/regtest/api/'
+            recover_type = 'esplora'
+        else:
+            raise ValueError(f'Unknown block explorer {disaster_recovery_block_explorer}')
+
         p = call([vlsd,
                   '--network=regtest',
                   '--datadir', f'{OUTPUT_DIR}/vls3',
-                  '--recover-rpc', 'http://user:pass@localhost:18443',
+                  '--recover-type', recover_type,
+                  '--recover-rpc', recover_rpc,
                   '--recover-close', destination],
                  stdout=stdout_log,
                  stderr=subprocess.STDOUT)
         assert p == 0
         print('Sweep at charlie')
         btc.mine(145)
+        # wait for Charlie to see the mined blocks
+        time.sleep(5)
         p = call([vlsd,
                   '--network=regtest',
                   '--datadir', f'{OUTPUT_DIR}/vls3',
-                  '--recover-rpc', 'http://user:pass@localhost:18443',
+                  '--recover-type', recover_type,
+                  '--recover-rpc', recover_rpc,
                   '--recover-close', destination],
                  stdout=stdout_log,
                  stderr=subprocess.STDOUT)
@@ -314,7 +343,16 @@ def start_bitcoind():
     btc = Bitcoind('btc-regtest', 'http://user:pass@localhost:18443')
     btc.wait_for_ready()
     btc.setup()
+    btc = Bitcoind('btc-regtest', 'http://user:pass@localhost:18443/wallet/default')
     return btc, btc_proc
+
+
+def connect_bitcoind(bitcoin_rpc):
+    btc = Bitcoind('btc-regtest', bitcoin_rpc)
+    btc.wait_for_ready()
+    btc.setup()
+    btc = Bitcoind('btc-regtest', bitcoin_rpc + '/wallet/default')
+    return btc
 
 
 def start_vlsd(n):
@@ -350,7 +388,7 @@ def start_vlsd2(n):
     return p
 
 
-def start_node(n):
+def start_node(n, bitcoin_rpc):
     global processes
 
     stdout_log = open(OUTPUT_DIR + f'/node{n}.log', 'w')
@@ -363,7 +401,9 @@ def start_node(n):
                '--signer', SIGNER,
                '--vlsport', str(7700 + n),
                '--rpcport', str(8800 + n),
-               '--lnport', str(9900 + n)],
+               '--lnport', str(9900 + n),
+               '--bitcoin', bitcoin_rpc,
+               ],
               stdout=stdout_log, stderr=subprocess.STDOUT)
     processes.append(p)
     time.sleep(2)  # FIXME allow gRPC to function before signer connects so we can ping instead of randomly waiting
@@ -380,8 +420,11 @@ if __name__ == '__main__':
     logging.basicConfig(level=logging.INFO)
     parser = argparse.ArgumentParser()
     parser.add_argument("--dev", help=f"use VLS binaries from {DEV_BINARIES_PATH} instead of $PATH", action="store_true")
-    parser.add_argument("--test-disaster", help=f"test disaster recovery", action="store_true")
+    parser.add_argument("--test-disaster", help=f"test disaster recovery, with choice of block explorer / bitcoind",
+                        choices=['bitcoind', 'esplora'])
+    parser.add_argument("--bitcoin", help="bitcoin RPC to use instead of starting a new one, e.g. http://user:pass@localhost:18443")
     args = parser.parse_args()
     if args.dev:
         DEV_MODE = True
-    run(test_disaster=args.test_disaster)
+    run(disaster_recovery_block_explorer=args.test_disaster, existing_bitcoin_rpc=args.bitcoin)
+

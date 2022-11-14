@@ -74,9 +74,10 @@ impl From<std::io::Error> for Error {
 
 impl BitcoindClient {
 	pub async fn new(
-		host: String, port: u16, rpc_user: String, rpc_password: String,
+		host: String, port: u16, rpc_user: String, rpc_password: String, rpc_path: String,
 	) -> std::io::Result<Self> {
-		let url = format!("http://{}:{}", host, port);
+		let url = format!("http://{}:{}{}", host, port, rpc_path);
+		println!("Connecting to bitcoind at {}", url);
 		let mut builder = SimpleHttpTransport::builder().url(&url).await.unwrap();
 		builder = builder.auth(rpc_user, Some(rpc_password));
 		let rpc = Client::with_transport(builder.build());

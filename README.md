@@ -75,7 +75,7 @@ cargo build
 or to test disaster recovery:
 
 ```
-SIGNER=vls2-grpc ./tests/integration-test.py --test-disaster
+SIGNER=vls2-grpc ./tests/integration-test.py --test-disaster bitcoind
 ```
 
 note that the log file for the signer 3 disaster recovery is in `./test-output/vls3-recover.log`.
@@ -86,7 +86,15 @@ if you are developing locally, you can use the `--dev` flag to run against binar
 # Set this to `target/debug` subdirectory of the VLS repo.
 # Defaults to `../vls/target/debug`.
 export DEV_BINARIES_PATH=...
-SIGNER=vls2-grpc ./tests/integration-test.py --dev --test-disaster
+SIGNER=vls2-grpc ./tests/integration-test.py --dev --test-disaster bitcoind
+```
+
+to test disaster recovery with the Blockstream Esplora backend:
+
+```shell
+./scripts/launch-esplora-testnet
+COOKIE=`docker exec esplora-regtest cat /data/bitcoin/regtest/.cookie`
+SIGNER=vls2-grpc ./tests/integration-test.py --dev --bitcoin http://$COOKIE@localhost:18443 --test-disaster=esplora
 ```
 
 ### Using [kcov](https://github.com/SimonKagstrom/kcov) for Code Coverage

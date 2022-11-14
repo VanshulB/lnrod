@@ -117,7 +117,7 @@ integration:
     - sleep 5 # wait for bitcoind to stop
     - SIGNER=vls       ./tests/integration-test.py
     - sleep 5 # wait for bitcoind to stop
-    - SIGNER=vls2-grpc  ./tests/integration-test.py --test-disaster
+    - SIGNER=vls2-grpc  ./tests/integration-test.py --test-disaster bitcoind
     - sleep 5 # wait for bitcoind to stop
     - SIGNER=vls2-grpc  ./tests/integration-test.py
   artifacts:

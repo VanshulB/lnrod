@@ -156,6 +156,7 @@ fn main() -> Result<()> {
 		bitcoind_rpc_password: bitcoin_url.password().unwrap_or("").to_string(),
 		bitcoind_rpc_host: bitcoin_url.host_str().expect("host").to_string(),
 		bitcoind_rpc_port: bitcoin_url.port().expect("port"),
+		bitcoind_rpc_path: bitcoin_url.path().to_string(),
 		storage_dir_path: data_dir,
 		peer_listening_port,
 		vls_port,
