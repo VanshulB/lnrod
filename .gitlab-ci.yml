@@ -109,11 +109,13 @@ integration:
     - export PATH="$PATH:`pwd`/bin"
     - SIGNER=vls-local ./tests/integration-test.py
     - sleep 5 # wait for bitcoind to stop
-    - SIGNER=vls2-grpc  ./tests/integration-test.py
-    - sleep 5 # wait for bitcoind to stop
     - SIGNER=vls2-null  ./tests/integration-test.py
     - sleep 5 # wait for bitcoind to stop
     - SIGNER=vls       ./tests/integration-test.py
+    - sleep 5 # wait for bitcoind to stop
+    - SIGNER=vls2-grpc  ./tests/integration-test.py --test-disaster
+    - sleep 5 # wait for bitcoind to stop
+    - SIGNER=vls2-grpc  ./tests/integration-test.py
   artifacts:
     when: always
     paths:

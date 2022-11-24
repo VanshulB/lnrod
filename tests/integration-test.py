@@ -9,7 +9,7 @@ import argparse
 import sys
 import time
 from shutil import rmtree
-from subprocess import Popen
+from subprocess import Popen, call
 
 import jsonrpc_requests
 import grpc
@@ -39,11 +39,21 @@ logger = logging.getLogger()
 
 os.environ['RUST_BACKTRACE'] = "1"
 
+# we want to manage the allowlist ourselves, don't let a stray env var confuse us
+os.environ.pop('ALLOWLIST', None)
+
 
 def kill_procs():
     global processes
     for p in processes:
         p.send_signal(signal.SIGTERM)
+    for p in processes:
+        p.wait()
+
+
+def stop_proc(p):
+    p.send_signal(signal.SIGTERM)
+    p.wait()
 
 
 class Bitcoind(jsonrpc_requests.Server):
@@ -110,15 +120,16 @@ def wait_until(name, func):
     logger.debug(f'done {name}')
 
 
-def run():
+def run(test_disaster):
     # ensure we sync after the last payment
     assert NUM_PAYMENTS % CHANNEL_BALANCE_SYNC_INTERVAL == 0
+    assert not test_disaster or SIGNER == 'vls2-grpc', "test_disaster only works with vls2-grpc"
 
     atexit.register(kill_procs)
     rmtree(OUTPUT_DIR, ignore_errors=True)
     os.mkdir(OUTPUT_DIR)
     print('Starting bitcoind')
-    btc = start_bitcoind()
+    btc, btc_proc = start_bitcoind()
 
     if SIGNER == 'vls':
         print('Starting signers')
@@ -127,9 +138,9 @@ def run():
         charlie_signer = start_vlsd(3)
 
     print('Starting nodes')
-    alice = start_node(1)
-    bob = start_node(2)
-    charlie = start_node(3)
+    alice, _, _ = start_node(1)
+    bob, _, _ = start_node(2)
+    charlie, charlie_proc, charlie_proc1 = start_node(3)
 
     print('Generate initial blocks')
     btc.mine(110)
@@ -237,17 +248,44 @@ def run():
     assert_equal_delta(CHANNEL_VALUE_SAT - (NUM_PAYMENTS * PAYMENT_MSAT) / 1000 - 1000, alice_sweep)
     assert_equal_delta((NUM_PAYMENTS * PAYMENT_MSAT) / 1000 - 1000, bob_sweep)
 
-    print('Force closing bob - charlie at charlie')
-    charlie_channel = charlie.ChannelList(Void()).channels[0]
-    charlie.ChannelClose(ChannelCloseRequest(channel_id=charlie_channel.channel_id, is_force=True))
-    wait_until('bob sweep', lambda: wait_received(bob_id, minimum=bob_sweep + 1))
-    bob_sweep = int(get_swept_value(bob_id))
-    # bob, as router, is flat except for fees
-    assert_equal_delta(CHANNEL_VALUE_SAT - 2000, bob_sweep)
+    if test_disaster:
+        print('Disaster recovery at charlie')
+        stop_proc(charlie_proc)
+        stop_proc(charlie_proc1)
+        destination = btc.getnewaddress(label=f"sweep-{charlie_id.hex()}")
+        stdout_log = open(OUTPUT_DIR + f'/vls3-recover.log', 'w')
+        vlsd = DEV_BINARIES_PATH + '/vlsd2' if DEV_MODE else 'vlsd2'
+        p = call([vlsd,
+                  '--network=regtest',
+                  '--datadir', f'{OUTPUT_DIR}/vls3',
+                  '--bitcoin', 'http://user:pass@localhost:18443',
+                  '--recover-close', destination],
+                 stdout=stdout_log,
+                 stderr=subprocess.STDOUT)
+        assert p == 0
+        print('Sweep at charlie')
+        btc.mine(145)
+        p = call([vlsd,
+                  '--network=regtest',
+                  '--datadir', f'{OUTPUT_DIR}/vls3',
+                  '--bitcoin', 'http://user:pass@localhost:18443',
+                  '--recover-close', destination],
+                 stdout=stdout_log,
+                 stderr=subprocess.STDOUT)
+        assert p == 0
+        print('Swept at charlie')
+    else:
+        print('Force closing bob - charlie at charlie')
+        charlie_channel = charlie.ChannelList(Void()).channels[0]
+        charlie.ChannelClose(ChannelCloseRequest(channel_id=charlie_channel.channel_id, is_force=True))
+        wait_until('bob sweep', lambda: wait_received(bob_id, minimum=bob_sweep + 1))
+        bob_sweep = int(get_swept_value(bob_id))
+        # bob, as router, is flat except for fees
+        assert_equal_delta(CHANNEL_VALUE_SAT - 2000, bob_sweep)
 
-    # charlie should not have been able to sweep yet
-    charlie_sweep = int(get_swept_value(charlie_id))
-    assert charlie_sweep == 0
+        # charlie should not have been able to sweep yet
+        charlie_sweep = int(get_swept_value(charlie_id))
+        assert charlie_sweep == 0
 
     # charlie eventually sweeps their payments
     wait_until('charlie sweep', lambda: wait_received(charlie_id))
@@ -276,7 +314,7 @@ def start_bitcoind():
     btc = Bitcoind('btc-regtest', 'http://user:pass@localhost:18443')
     btc.wait_for_ready()
     btc.setup()
-    return btc
+    return btc, btc_proc
 
 
 def start_vlsd(n):
@@ -293,6 +331,7 @@ def start_vlsd(n):
     processes.append(p)
     # return grpc_client(f'localhost:{7700 + n}')
     time.sleep(1)
+    return p
 
 
 def start_vlsd2(n):
@@ -308,6 +347,7 @@ def start_vlsd2(n):
               stdout=stdout_log, stderr=subprocess.STDOUT)
     processes.append(p)
     time.sleep(1)
+    return p
 
 
 def start_node(n):
@@ -327,18 +367,21 @@ def start_node(n):
               stdout=stdout_log, stderr=subprocess.STDOUT)
     processes.append(p)
     time.sleep(2)  # FIXME allow gRPC to function before signer connects so we can ping instead of randomly waiting
+    p2 = None
     if SIGNER == 'vls2-grpc':
-        start_vlsd2(n)
+        p2 = start_vlsd2(n)
+
     lnrod = grpc_client(f'localhost:{8800 + n}')
     lnrod.lnport = 9900 + n
-    return lnrod
+    return lnrod, p, p2
 
 
 if __name__ == '__main__':
     logging.basicConfig(level=logging.INFO)
     parser = argparse.ArgumentParser()
     parser.add_argument("--dev", help=f"use VLS binaries from {DEV_BINARIES_PATH} instead of $PATH", action="store_true")
+    parser.add_argument("--test-disaster", help=f"test disaster recovery", action="store_true")
     args = parser.parse_args()
     if args.dev:
         DEV_MODE = True
-    run()
+    run(test_disaster=args.test_disaster)

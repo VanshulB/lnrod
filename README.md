@@ -72,6 +72,23 @@ cargo build
 ./tests/integration-test.py
 ```
 
+or to test disaster recovery:
+
+```
+SIGNER=vls2-grpc ./tests/integration-test.py --test-disaster
+```
+
+note that the log file for the signer 3 disaster recovery is in `./test-output/vls3-recover.log`.
+
+if you are developing locally, you can use the `--dev` flag to run against binaries built from your local VLS source tree:
+
+```
+# Set this to `target/debug` subdirectory of the VLS repo.
+# Defaults to `../vls/target/debug`.
+export DEV_BINARIES_PATH=...
+SIGNER=vls2-grpc ./tests/integration-test.py --dev --test-disaster
+```
+
 ### Using [kcov](https://github.com/SimonKagstrom/kcov) for Code Coverage
 
 Dependencies:
