@@ -258,7 +258,7 @@ def run(test_disaster):
         p = call([vlsd,
                   '--network=regtest',
                   '--datadir', f'{OUTPUT_DIR}/vls3',
-                  '--bitcoin', 'http://user:pass@localhost:18443',
+                  '--recover-rpc', 'http://user:pass@localhost:18443',
                   '--recover-close', destination],
                  stdout=stdout_log,
                  stderr=subprocess.STDOUT)
@@ -268,7 +268,7 @@ def run(test_disaster):
         p = call([vlsd,
                   '--network=regtest',
                   '--datadir', f'{OUTPUT_DIR}/vls3',
-                  '--bitcoin', 'http://user:pass@localhost:18443',
+                  '--recover-rpc', 'http://user:pass@localhost:18443',
                   '--recover-close', destination],
                  stdout=stdout_log,
                  stderr=subprocess.STDOUT)

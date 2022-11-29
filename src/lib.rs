@@ -101,12 +101,12 @@ pub(crate) type SimpleArcPeerManager<SD, C, L> = RLPeerManager<
 	SD,
 	Arc<ChannelManager>,
 	Arc<P2PGossipSync<Arc<NetworkGraph<Arc<L>>>, Arc<C>, Arc<L>>>,
-	Arc<L>,
 	Arc<IgnoringMessageHandler>,
+	Arc<L>,
+	IgnoringMessageHandler,
 >;
 
 pub(crate) type ChannelManager = RLChannelManager<
-	DynSigner,
 	Arc<ArcChainMonitor>,
 	Arc<BitcoindClient>,
 	Arc<DynKeysInterface>,
@@ -240,7 +240,7 @@ async fn handle_ldk_events(
 		}
 		Event::PaymentPathFailed {
 			payment_hash,
-			rejected_by_dest,
+			payment_failed_permanently,
 			all_paths_failed,
 			short_channel_id,
 			..
@@ -253,7 +253,7 @@ async fn handle_ldk_events(
 			if let Some(scid) = short_channel_id {
 				error!(" because of failure at channel {}", scid);
 			}
-			if rejected_by_dest {
+			if payment_failed_permanently {
 				error!("rejected by destination node");
 			} else {
 				error!("route failed");
@@ -318,6 +318,9 @@ async fn handle_ldk_events(
 		}
 		Event::OpenChannelRequest { .. } => {
 			unimplemented!("OpenChannelRequest");
+		}
+		Event::ChannelReady { channel_id, .. } => {
+			info!("EVENT: Channel {} ready", hex_utils::hex_str(&channel_id));
 		}
 	}
 }

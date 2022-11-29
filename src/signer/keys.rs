@@ -432,13 +432,6 @@ impl SpendableKeysInterface for KeysManager {
 		self.sweep_address.clone()
 	}
 
-	fn get_node_id(&self) -> PublicKey {
-		PublicKey::from_secret_key(
-			&Secp256k1::new(),
-			&self.get_node_secret(Recipient::Node).unwrap(),
-		)
-	}
-
 	fn sign_from_wallet(
 		&self, _psbt: &PartiallySignedTransaction, _derivations: Vec<u32>,
 	) -> PartiallySignedTransaction {

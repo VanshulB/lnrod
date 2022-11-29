@@ -152,10 +152,6 @@ impl SpendableKeysInterface for Adapter {
 		self.sweep_address.clone()
 	}
 
-	fn get_node_id(&self) -> PublicKey {
-		self.inner.node_id
-	}
-
 	fn sign_from_wallet(
 		&self, _psbt: &PartiallySignedTransaction, _derivations: Vec<u32>,
 	) -> PartiallySignedTransaction {
@@ -581,10 +577,6 @@ impl SpendableKeysInterface for ClientAdapter {
 		self.sweep_address.clone()
 	}
 
-	fn get_node_id(&self) -> PublicKey {
-		self.node_id
-	}
-
 	fn sign_from_wallet(
 		&self, psbt: &PartiallySignedTransaction, derivations: Vec<u32>,
 	) -> PartiallySignedTransaction {
@@ -866,6 +858,12 @@ impl BaseSign for ClientSigner {
 			.unwrap())
 	}
 
+	fn sign_holder_anchor_input(
+		&self, anchor_tx: &Transaction, input: usize, secp_ctx: &Secp256k1<All>,
+	) -> StdResult<Signature, ()> {
+		todo!()
+	}
+
 	fn sign_channel_announcement(
 		&self, msg: &UnsignedChannelAnnouncement, secp_ctx: &Secp256k1<All>,
 	) -> StdResult<(Signature, Signature), ()> {
@@ -940,9 +938,10 @@ impl ClientSigner {
 
 pub async fn connect(
 	vls_port: u16,
-) -> Result<SignerClient<transport::Channel>, Box<dyn std::error::Error>> {
+) -> Result<SignerClient<tonic::transport::Channel>, Box<dyn std::error::Error>> {
 	let endpoint = format!("http://127.0.0.1:{}", vls_port);
-	Ok(SignerClient::connect(endpoint).await?)
+	let result = SignerClient::connect(endpoint).await;
+	Ok(result?)
 }
 
 pub(crate) async fn make_remote_signer(
