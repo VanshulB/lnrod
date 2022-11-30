@@ -165,10 +165,6 @@ impl SpendableKeysInterface for KeysManager {
 		self.sweep_address.clone()
 	}
 
-	fn get_node_id(&self) -> PublicKey {
-		self.node_id
-	}
-
 	fn sign_from_wallet(
 		&self, _psbt: &PartiallySignedTransaction, _derivations: Vec<u32>,
 	) -> PartiallySignedTransaction {

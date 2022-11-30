@@ -1,6 +1,7 @@
 use anyhow::Result;
 use bitcoin::Network;
 use lightning_signer::bitcoin;
+use lightning_signer::lightning::chain::keysinterface::Recipient;
 use tokio::runtime::Handle;
 
 use crate::util::Shutter;
@@ -39,7 +40,7 @@ pub async fn get_keys_manager(
 		_ => anyhow::bail!("not found"),
 	};
 
-	let label = format!("sweep-{}", manager.get_node_id().to_string());
+	let label = format!("sweep-{}", manager.get_node_id(Recipient::Node).unwrap().to_string());
 	bitcoind_client.set_label(manager.get_sweep_address(), label).await;
 	Ok(manager)
 }

@@ -111,7 +111,8 @@ impl Admin for AdminHandler {
 									..
 								} => claimable_amount_satoshis,
 								Balance::ContentiousClaimable { .. } => 0,
-								Balance::MaybeClaimableHTLCAwaitingTimeout { .. } => 0,
+								Balance::MaybeTimeoutClaimableHTLC { .. } => 0,
+								Balance::MaybePreimageClaimableHTLC { .. } => 0,
 							})
 							.sum(),
 					)

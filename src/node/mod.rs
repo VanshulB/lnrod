@@ -3,7 +3,7 @@ use std::fs;
 use std::fs::read_to_string;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
-use std::time::Duration;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use std::{cmp, env};
 
 use log::{self, *};
@@ -39,6 +39,7 @@ use lightning_invoice::utils::DefaultRouter;
 use lightning_invoice::{payment, Invoice};
 use lightning_persister::FilesystemPersister;
 use lightning_rapid_gossip_sync::RapidGossipSync;
+use lightning_signer::lightning::chain::ChannelMonitorUpdateStatus;
 use lightning_signer::{bitcoin, lightning};
 use rand::{thread_rng, Rng};
 use tokio::runtime::Handle;
@@ -80,7 +81,11 @@ pub struct NodeBuildArgs {
 	pub vls_port: u16,
 }
 
-type Router = DefaultRouter<Arc<NetworkGraph<Arc<LoggerAdapter>>>, Arc<LoggerAdapter>>;
+type Router = DefaultRouter<
+	Arc<NetworkGraph<Arc<LoggerAdapter>>>,
+	Arc<LoggerAdapter>,
+	Arc<Mutex<ProbabilisticScorer<Arc<NetworkGraph<Arc<LoggerAdapter>>>, Arc<LoggerAdapter>>>>,
+>;
 
 type GossipSync<P, G, A, L> = LdkGossipSync<P, Arc<RapidGossipSync<G, L>>, G, A, L>;
 
@@ -96,7 +101,7 @@ pub struct MyEventHandler {
 }
 
 impl EventHandler for MyEventHandler {
-	fn handle_event(&self, event: &Event) {
+	fn handle_event(&self, event: Event) {
 		self.handle.block_on(handle_ldk_events(
 			self.channel_manager.clone(),
 			self.chain_monitor.clone(),
@@ -110,13 +115,8 @@ impl EventHandler for MyEventHandler {
 	}
 }
 
-pub(crate) type InvoicePayer = payment::InvoicePayer<
-	Arc<ChannelManager>,
-	Router,
-	Arc<Mutex<ProbabilisticScorer<Arc<NetworkGraph<Arc<LoggerAdapter>>>, Arc<LoggerAdapter>>>>,
-	Arc<LoggerAdapter>,
-	MyEventHandler,
->;
+pub(crate) type InvoicePayer =
+	payment::InvoicePayer<Arc<ChannelManager>, Router, Arc<LoggerAdapter>, MyEventHandler>;
 
 #[allow(dead_code)]
 pub(crate) struct Node {
@@ -328,7 +328,8 @@ async fn build_with_signer(
 	for item in chain_listener_channel_monitors.drain(..) {
 		let channel_monitor = item.1 .0;
 		let funding_outpoint = item.2;
-		chain_monitor.watch_channel(funding_outpoint, channel_monitor).unwrap();
+		let res = chain_monitor.watch_channel(funding_outpoint, channel_monitor);
+		assert_ne!(res, ChannelMonitorUpdateStatus::PermanentFailure);
 	}
 
 	// Step 13: Optional: Initialize the P2PGossipSync
@@ -353,13 +354,15 @@ async fn build_with_signer(
 	let lightning_msg_handler = MessageHandler {
 		chan_handler: channel_manager.clone(),
 		route_handler: network_gossip.clone(),
+		onion_message_handler: Arc::new(IgnoringMessageHandler {}),
 	};
 	let peer_manager: Arc<PeerManager> = Arc::new(PeerManager::new(
 		lightning_msg_handler,
 		keys_manager.get_node_secret(Recipient::Node).unwrap(),
+		SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs() as u32,
 		&ephemeral_bytes,
 		logadapter.clone(),
-		Arc::new(IgnoringMessageHandler {}),
+		IgnoringMessageHandler {},
 	));
 
 	// ## Running LDK
@@ -401,10 +404,12 @@ async fn build_with_signer(
 		network_graph.clone(),
 		logadapter.clone(),
 	)));
+
 	let router = DefaultRouter::new(
 		network_graph.clone(),
 		logadapter.clone(),
 		keys_manager.get_secure_random_bytes(),
+		scorer.clone(),
 	);
 	let handle = Handle::current();
 
@@ -428,7 +433,6 @@ async fn build_with_signer(
 	let invoice_payer = Arc::new(InvoicePayer::new(
 		channel_manager.clone(),
 		router,
-		scorer.clone(),
 		logadapter.clone(),
 		event_handler,
 		payment::Retry::Attempts(5),
@@ -442,7 +446,7 @@ async fn build_with_signer(
 		GossipSync::P2P(network_gossip.clone()),
 		peer_manager.clone(),
 		logadapter.clone(),
-		Some(scorer.clone()),
+		Some(scorer),
 	);
 
 	let peer_manager_processor = peer_manager.clone();
@@ -455,7 +459,7 @@ async fn build_with_signer(
 
 	let (connector, network_controller) = if args.tor {
 		info!("Starting Tor");
-		setup_tor(&ldk_data_dir, args.name, listening_port, Arc::clone(&channel_manager)).await
+		setup_tor(&ldk_data_dir, args.name, listening_port, Arc::clone(&peer_manager)).await
 	} else {
 		if TorManager::is_configured(Path::new(&ldk_data_dir)) {
 			panic!("Tor was previously configured, refusing to start without --tor.  Remove the `tor` directory in {} if you really want to expose your IP.", ldk_data_dir);
@@ -538,7 +542,7 @@ async fn start_p2p_listener(
 
 async fn setup_tor(
 	ldk_data_dir: &String, node_name_opt: Option<String>, listening_port: u16,
-	channel_manager: Arc<ChannelManager>,
+	peer_manager: Arc<PeerManager>,
 ) -> (Arc<Connector>, NetworkController) {
 	let tor_manager = TorManager::start(Path::new(&ldk_data_dir)).await;
 	let connector = Arc::new(Connector { tor: Some(tor_manager.get_connector()) });
@@ -549,7 +553,7 @@ async fn setup_tor(
 		// TODO: consider LDK comment replicated below:
 		// In a production environment, this should occur only after the announcement of new channels
 		// to avoid churn in the global network graph.
-		let chan_manager = Arc::clone(&channel_manager);
+		let peer_manager1 = Arc::clone(&peer_manager);
 		tokio::spawn(async move {
 			let mut interval = tokio::time::interval(Duration::from_secs(60));
 			let mut alias = [0; 32];
@@ -576,7 +580,7 @@ async fn setup_tor(
 					"broadcasting node announcement as {} with {}:{}",
 					node_name, onion_address, listening_port
 				);
-				chan_manager.broadcast_node_announcement(
+				peer_manager1.broadcast_node_announcement(
 					[0; 3],
 					alias,
 					vec![ldk_onion_address.clone()],

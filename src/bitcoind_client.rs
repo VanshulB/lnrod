@@ -11,10 +11,10 @@ use anyhow::{anyhow, Result};
 use bitcoin::blockdata::transaction::Transaction;
 use bitcoin::util::address::Address;
 use bitcoin::util::psbt::serialize::Serialize;
-use bitcoin::{Amount, Block, BlockHash};
+use bitcoin::{Amount, BlockHash};
 use lightning::chain::chaininterface::{BroadcasterInterface, ConfirmationTarget, FeeEstimator};
 use lightning_block_sync::http::JsonResponse;
-use lightning_block_sync::{AsyncBlockSourceResult, BlockHeaderData, BlockSource};
+use lightning_block_sync::{AsyncBlockSourceResult, BlockData, BlockHeaderData, BlockSource};
 use lightning_signer::bitcoin::hashes::Hash;
 use lightning_signer::{bitcoin, lightning};
 use serde_json::{json, Value};
@@ -226,9 +226,13 @@ impl BlockSource for BitcoindClient {
 		})
 	}
 
-	fn get_block<'a>(&'a self, header_hash: &'a BlockHash) -> AsyncBlockSourceResult<'a, Block> {
+	fn get_block<'a>(
+		&'a self, header_hash: &'a BlockHash,
+	) -> AsyncBlockSourceResult<'a, BlockData> {
 		Box::pin(async move {
-			Ok(self.call_into("getblock", &[json!(header_hash.to_hex()), json!(0)]).await.unwrap())
+			Ok(BlockData::FullBlock(
+				self.call_into("getblock", &[json!(header_hash.to_hex()), json!(0)]).await.unwrap(),
+			))
 		})
 	}
 

@@ -26,6 +26,8 @@ compile:
   image: rust:1.60.0
   timeout: 30m
   script:
+    - apt-get update
+    - apt-get install -y protobuf-compiler
     - rustup component add rustfmt
     - cargo build
     - cargo test
@@ -48,6 +50,8 @@ compile-vls:
   image: rust:1.60.0
   timeout: 30m
   script:
+    - apt-get update
+    - apt-get install -y protobuf-compiler
     - rustup component add rustfmt
     - vls_rev=`./scripts/vls-revision`
     - echo "$vls_rev"
