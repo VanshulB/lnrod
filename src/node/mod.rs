@@ -67,6 +67,7 @@ pub struct NodeBuildArgs {
 	pub bitcoind_rpc_password: String,
 	pub bitcoind_rpc_host: String,
 	pub bitcoind_rpc_port: u16,
+	pub bitcoind_rpc_path: String,
 	pub storage_dir_path: String,
 	pub peer_listening_port: u16,
 	pub network: Network,
@@ -165,10 +166,15 @@ pub(crate) async fn build_node(
 	} else {
 		(args.bitcoind_rpc_username.clone(), args.bitcoind_rpc_password.clone())
 	};
-	let bitcoind_client =
-		BitcoindClient::new(args.bitcoind_rpc_host.clone(), args.bitcoind_rpc_port, user, pass)
-			.await
-			.unwrap_or_else(|e| panic!("Failed to connect to bitcoind client: {}", e));
+	let bitcoind_client = BitcoindClient::new(
+		args.bitcoind_rpc_host.clone(),
+		args.bitcoind_rpc_port,
+		user,
+		pass,
+		args.bitcoind_rpc_path.clone(),
+	)
+	.await
+	.unwrap_or_else(|e| panic!("Failed to connect to bitcoind client: {}", e));
 
 	let bitcoind_client_arc = Arc::new(bitcoind_client.clone());
 

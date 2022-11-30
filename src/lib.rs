@@ -155,17 +155,25 @@ async fn handle_ldk_events(
 			// satisfied.
 			let funded_tx = bitcoind_client.fund_raw_transaction(raw_tx).await;
 			let change_output_position = funded_tx.changepos;
-			assert!(change_output_position == 0 || change_output_position == 1);
+
+			// it's possible there is no change, if we have a lot of small coins in the bitcoind wallet
+			assert!(
+				change_output_position == 0
+					|| change_output_position == 1
+					|| change_output_position == -1,
+				"unexpected change output position {}",
+				change_output_position
+			);
 
 			// Sign the final funding transaction and broadcast it.
 			let signed_tx = bitcoind_client.sign_raw_transaction_with_wallet(funded_tx.hex).await;
 			assert_eq!(signed_tx.complete, true);
 			let final_tx: Transaction =
 				encode::deserialize(&hex_utils::to_vec(&signed_tx.hex).unwrap()).unwrap();
-			let outpoint = OutPoint {
-				txid: final_tx.txid(),
-				index: if change_output_position == 0 { 1 } else { 0 },
-			};
+			// if we have a change output at index 0, the funding output is at index 1
+			// in all other cases, the funding output is at index 0
+			let funding_index = if change_output_position == 0 { 1 } else { 0 };
+			let outpoint = OutPoint { txid: final_tx.txid(), index: funding_index };
 			// Give the funding transaction back to LDK for opening the channel.
 			channel_manager
 				.funding_transaction_generated(
