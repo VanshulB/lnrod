@@ -91,7 +91,6 @@ impl Transport for NullTransport {
 struct KeysManager {
 	client: KeysManagerClient,
 	sweep_address: Address,
-	node_id: PublicKey,
 }
 
 impl KeysInterface for KeysManager {
@@ -183,7 +182,7 @@ pub(crate) async fn make_null_signer(
 		let transport = NullTransport::new(sweep_address.clone());
 		let node_id = transport.handler.node().get_id();
 		let client = KeysManagerClient::new(Arc::new(transport), network.to_string());
-		let keys_manager = KeysManager { client, sweep_address, node_id };
+		let keys_manager = KeysManager { client, sweep_address };
 		fs::write(node_id_path, node_id.to_string()).expect("write node_id");
 		Box::new(keys_manager)
 	}
@@ -287,7 +286,7 @@ pub(crate) async fn make_grpc_signer(
 	let node_id = transport.node_id();
 
 	let client = KeysManagerClient::new(Arc::new(transport), network.to_string());
-	let keys_manager = KeysManager { client, sweep_address, node_id };
+	let keys_manager = KeysManager { client, sweep_address };
 	fs::write(node_id_path, node_id.to_string()).expect("write node_id");
 
 	Box::new(keys_manager)
