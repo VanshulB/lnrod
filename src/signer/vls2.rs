@@ -114,8 +114,16 @@ impl KeysInterface for KeysManager {
 		self.client.get_shutdown_scriptpubkey()
 	}
 
-	fn get_channel_signer(&self, inbound: bool, channel_value_satoshis: u64) -> Self::Signer {
-		let client = self.client.get_channel_signer(inbound, channel_value_satoshis);
+	fn generate_channel_keys_id(
+		&self, inbound: bool, channel_value_satoshis: u64, user_channel_id: u128,
+	) -> [u8; 32] {
+		self.client.generate_channel_keys_id(inbound, channel_value_satoshis, user_channel_id)
+	}
+
+	fn derive_channel_signer(
+		&self, channel_value_satoshis: u64, channel_keys_id: [u8; 32],
+	) -> Self::Signer {
+		let client = self.client.derive_channel_signer(channel_value_satoshis, channel_keys_id);
 		DynSigner::new(client)
 	}
 

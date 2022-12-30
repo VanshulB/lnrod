@@ -37,7 +37,7 @@ prost = "0.11"
 tonic = "0.8"
 clap = "=3.0.0-beta.2"  # later versions have deps which increase MSRV
 toml = "0.5.8"
-url = "2.2"
+url = "2.3"
 
 jsonrpc-async = "2.0.2"
 serde = { version = "1.0.105", features = ["derive"] }
@@ -53,61 +53,61 @@ ctrlc = { version = "3.1", features = ["termination"] }
 
 # TODO point this and the other rust-lightning deps at next release
 [dependencies.lightning-net-tokio]
-#version = "0.0.108"
-git = "https://github.com/lightningdevkit/rust-lightning"
-rev = "af7c2920e1e5ae4ba3f522730e5cce99bedacc8c"
+version = "0.0.113"
+#git = "https://github.com/lightningdevkit/rust-lightning"
+#rev = "af7c2920e1e5ae4ba3f522730e5cce99bedacc8c"
 #path = "../rust-lightning/lightning-net-tokio"
 
 [dependencies.lightning-rapid-gossip-sync]
-#version = "0.0.108"
-git = "https://github.com/lightningdevkit/rust-lightning"
-rev = "af7c2920e1e5ae4ba3f522730e5cce99bedacc8c"
+version = "0.0.113"
+#git = "https://github.com/lightningdevkit/rust-lightning"
+#rev = "af7c2920e1e5ae4ba3f522730e5cce99bedacc8c"
 #path = "../rust-lightning/lightning-rapid-gossip-sync"
 
 [dependencies.lightning-background-processor]
-#version = "0.0.108"
-git = "https://github.com/lightningdevkit/rust-lightning"
-rev = "af7c2920e1e5ae4ba3f522730e5cce99bedacc8c"
+version = "0.0.113"
+#git = "https://github.com/lightningdevkit/rust-lightning"
+#rev = "af7c2920e1e5ae4ba3f522730e5cce99bedacc8c"
 #path = "../rust-lightning/lightning-background-processor"
 
 [dependencies.lightning-persister]
-#version = "0.0.108"
-git = "https://github.com/lightningdevkit/rust-lightning"
-rev = "af7c2920e1e5ae4ba3f522730e5cce99bedacc8c"
+version = "0.0.113"
+#git = "https://github.com/lightningdevkit/rust-lightning"
+#rev = "af7c2920e1e5ae4ba3f522730e5cce99bedacc8c"
 #path = "../rust-lightning/lightning-persister"
 
 [dependencies.lightning-block-sync]
-features = ["rpc-client"]
-#version = "0.0.108"
-git = "https://github.com/lightningdevkit/rust-lightning"
-rev = "af7c2920e1e5ae4ba3f522730e5cce99bedacc8c"
+version = "0.0.113"
+#git = "https://github.com/lightningdevkit/rust-lightning"
+#rev = "af7c2920e1e5ae4ba3f522730e5cce99bedacc8c"
 #path = "../rust-lightning/lightning-block-sync"
+features = ["rpc-client"]
 
 [dependencies.vls-core]
 features = ["std"]
 git = "https://gitlab.com/lightning-signer/validating-lightning-signer.git"
-rev = "3d5bfb1fab324e178c094b4e00868e036193060e"
+rev = "5357446a4a44ec829e480b88a7fee3b2211f9129"
 #path = "../vls/lightning-signer-core"
 
 [dependencies.vls-server]
 features = ["grpc"]
 git = "https://gitlab.com/lightning-signer/validating-lightning-signer.git"
-rev = "3d5bfb1fab324e178c094b4e00868e036193060e" # VLS VERSION
+rev = "5357446a4a44ec829e480b88a7fee3b2211f9129" # VLS VERSION
 #path = "../vls/lightning-signer-server"
 
 [dependencies.vls-protocol-signer]
 git = "https://gitlab.com/lightning-signer/validating-lightning-signer.git"
-rev = "3d5bfb1fab324e178c094b4e00868e036193060e"
+rev = "5357446a4a44ec829e480b88a7fee3b2211f9129"
 #path = "../vls/vls-protocol-signer"
 
 [dependencies.vls-protocol-client]
 git = "https://gitlab.com/lightning-signer/validating-lightning-signer.git"
-rev = "3d5bfb1fab324e178c094b4e00868e036193060e"
+rev = "5357446a4a44ec829e480b88a7fee3b2211f9129"
 #path = "../vls/vls-protocol-client"
 
 [dependencies.vls-proxy]
 git = "https://gitlab.com/lightning-signer/validating-lightning-signer.git"
-rev = "3d5bfb1fab324e178c094b4e00868e036193060e"
+rev = "5357446a4a44ec829e480b88a7fee3b2211f9129"
 #path = "../vls/vls-proxy"
 
 [build-dependencies]

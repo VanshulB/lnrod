@@ -49,6 +49,7 @@ impl Into<UserConfig> for ConfigCoinChannel {
 			accept_forwards_to_priv_channels: true,
 			accept_inbound_channels: true,
 			manually_accept_inbound_channels: false,
+			accept_intercept_htlcs: false,
 		}
 	}
 }

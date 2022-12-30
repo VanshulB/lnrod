@@ -199,14 +199,22 @@ impl KeysInterface for KeysManager {
 		ShutdownScript::new_p2wpkh(&WPubkeyHash::hash(&self.shutdown_pubkey.serialize()))
 	}
 
-	fn get_channel_signer(&self, _inbound: bool, channel_value_satoshis: u64) -> Self::Signer {
+	fn generate_channel_keys_id(
+		&self, _inbound: bool, _channel_value_satoshis: u64, _user_channel_id: u128,
+	) -> [u8; 32] {
 		let child_ix = self.channel_child_index.fetch_add(1, Ordering::AcqRel);
 		assert!(child_ix <= std::u32::MAX as usize);
 		let mut id = [0; 32];
 		id[0..8].copy_from_slice(&byte_utils::be64_to_array(child_ix as u64));
 		id[8..16].copy_from_slice(&byte_utils::be64_to_array(self.starting_time_nanos as u64));
 		id[16..24].copy_from_slice(&byte_utils::be64_to_array(self.starting_time_secs));
-		DynSigner::new(self.derive_channel_keys(channel_value_satoshis, &id))
+		id
+	}
+
+	fn derive_channel_signer(
+		&self, channel_value_satoshis: u64, channel_keys_id: [u8; 32],
+	) -> Self::Signer {
+		DynSigner::new(self.derive_channel_keys(channel_value_satoshis, &channel_keys_id))
 	}
 
 	fn get_secure_random_bytes(&self) -> [u8; 32] {

@@ -102,8 +102,16 @@ impl KeysInterface for Adapter {
 		self.inner.get_shutdown_scriptpubkey()
 	}
 
-	fn get_channel_signer(&self, inbound: bool, channel_value_satoshis: u64) -> Self::Signer {
-		let inner = self.inner.get_channel_signer(inbound, channel_value_satoshis);
+	fn generate_channel_keys_id(
+		&self, inbound: bool, channel_value_satoshis: u64, user_channel_id: u128,
+	) -> [u8; 32] {
+		self.inner.generate_channel_keys_id(inbound, channel_value_satoshis, user_channel_id)
+	}
+
+	fn derive_channel_signer(
+		&self, channel_value_satoshis: u64, channel_keys_id: [u8; 32],
+	) -> Self::Signer {
+		let inner = self.inner.derive_channel_signer(channel_value_satoshis, channel_keys_id);
 		DynSigner { inner: Box::new(inner) }
 	}
 
@@ -382,15 +390,21 @@ impl KeysInterface for ClientAdapter {
 		ShutdownScript::try_from(self.get_destination_script()).expect("script")
 	}
 
-	fn get_channel_signer(&self, _inbound: bool, channel_value: u64) -> Self::Signer {
+	fn generate_channel_keys_id(
+		&self, _inbound: bool, _channel_value_satoshis: u64, _user_channel_id: u128,
+	) -> [u8; 32] {
+		let mut channel_id_slice = [0u8; 32];
+		thread_rng().fill_bytes(&mut channel_id_slice);
+		channel_id_slice
+	}
+
+	fn derive_channel_signer(&self, channel_value: u64, channel_keys_id: [u8; 32]) -> Self::Signer {
 		info!("ENTER get_channel_signer");
 		fn decode_pubkey(proto: Option<PubKey>) -> PublicKey {
 			PublicKey::from_slice(&proto.expect("pubkey").data).expect("pubkey decode")
 		}
 
-		let mut channel_id_slice = [0u8; 32];
-		thread_rng().fill_bytes(&mut channel_id_slice);
-		let channel_id = ChannelId::new(&channel_id_slice);
+		let channel_id = ChannelId::new(&channel_keys_id);
 		let channel_nonce = Some(ChannelNonce { data: channel_id.inner().clone() });
 
 		let request = NewChannelRequest {
@@ -402,7 +416,7 @@ impl KeysInterface for ClientAdapter {
 		let reply = response.into_inner();
 		println!(
 			"supplied nonce {} got nonce {}",
-			channel_id_slice.to_hex(),
+			channel_keys_id.to_hex(),
 			reply.channel_nonce0.as_ref().unwrap().data.to_hex()
 		);
 
@@ -883,7 +897,7 @@ impl BaseSign for ClientSigner {
 		))
 	}
 
-	fn ready_channel(&mut self, p: &ChannelTransactionParameters) {
+	fn provide_channel_parameters(&mut self, p: &ChannelTransactionParameters) {
 		info!("ENTER ready_channel");
 		let cp_param = p.counterparty_parameters.as_ref().expect("cp param");
 		let cp_keys = &cp_param.pubkeys;
