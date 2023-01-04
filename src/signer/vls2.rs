@@ -34,7 +34,7 @@ use vls_proxy::grpc::adapter::{ChannelRequest, ClientId, HsmdService};
 use vls_proxy::grpc::incoming::TcpIncoming;
 
 use crate::bitcoin::Witness;
-use crate::signer::vls::create_spending_transaction;
+use crate::signer::util::create_spending_transaction;
 use crate::util::Shutter;
 use crate::{DynSigner, SpendableKeysInterface};
 

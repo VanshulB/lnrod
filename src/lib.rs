@@ -29,7 +29,7 @@ use lightning_persister::FilesystemPersister;
 use lightning_signer::{bitcoin, lightning, lightning_invoice};
 use rand::{thread_rng, Rng};
 
-use vls_protocol_client::{DynKeysInterface, DynSigner, InnerSign, SpendableKeysInterface};
+use vls_protocol_client::{DynKeysInterface, DynSigner, SpendableKeysInterface};
 
 use crate::lightning::ln::PaymentSecret;
 use crate::lightning::util::events::PaymentPurpose;

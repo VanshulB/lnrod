@@ -40,7 +40,7 @@ compile:
       - target/debug/lnrod
       - target/debug/lnrcli
 
-# Compile vlsd
+# Compile vlsd2
 compile-vls:
   stage: build
   cache:
@@ -58,15 +58,13 @@ compile-vls:
     - git clone https://gitlab.com/lightning-signer/validating-lightning-signer.git
     - cd validating-lightning-signer
     - git checkout "$vls_rev"
-    - cargo build --locked
+    - cargo build --locked --bin vlsd2
     - ls -l target/debug
     - mkdir -p ../bin
-    - cp target/debug/{vlsd,vlsd2,vls-cli} ../bin/
+    - cp target/debug/vlsd2 ../bin/
   artifacts:
     paths:
-      - bin/vlsd
       - bin/vlsd2
-      - bin/vls-cli
 
 # Disable coverage for now, because it doesn't work in docker based gitlab runners without
 # disabling important kernel security features
@@ -114,8 +112,6 @@ integration:
     - SIGNER=vls-local ./tests/integration-test.py
     - sleep 5 # wait for bitcoind to stop
     - SIGNER=vls2-null  ./tests/integration-test.py
-    - sleep 5 # wait for bitcoind to stop
-    - SIGNER=vls       ./tests/integration-test.py
     - sleep 5 # wait for bitcoind to stop
     - SIGNER=vls2-grpc  ./tests/integration-test.py --test-disaster bitcoind
     - sleep 5 # wait for bitcoind to stop
