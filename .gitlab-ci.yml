@@ -108,7 +108,7 @@ compile-vls:
 #  after_script:
 #    - bash <(curl -s https://codecov.io/bash) -t "${CODECOV_TOKEN}"
 
-integration:
+integration1:
   stage: test
   image: python:3.8
   timeout: 10m
@@ -123,7 +123,23 @@ integration:
     - SIGNER=vls-local ./tests/integration-test.py
     - sleep 5 # wait for bitcoind to stop
     - SIGNER=vls2-null  ./tests/integration-test.py
-    - sleep 5 # wait for bitcoind to stop
+  artifacts:
+    when: always
+    paths:
+      - test-output
+
+integration2:
+  stage: test
+  image: python:3.8
+  timeout: 10m
+  script:
+    # use this if you want to quickly iterate over the integration test (see compile job)
+    #    - mkdir -p target/debug && cp .cache/lnrod .cache/lnrcli target/debug/
+    - ls -l bin
+    - ls -l target/debug
+    - pip3 install -r requirements.txt
+    - ./scripts/compile-proto
+    - export PATH="$PATH:`pwd`/bin"
     - SIGNER=vls2-grpc  ./tests/integration-test.py --test-disaster bitcoind
     - sleep 5 # wait for bitcoind to stop
     - SIGNER=vls2-grpc  ./tests/integration-test.py
