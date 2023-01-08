@@ -16,6 +16,24 @@ before_script:
   - ls -al
   - mkdir -p bin
 
+# Do this in a separate job, so that it gets cached with high probability
+# later jobs can be flaky and cache is not written when a job fails.
+get_bitcoin:
+  stage: build
+  image: python:3.8
+  script:
+    - ls -l bin
+    - if [ ! -e bin/bitcoind ]; then
+      wget --no-verbose https://bitcoin.org/bin/bitcoin-core-0.21.0/bitcoin-0.21.0-x86_64-linux-gnu.tar.gz &&
+      echo da7766775e3f9c98d7a9145429f2be8297c2672fe5b118fd3dc2411fb48e0032  bitcoin-0.21.0-x86_64-linux-gnu.tar.gz | sha256sum -c &&
+      tar xzf bitcoin-0.21.0-x86_64-linux-gnu.tar.gz &&
+      mv bitcoin-0.21.0/bin/bitcoind bin/ &&
+      rm -rf bitcoin-0.21.0 ;
+      fi
+  artifacts:
+    paths:
+      - bin/bitcoind
+
 # Compile lnrod
 compile:
   stage: build
@@ -40,7 +58,7 @@ compile:
       - target/debug/lnrod
       - target/debug/lnrcli
 
-# Compile vlsd
+# Compile vlsd2
 compile-vls:
   stage: build
   cache:
@@ -58,15 +76,13 @@ compile-vls:
     - git clone https://gitlab.com/lightning-signer/validating-lightning-signer.git
     - cd validating-lightning-signer
     - git checkout "$vls_rev"
-    - cargo build --locked
+    - cargo build --locked --bin vlsd2
     - ls -l target/debug
     - mkdir -p ../bin
-    - cp target/debug/{vlsd,vlsd2,vls-cli} ../bin/
+    - cp target/debug/vlsd2 ../bin/
   artifacts:
     paths:
-      - bin/vlsd
       - bin/vlsd2
-      - bin/vls-cli
 
 # Disable coverage for now, because it doesn't work in docker based gitlab runners without
 # disabling important kernel security features
@@ -92,7 +108,7 @@ compile-vls:
 #  after_script:
 #    - bash <(curl -s https://codecov.io/bash) -t "${CODECOV_TOKEN}"
 
-integration:
+integration1:
   stage: test
   image: python:3.8
   timeout: 10m
@@ -101,22 +117,29 @@ integration:
 #    - mkdir -p target/debug && cp .cache/lnrod .cache/lnrcli target/debug/
     - ls -l bin
     - ls -l target/debug
-    - if [ ! -e bin/bitcoind ]; then
-      wget --no-verbose https://bitcoin.org/bin/bitcoin-core-0.21.0/bitcoin-0.21.0-x86_64-linux-gnu.tar.gz &&
-      echo da7766775e3f9c98d7a9145429f2be8297c2672fe5b118fd3dc2411fb48e0032  bitcoin-0.21.0-x86_64-linux-gnu.tar.gz | sha256sum -c &&
-      tar xzf bitcoin-0.21.0-x86_64-linux-gnu.tar.gz &&
-      mv bitcoin-0.21.0/bin/bitcoind bin/ &&
-      rm -rf bitcoin-0.21.0 ;
-      fi
     - pip3 install -r requirements.txt
     - ./scripts/compile-proto
     - export PATH="$PATH:`pwd`/bin"
     - SIGNER=vls-local ./tests/integration-test.py
     - sleep 5 # wait for bitcoind to stop
     - SIGNER=vls2-null  ./tests/integration-test.py
-    - sleep 5 # wait for bitcoind to stop
-    - SIGNER=vls       ./tests/integration-test.py
-    - sleep 5 # wait for bitcoind to stop
+  artifacts:
+    when: always
+    paths:
+      - test-output
+
+integration2:
+  stage: test
+  image: python:3.8
+  timeout: 10m
+  script:
+    # use this if you want to quickly iterate over the integration test (see compile job)
+    #    - mkdir -p target/debug && cp .cache/lnrod .cache/lnrcli target/debug/
+    - ls -l bin
+    - ls -l target/debug
+    - pip3 install -r requirements.txt
+    - ./scripts/compile-proto
+    - export PATH="$PATH:`pwd`/bin"
     - SIGNER=vls2-grpc  ./tests/integration-test.py --test-disaster bitcoind
     - sleep 5 # wait for bitcoind to stop
     - SIGNER=vls2-grpc  ./tests/integration-test.py

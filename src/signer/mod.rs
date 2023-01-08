@@ -8,11 +8,12 @@ use crate::util::Shutter;
 use crate::{BitcoindClient, DynSigner, SpendableKeysInterface};
 
 pub mod keys;
+mod local;
 mod test_signer;
-mod vls;
+mod util;
 mod vls2;
 
-pub const SIGNER_NAMES: [&str; 5] = ["test", "vls-local", "vls", "vls2-null", "vls2-grpc"];
+pub const SIGNER_NAMES: &[&str] = &["test", "vls-local", "vls2-null", "vls2-grpc"];
 
 /// Get the keys manager and the sweep address
 pub async fn get_keys_manager(
@@ -23,8 +24,7 @@ pub async fn get_keys_manager(
 
 	let manager: Box<dyn SpendableKeysInterface<Signer = DynSigner>> = match name {
 		"test" => test_signer::make_signer(network, ldk_data_dir, sweep_address),
-		"vls-local" => vls::make_signer(network, ldk_data_dir, sweep_address),
-		"vls" => vls::make_remote_signer(vls_port, network, ldk_data_dir, sweep_address).await,
+		"vls-local" => local::make_signer(network, ldk_data_dir, sweep_address),
 		"vls2-null" => vls2::make_null_signer(network, ldk_data_dir, sweep_address).await,
 		"vls2-grpc" => {
 			vls2::make_grpc_signer(

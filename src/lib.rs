@@ -29,7 +29,7 @@ use lightning_persister::FilesystemPersister;
 use lightning_signer::{bitcoin, lightning, lightning_invoice};
 use rand::{thread_rng, Rng};
 
-use vls_protocol_client::{DynKeysInterface, DynSigner, InnerSign, SpendableKeysInterface};
+use vls_protocol_client::{DynKeysInterface, DynSigner, SpendableKeysInterface};
 
 use crate::lightning::ln::PaymentSecret;
 use crate::lightning::util::events::PaymentPurpose;
@@ -124,7 +124,8 @@ async fn handle_ldk_events(
 	match event {
 		Event::ProbeSuccessful { .. }
 		| Event::ProbeFailed { .. }
-		| Event::HTLCHandlingFailed { .. } => todo!(),
+		| Event::HTLCHandlingFailed { .. }
+		| Event::HTLCIntercepted { .. } => todo!(),
 		Event::FundingGenerationReady {
 			temporary_channel_id,
 			channel_value_satoshis,
@@ -184,7 +185,7 @@ async fn handle_ldk_events(
 				.unwrap();
 			pending_txs.insert(outpoint, final_tx);
 		}
-		Event::PaymentReceived { amount_msat, purpose, payment_hash } => {
+		Event::PaymentClaimable { amount_msat, purpose, payment_hash, .. } => {
 			let payment_preimage = match purpose {
 				PaymentPurpose::InvoicePayment { payment_preimage, .. } => payment_preimage,
 				PaymentPurpose::SpontaneousPayment(preimage) => Some(preimage),
@@ -197,7 +198,7 @@ async fn handle_ldk_events(
 			io::stdout().flush().unwrap();
 			channel_manager.claim_funds(payment_preimage.unwrap());
 		}
-		Event::PaymentClaimed { payment_hash, purpose, amount_msat } => {
+		Event::PaymentClaimed { payment_hash, purpose, amount_msat, .. } => {
 			info!(
 				"EVENT: claimed payment from payment_hash {} of {} satoshis",
 				hex_utils::hex_str(&payment_hash.0),

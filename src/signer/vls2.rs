@@ -24,7 +24,7 @@ use log::{debug, error, info};
 use tokio::runtime::Handle;
 use tokio::sync::mpsc::Sender;
 use tokio::sync::oneshot;
-use tokio::{runtime, task};
+use tokio::task;
 use vls_protocol_client::{Error, KeysManagerClient, Transport};
 use vls_protocol_signer::handler::{Handler, RootHandler, RootHandlerBuilder};
 use vls_protocol_signer::vls_protocol::model::PubKey;
@@ -34,7 +34,7 @@ use vls_proxy::grpc::adapter::{ChannelRequest, ClientId, HsmdService};
 use vls_proxy::grpc::incoming::TcpIncoming;
 
 use crate::bitcoin::Witness;
-use crate::signer::vls::create_spending_transaction;
+use crate::signer::util::create_spending_transaction;
 use crate::util::Shutter;
 use crate::{DynSigner, SpendableKeysInterface};
 
@@ -114,8 +114,16 @@ impl KeysInterface for KeysManager {
 		self.client.get_shutdown_scriptpubkey()
 	}
 
-	fn get_channel_signer(&self, inbound: bool, channel_value_satoshis: u64) -> Self::Signer {
-		let client = self.client.get_channel_signer(inbound, channel_value_satoshis);
+	fn generate_channel_keys_id(
+		&self, inbound: bool, channel_value_satoshis: u64, user_channel_id: u128,
+	) -> [u8; 32] {
+		self.client.generate_channel_keys_id(inbound, channel_value_satoshis, user_channel_id)
+	}
+
+	fn derive_channel_signer(
+		&self, channel_value_satoshis: u64, channel_keys_id: [u8; 32],
+	) -> Self::Signer {
+		let client = self.client.derive_channel_signer(channel_value_satoshis, channel_keys_id);
 		DynSigner::new(client)
 	}
 
@@ -227,12 +235,9 @@ impl GrpcTransport {
 		client_id: Option<ClientId>,
 	) -> Result<Vec<u8>, Error> {
 		let join = handle.spawn_blocking(move || {
-			runtime::Handle::current()
-				.block_on(Self::do_call_async(sender, message, client_id))
-				.unwrap()
+			Handle::current().block_on(Self::do_call_async(sender, message, client_id)).unwrap()
 		});
-		let result =
-			task::block_in_place(|| runtime::Handle::current().block_on(join)).expect("join");
+		let result = task::block_in_place(|| handle.block_on(join)).expect("join");
 		Ok(result)
 	}
 
