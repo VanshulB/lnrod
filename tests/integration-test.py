@@ -11,7 +11,11 @@ import time
 from shutil import rmtree
 from subprocess import Popen, call
 
-import jsonrpc_requests
+import json
+import requests
+import itertools
+import decimal
+
 import grpc
 from retrying import retry
 
@@ -56,12 +60,18 @@ def stop_proc(p):
     p.wait()
 
 
-class Bitcoind(jsonrpc_requests.Server):
+class BitcoindException(Exception):
+    def __init__(self, error):
+        self.error = error
+        super().__init__()
+
+class Bitcoind(object):
     def __init__(self, name, url, **kwargs):
         self.name = name
         self.mine_address = None
         self.url = url
-        super().__init__(url, **kwargs)
+        self.id_counter = itertools.count()
+        super().__init__(**kwargs)
 
     def wait_for_ready(self):
         timeout = 5
@@ -82,14 +92,16 @@ class Bitcoind(jsonrpc_requests.Server):
     def setup(self):
         try:
             self.createwallet('default')
-        except:
-            print('wallet already exists, skipping creation')
+        except BitcoindException as e:
+            if e.error['code'] != -4:
+                raise e
+            print('wallet already exists, skipping creation', e)
         # unload and reload with autoload, in case dev wants to play with it later
         try:
-            # it is possible that the wallet is not loaded, so we ignore the error
             self.unloadwallet('default')
-        except:
-            pass
+            # it is possible that the wallet is not loaded, so we ignore the error
+        except BitcoindException as e:
+            print('wallet not loaded, skipping unload')
         self.loadwallet('default', True)
 
     def mine(self, count=1):
@@ -97,6 +109,35 @@ class Bitcoind(jsonrpc_requests.Server):
             self.mine_address = self.getnewaddress()
         self.generatetoaddress(count, self.mine_address)
 
+    def __getattr__(self, item):
+        self._method_name = item
+        return self
+
+    def __call__(self, *args):
+        # rpc json call
+        method_name = self._method_name
+        del self._method_name
+        playload = json.dumps({'jsonrpc': '2.0', 'id': next(self.id_counter), "method": method_name, "params": args})
+        headers = {'Content-type': 'application/json'}
+        resp = None
+        try:
+            resp = requests.post(self.url, headers=headers, data=playload, timeout=10)
+            resp = resp.json(parse_float=decimal.Decimal)
+        except Exception as e:
+            error_msg = resp.text if resp is not None else e
+            msg = u"{} {}:[{}] \n {}".format('post', method_name, args, error_msg)
+            logger.error(msg)
+            raise e
+
+        if resp.get('error') is not None:
+            e = resp['error']
+            logger.error('{}:[{}]\n {}:{}'.format(method_name, args, e['code'], e['message']))
+            raise BitcoindException(e)
+        elif 'result' not in resp:
+            logger.error('[{}]:[{}]\n MISSING JSON-RPC RESULT'.format(method_name, args, ))
+            raise Exception('missing result')
+
+        return resp['result']
 
 @retry(stop_max_attempt_number=50, wait_fixed=100)
 def grpc_client(url):
@@ -334,11 +375,12 @@ def start_bitcoind():
     global processes
 
     btc_log = open(OUTPUT_DIR + '/btc.log', 'w')
-    btc_proc = Popen([
+    popen_args = [
         # 'strace', '-o', '/tmp/out', '-s', '10000', '-f',
         'bitcoind', '--regtest', '--fallbackfee=0.0000001',
         '--rpcuser=user', '--rpcpassword=pass',
-        f'--datadir={OUTPUT_DIR}'], stdout=btc_log)
+        f'--datadir={OUTPUT_DIR}']
+    btc_proc = Popen(popen_args, stdout=btc_log)
     processes.append(btc_proc)
     btc = Bitcoind('btc-regtest', 'http://user:pass@localhost:18443')
     btc.wait_for_ready()
