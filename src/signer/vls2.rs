@@ -24,7 +24,7 @@ use log::{debug, error, info};
 use tokio::runtime::Handle;
 use tokio::sync::mpsc::Sender;
 use tokio::sync::oneshot;
-use tokio::{runtime, task};
+use tokio::task;
 use vls_protocol_client::{Error, KeysManagerClient, Transport};
 use vls_protocol_signer::handler::{Handler, RootHandler, RootHandlerBuilder};
 use vls_protocol_signer::vls_protocol::model::PubKey;
@@ -235,12 +235,9 @@ impl GrpcTransport {
 		client_id: Option<ClientId>,
 	) -> Result<Vec<u8>, Error> {
 		let join = handle.spawn_blocking(move || {
-			runtime::Handle::current()
-				.block_on(Self::do_call_async(sender, message, client_id))
-				.unwrap()
+			Handle::current().block_on(Self::do_call_async(sender, message, client_id)).unwrap()
 		});
-		let result =
-			task::block_in_place(|| runtime::Handle::current().block_on(join)).expect("join");
+		let result = task::block_in_place(|| handle.block_on(join)).expect("join");
 		Ok(result)
 	}
 
