@@ -124,3 +124,9 @@ path = "src/main_cli.rs"
 [[bin]]
 name = "test_onion_server"
 path = "src/main_test_onion_server.rs"
+
+[profile.release]
+panic = "abort"
+
+[profile.dev]
+panic = "abort"
