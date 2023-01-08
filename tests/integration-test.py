@@ -125,7 +125,7 @@ class Bitcoind(object):
         headers = {'Content-type': 'application/json'}
         resp = None
         try:
-            resp = requests.post(self.url, headers=headers, data=playload, timeout=10)
+            resp = requests.post(self.url, headers=headers, data=playload, timeout=30)
             resp = resp.json(parse_float=decimal.Decimal)
         except Exception as e:
             error_msg = resp.text if resp is not None else e
@@ -313,7 +313,7 @@ def run(disaster_recovery_block_explorer, existing_bitcoin_rpc):
         print('Disaster recovery at charlie')
         stop_proc(charlie_proc)
         stop_proc(charlie_proc1)
-        destination = btc.getnewaddress(label=f"sweep-{charlie_id.hex()}")
+        destination = btc.getnewaddress(f"sweep-{charlie_id.hex()}")
         stdout_log = open(OUTPUT_DIR + f'/vls3-recover.log', 'w')
         vlsd = DEV_BINARIES_PATH + '/vlsd2' if DEV_MODE else 'vlsd2'
         if disaster_recovery_block_explorer == 'bitcoind':
