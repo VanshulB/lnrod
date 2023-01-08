@@ -225,6 +225,10 @@ def run(disaster_recovery_block_explorer, existing_bitcoin_rpc):
     wait_until('channel at bob', lambda: bob.ChannelList(Void()).channels[0].is_pending)
     wait_until('channel at alice', lambda: alice.ChannelList(Void()).channels[0].is_pending)
 
+    btc.mine(1)
+    time.sleep(1)
+    btc.mine(1)
+
     print('Create channel bob -> charlie')
     try:
         bob.PeerConnect(PeerConnectRequest(node_id=charlie_id, address=f'127.0.0.1:{charlie.lnport}'))
