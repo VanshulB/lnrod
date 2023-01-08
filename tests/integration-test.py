@@ -52,7 +52,11 @@ def kill_procs():
     for p in processes:
         p.send_signal(signal.SIGTERM)
     for p in processes:
-        p.wait()
+        try:
+            p.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            print(f'process {p} did not exit, killing')
+            p.send_signal(signal.SIGKILL)
 
 
 def stop_proc(p):
@@ -383,6 +387,7 @@ def start_bitcoind():
     btc_proc = Popen(popen_args, stdout=btc_log)
     processes.append(btc_proc)
     btc = Bitcoind('btc-regtest', 'http://user:pass@localhost:18443')
+    time.sleep(2)
     btc.wait_for_ready()
     btc.setup()
     btc = Bitcoind('btc-regtest', 'http://user:pass@localhost:18443/wallet/default')
