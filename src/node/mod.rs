@@ -41,7 +41,7 @@ use lightning_persister::FilesystemPersister;
 use lightning_rapid_gossip_sync::RapidGossipSync;
 use lightning_signer::lightning::chain::ChannelMonitorUpdateStatus;
 use lightning_signer::{bitcoin, lightning};
-use rand::{thread_rng, Rng};
+use rand::{thread_rng, RngCore};
 use tokio::runtime::Handle;
 
 use crate::bitcoind_client::BitcoindClient;

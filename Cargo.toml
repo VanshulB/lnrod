@@ -20,18 +20,17 @@ tor = ["torut", "tokio-socks", "regex"]
 bugsalot = { version = "0.2", optional = true }
 
 anyhow = "1.0"
-base64 = "0.13.0"
-bitcoin-bech32 = "0.7"
-bech32 = "0.7"
-hex = "0.3"
+base64 = "0.13"
+bech32 = "0.9"
+hex = "0.4"
 futures = "0.3.21"
 
 log = { version="0.4.14", features = [ "std" ] }
 once_cell = "1.7.2"
 time = "0.2"
-rand = "0.4"
+rand = "0.8"
 serde_json = { version = "1.0" }
-tokio = { version = "1.17", features = [ "io-util", "macros", "rt", "rt-multi-thread", "sync", "net", "time", "tracing" ] }
+tokio = { version = "1.24", features = ["macros", "rt-multi-thread"] }
 hyper = "0.14"
 prost = "0.11"
 tonic = "0.8"
@@ -86,28 +85,28 @@ features = ["rpc-client"]
 [dependencies.vls-core]
 features = ["std"]
 git = "https://gitlab.com/lightning-signer/validating-lightning-signer.git"
-rev = "5357446a4a44ec829e480b88a7fee3b2211f9129"
+rev = "df4e21122e6f702c2b7aa73993fdb977c7e419f7"
 #path = "../vls/lightning-signer-core"
 
 [dependencies.vls-server]
 features = ["grpc"]
 git = "https://gitlab.com/lightning-signer/validating-lightning-signer.git"
-rev = "5357446a4a44ec829e480b88a7fee3b2211f9129" # VLS VERSION
+rev = "df4e21122e6f702c2b7aa73993fdb977c7e419f7" # VLS VERSION
 #path = "../vls/lightning-signer-server"
 
 [dependencies.vls-protocol-signer]
 git = "https://gitlab.com/lightning-signer/validating-lightning-signer.git"
-rev = "5357446a4a44ec829e480b88a7fee3b2211f9129"
+rev = "df4e21122e6f702c2b7aa73993fdb977c7e419f7"
 #path = "../vls/vls-protocol-signer"
 
 [dependencies.vls-protocol-client]
 git = "https://gitlab.com/lightning-signer/validating-lightning-signer.git"
-rev = "5357446a4a44ec829e480b88a7fee3b2211f9129"
+rev = "df4e21122e6f702c2b7aa73993fdb977c7e419f7"
 #path = "../vls/vls-protocol-client"
 
 [dependencies.vls-proxy]
 git = "https://gitlab.com/lightning-signer/validating-lightning-signer.git"
-rev = "5357446a4a44ec829e480b88a7fee3b2211f9129"
+rev = "df4e21122e6f702c2b7aa73993fdb977c7e419f7"
 #path = "../vls/vls-proxy"
 
 [build-dependencies]

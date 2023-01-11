@@ -1,7 +1,7 @@
 //! Validating Lightning Signer integration
 
 use crate::{hex_utils, DynSigner, SpendableKeysInterface};
-use bitcoin::bech32::u5;
+use bech32::u5;
 use bitcoin::psbt::PartiallySignedTransaction;
 use bitcoin::secp256k1::ecdsa::RecoverableSignature;
 use bitcoin::secp256k1::{ecdh::SharedSecret, All, PublicKey, Scalar, Secp256k1, SecretKey};

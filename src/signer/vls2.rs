@@ -2,7 +2,7 @@ use std::fs;
 use std::net::{Ipv4Addr, SocketAddr};
 use std::sync::Arc;
 
-use bitcoin::bech32::u5;
+use bech32::u5;
 use bitcoin::psbt::PartiallySignedTransaction;
 use bitcoin::secp256k1::{
 	ecdh::SharedSecret, ecdsa::RecoverableSignature, All, PublicKey, Scalar, Secp256k1, SecretKey,

@@ -12,7 +12,7 @@ use lightning_signer::{bitcoin, lightning};
 
 use crate::signer::keys::KeysManager;
 use crate::{byte_utils, DynSigner, SpendableKeysInterface};
-use rand::{thread_rng, Rng};
+use rand::{thread_rng, RngCore};
 use std::time::SystemTime;
 
 pub struct InMemorySignerFactory {

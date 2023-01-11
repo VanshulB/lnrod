@@ -12,7 +12,6 @@ use bitcoin::hashes::sha256::Hash as Sha256;
 use bitcoin::hashes::Hash;
 use bitcoin::secp256k1::Secp256k1;
 use bitcoin::{Network, Transaction};
-use bitcoin_bech32::WitnessProgram;
 use lightning::chain;
 use lightning::chain::chaininterface::{BroadcasterInterface, ConfirmationTarget, FeeEstimator};
 use lightning::chain::chainmonitor::ChainMonitor;
@@ -26,6 +25,7 @@ use lightning::routing::gossip::{NetworkGraph, P2PGossipSync};
 use lightning::util::events::Event;
 use lightning_net_tokio::SocketDescriptor;
 use lightning_persister::FilesystemPersister;
+use lightning_signer::bitcoin::Address;
 use lightning_signer::{bitcoin, lightning, lightning_invoice};
 use rand::{thread_rng, Rng};
 
@@ -134,21 +134,16 @@ async fn handle_ldk_events(
 			..
 		} => {
 			info!("EVENT: funding generation ready");
+			assert!(
+				output_script.is_witness_program(),
+				"Lightning funding tx should always be to a SegWit output"
+			);
 			// Construct the raw transaction with one output, that is paid the amount of the
 			// channel.
-			let addr = WitnessProgram::from_scriptpubkey(
-				&output_script[..],
-				match network {
-					Network::Bitcoin => bitcoin_bech32::constants::Network::Bitcoin,
-					Network::Testnet => bitcoin_bech32::constants::Network::Testnet,
-					Network::Regtest => bitcoin_bech32::constants::Network::Regtest,
-					Network::Signet => bitcoin_bech32::constants::Network::Testnet,
-				},
-			)
-			.expect("Lightning funding tx should always be to a SegWit output")
-			.to_address();
+			let addr = Address::from_script(&output_script, network)
+				.expect("construct address from scriptpubkey");
 			let mut outputs = HashMap::with_capacity(1);
-			outputs.insert(addr, channel_value_satoshis);
+			outputs.insert(addr.to_string(), channel_value_satoshis);
 			debug!("create_raw_transaction {:?}", outputs);
 			let raw_tx = bitcoind_client.create_raw_transaction(outputs).await;
 
@@ -281,7 +276,7 @@ async fn handle_ldk_events(
 			tokio::spawn(async move {
 				let min = time_forwardable.as_millis() as u64;
 				if min > 0 {
-					let millis_to_sleep = thread_rng().gen_range(min, min * 5) as u64;
+					let millis_to_sleep = thread_rng().gen_range(min..min * 5) as u64;
 					tokio::time::sleep(Duration::from_millis(millis_to_sleep)).await;
 				}
 				forwarding_channel_manager.process_pending_htlc_forwards();
