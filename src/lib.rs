@@ -28,6 +28,8 @@ use lightning_persister::FilesystemPersister;
 use lightning_signer::bitcoin::Address;
 use lightning_signer::{bitcoin, lightning, lightning_invoice};
 use rand::{thread_rng, Rng};
+use vls_proxy::lightning_signer;
+use vls_proxy::vls_protocol_client;
 
 use vls_protocol_client::{DynKeysInterface, DynSigner, SpendableKeysInterface};
 

@@ -25,6 +25,7 @@ use log::info;
 use std::fs;
 use std::str::FromStr;
 use std::sync::Arc;
+use vls_proxy::lightning_signer_server;
 
 struct Adapter {
 	inner: LoopbackSignerKeysInterface,

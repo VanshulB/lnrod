@@ -32,6 +32,8 @@ use vls_protocol_signer::vls_protocol::msgs::{self, DeBolt, SerBolt};
 use vls_protocol_signer::vls_protocol::serde_bolt::WireString;
 use vls_proxy::grpc::adapter::{ChannelRequest, ClientId, HsmdService};
 use vls_proxy::grpc::incoming::TcpIncoming;
+use vls_proxy::vls_protocol_client;
+use vls_proxy::vls_protocol_signer;
 
 use crate::bitcoin::Witness;
 use crate::signer::util::create_spending_transaction;
