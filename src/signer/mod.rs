@@ -1,7 +1,8 @@
 use anyhow::Result;
 use bitcoin::Network;
+use lightning::chain::keysinterface::Recipient;
 use lightning_signer::bitcoin;
-use lightning_signer::lightning::chain::keysinterface::Recipient;
+use lightning_signer::lightning;
 use log::info;
 use tokio::runtime::Handle;
 

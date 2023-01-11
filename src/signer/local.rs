@@ -20,15 +20,16 @@ use lightning_signer::signer::ClockStartingTimeFactory;
 use lightning_signer::util::clock::StandardClock;
 use lightning_signer::util::loopback::LoopbackSignerKeysInterface;
 use lightning_signer::{bitcoin, lightning};
+use lightning_signer_server::nodefront::SignerFront;
 use lightning_signer_server::persist::kv_json::KVJsonPersister;
 use log::info;
 use std::fs;
 use std::str::FromStr;
 use std::sync::Arc;
 use url::Url;
+use vls_frontend::Frontend;
 use vls_proxy::lightning_signer_server;
-use vls_proxy::lightning_signer_server::nodefront::SignerFront;
-use vls_proxy::vls_frontend::Frontend;
+use vls_proxy::vls_frontend;
 
 struct Adapter {
 	inner: LoopbackSignerKeysInterface,
