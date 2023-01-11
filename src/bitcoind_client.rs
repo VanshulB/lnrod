@@ -25,16 +25,13 @@ use bitcoin::hashes::hex::ToHex;
 use jsonrpc_async::error as rpc_error;
 use jsonrpc_async::simple_http::SimpleHttpTransport;
 use jsonrpc_async::Client;
+use url::Url;
 
 // TODO why are we using tokio mutexes here?
 #[derive(Clone)]
 pub struct BitcoindClient {
 	rpc: Arc<Mutex<Client>>,
-	// Currently unused, for implementing reconnection
-	#[allow(unused)]
-	host: String,
-	#[allow(unused)]
-	port: u16,
+	url: Url,
 	fees: Arc<HashMap<Target, AtomicU32>>,
 	queued_transactions: Arc<Mutex<Vec<Transaction>>>,
 	latest_tip: Arc<Mutex<BlockHash>>,
@@ -76,9 +73,12 @@ impl BitcoindClient {
 	pub async fn new(
 		host: String, port: u16, rpc_user: String, rpc_password: String, rpc_path: String,
 	) -> std::io::Result<Self> {
-		let url = format!("http://{}:{}{}", host, port, rpc_path);
+		let url_s = format!("http://{}:{}{}", host, port, rpc_path);
+		let mut url = Url::parse(&url_s).expect("bitcoin RPC URL");
+		url.set_username(&rpc_user).unwrap();
+		url.set_password(Some(&rpc_password)).unwrap();
 		println!("Connecting to bitcoind at {}", url);
-		let mut builder = SimpleHttpTransport::builder().url(&url).await.unwrap();
+		let mut builder = SimpleHttpTransport::builder().url(&url_s).await.unwrap();
 		builder = builder.auth(rpc_user, Some(rpc_password));
 		let rpc = Client::with_transport(builder.build());
 
@@ -89,8 +89,7 @@ impl BitcoindClient {
 
 		let client = Self {
 			rpc: Arc::new(Mutex::new(rpc)),
-			host,
-			port,
+			url,
 			fees: Arc::new(fees),
 			queued_transactions: Arc::new(Mutex::new(Vec::new())),
 			latest_tip: Arc::new(Mutex::new(BlockHash::all_zeros())),
@@ -98,6 +97,10 @@ impl BitcoindClient {
 		// Fast fail if any connectivity issue
 		client.get_blockchain_info().await;
 		Ok(client)
+	}
+
+	pub fn url(&self) -> &Url {
+		&self.url
 	}
 
 	pub async fn create_raw_transaction(&self, outputs: HashMap<String, u64>) -> RawTx {

@@ -97,6 +97,12 @@ COOKIE=`docker exec esplora-regtest cat /data/bitcoin/regtest/.cookie`
 SIGNER=vls2-grpc ./tests/integration-test.py --dev --bitcoin http://$COOKIE@localhost:18443 --test-disaster=esplora
 ```
 
+## Enabling Frontend
+
+```shell
+export VLS_CHAINFOLLOWER_ENABLE=1
+```
+
 ### Using [kcov](https://github.com/SimonKagstrom/kcov) for Code Coverage
 
 Dependencies:

@@ -2,6 +2,7 @@ use anyhow::Result;
 use bitcoin::Network;
 use lightning_signer::bitcoin;
 use lightning_signer::lightning::chain::keysinterface::Recipient;
+use log::info;
 use tokio::runtime::Handle;
 
 use crate::util::Shutter;
@@ -21,11 +22,15 @@ pub async fn get_keys_manager(
 	ldk_data_dir: String, bitcoind_client: BitcoindClient,
 ) -> Result<Box<dyn SpendableKeysInterface<Signer = DynSigner>>> {
 	let sweep_address = bitcoind_client.get_new_address("".to_string()).await;
+	let bitcoin_rpc_url = bitcoind_client.url().clone();
 
+	info!("make signer {}", name);
 	let manager: Box<dyn SpendableKeysInterface<Signer = DynSigner>> = match name {
 		"test" => test_signer::make_signer(network, ldk_data_dir, sweep_address),
-		"vls-local" => local::make_signer(network, ldk_data_dir, sweep_address),
-		"vls2-null" => vls2::make_null_signer(network, ldk_data_dir, sweep_address).await,
+		"vls-local" => local::make_signer(network, ldk_data_dir, sweep_address, bitcoin_rpc_url),
+		"vls2-null" => {
+			vls2::make_null_signer(network, ldk_data_dir, sweep_address, bitcoin_rpc_url).await
+		}
 		"vls2-grpc" => {
 			vls2::make_grpc_signer(
 				shutter,
@@ -34,6 +39,7 @@ pub async fn get_keys_manager(
 				network,
 				ldk_data_dir,
 				sweep_address,
+				bitcoin_rpc_url,
 			)
 			.await
 		}

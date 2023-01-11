@@ -37,6 +37,7 @@ tonic = "0.8"
 clap = "=3.0.0-beta.2"  # later versions have deps which increase MSRV
 toml = "0.5.8"
 url = "2.3"
+async-trait = "0.1"
 
 jsonrpc-async = "2.0.2"
 serde = { version = "1.0.105", features = ["derive"] }
@@ -85,28 +86,12 @@ features = ["rpc-client"]
 [dependencies.vls-core]
 features = ["std"]
 git = "https://gitlab.com/lightning-signer/validating-lightning-signer.git"
-rev = "df4e21122e6f702c2b7aa73993fdb977c7e419f7"
-#path = "../vls/lightning-signer-core"
-
-[dependencies.vls-server]
-features = ["grpc"]
-git = "https://gitlab.com/lightning-signer/validating-lightning-signer.git"
-rev = "df4e21122e6f702c2b7aa73993fdb977c7e419f7" # VLS VERSION
-#path = "../vls/lightning-signer-server"
-
-[dependencies.vls-protocol-signer]
-git = "https://gitlab.com/lightning-signer/validating-lightning-signer.git"
-rev = "df4e21122e6f702c2b7aa73993fdb977c7e419f7"
-#path = "../vls/vls-protocol-signer"
-
-[dependencies.vls-protocol-client]
-git = "https://gitlab.com/lightning-signer/validating-lightning-signer.git"
-rev = "df4e21122e6f702c2b7aa73993fdb977c7e419f7"
-#path = "../vls/vls-protocol-client"
+rev = "5aec184d8b0fe582e10e5e53ddd0cee7c2b0daee"
+#path = "../vls/vls-core"
 
 [dependencies.vls-proxy]
 git = "https://gitlab.com/lightning-signer/validating-lightning-signer.git"
-rev = "df4e21122e6f702c2b7aa73993fdb977c7e419f7"
+rev = "5aec184d8b0fe582e10e5e53ddd0cee7c2b0daee"  # VLS VERSION
 #path = "../vls/vls-proxy"
 
 [build-dependencies]

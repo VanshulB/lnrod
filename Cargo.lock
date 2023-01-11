@@ -19,14 +19,9 @@ checksum = "f26201604c87b1e01bd3d98f8d5d9a8fcbb815e8cedb41ffccbeb4bf593a35fe"
 
 [[package]]
 name = "ahash"
-version = "0.7.6"
+version = "0.3.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fcb51a0695d8f838b1ee009b3fbf66bda078cd64590202a864a8f3e8c4315c47"
-dependencies = [
- "getrandom 0.2.8",
- "once_cell",
- "version_check",
-]
+checksum = "e8fd72866655d1904d6b0997d0b07ba561047d070fbe29de039031c641b61217"
 
 [[package]]
 name = "aho-corasick"
@@ -250,7 +245,7 @@ checksum = "8d696c370c750c948ada61c69a0ee2cbbb9c50b1019ddb86d9317157a99c2cae"
 [[package]]
 name = "bolt-derive"
 version = "0.1.0"
-source = "git+https://gitlab.com/lightning-signer/validating-lightning-signer.git?rev=df4e21122e6f702c2b7aa73993fdb977c7e419f7#df4e21122e6f702c2b7aa73993fdb977c7e419f7"
+source = "git+https://gitlab.com/lightning-signer/validating-lightning-signer.git?rev=5aec184d8b0fe582e10e5e53ddd0cee7c2b0daee#5aec184d8b0fe582e10e5e53ddd0cee7c2b0daee"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -392,7 +387,7 @@ dependencies = [
  "autocfg",
  "cfg-if",
  "crossbeam-utils",
- "memoffset 0.7.1",
+ "memoffset",
  "scopeguard",
 ]
 
@@ -421,7 +416,7 @@ version = "3.2.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1631ca6e3c59112501a9d87fd86f21591ff77acd31331e8a73f8d80a65bbdd71"
 dependencies = [
- "nix 0.26.1",
+ "nix",
  "windows-sys",
 ]
 
@@ -796,11 +791,12 @@ checksum = "eabb4a44450da02c90444cf74558da904edde8fb4e9035a9a6a4e15445af0bd7"
 
 [[package]]
 name = "hashbrown"
-version = "0.11.2"
+version = "0.8.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ab5ef0d4909ef3724cc8cce6ccc8572c5c817592e9285f5464f8e86f8bd3726e"
+checksum = "e91b62f79061a0bc2e046024cb7ba44b08419ed238ecbd9adbd787434b9e8c25"
 dependencies = [
  "ahash",
+ "autocfg",
 ]
 
 [[package]]
@@ -1149,7 +1145,7 @@ dependencies = [
 [[package]]
 name = "lightning-storage-server"
 version = "0.1.0"
-source = "git+https://gitlab.com/lightning-signer/validating-lightning-signer.git?rev=df4e21122e6f702c2b7aa73993fdb977c7e419f7#df4e21122e6f702c2b7aa73993fdb977c7e419f7"
+source = "git+https://gitlab.com/lightning-signer/validating-lightning-signer.git?rev=5aec184d8b0fe582e10e5e53ddd0cee7c2b0daee#5aec184d8b0fe582e10e5e53ddd0cee7c2b0daee"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1182,6 +1178,7 @@ name = "lnrod"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "async-trait",
  "base64 0.13.1",
  "bech32",
  "bugsalot",
@@ -1215,10 +1212,7 @@ dependencies = [
  "triggered",
  "url",
  "vls-core",
- "vls-protocol-client",
- "vls-protocol-signer",
  "vls-proxy",
- "vls-server",
  "zeroize",
 ]
 
@@ -1252,15 +1246,6 @@ name = "memchr"
 version = "2.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2dffe52ecf27772e601905b7522cb4ef790d2cc203488bbd0e2fe85fcb74566d"
-
-[[package]]
-name = "memoffset"
-version = "0.6.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5aa361d4faea93603064a027415f07bd8e1d5c88c9fbf68bf56a285428fd79ce"
-dependencies = [
- "autocfg",
-]
 
 [[package]]
 name = "memoffset"
@@ -1306,19 +1291,6 @@ checksum = "e5ce46fe64a9d73be07dcbe690a38ce1b293be448fd8ce1e6c1b8062c9f72c6a"
 
 [[package]]
 name = "nix"
-version = "0.22.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e4916f159ed8e5de0082076562152a76b7a1f64a01fd9d1e0fea002c37624faf"
-dependencies = [
- "bitflags",
- "cc",
- "cfg-if",
- "libc",
- "memoffset 0.6.5",
-]
-
-[[package]]
-name = "nix"
 version = "0.26.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "46a58d1d356c6597d08cde02c2f09d785b09e28711837b1ed667dc652c08a694"
@@ -1326,6 +1298,8 @@ dependencies = [
  "bitflags",
  "cfg-if",
  "libc",
+ "memoffset",
+ "pin-utils",
  "static_assertions",
 ]
 
@@ -2744,14 +2718,14 @@ checksum = "49874b5167b65d7193b8aba1567f5c7d93d001cafc34600cee003eda787e483f"
 [[package]]
 name = "vls-core"
 version = "0.1.0-5"
-source = "git+https://gitlab.com/lightning-signer/validating-lightning-signer.git?rev=df4e21122e6f702c2b7aa73993fdb977c7e419f7#df4e21122e6f702c2b7aa73993fdb977c7e419f7"
+source = "git+https://gitlab.com/lightning-signer/validating-lightning-signer.git?rev=5aec184d8b0fe582e10e5e53ddd0cee7c2b0daee#5aec184d8b0fe582e10e5e53ddd0cee7c2b0daee"
 dependencies = [
  "anyhow",
  "backtrace",
  "bitcoin",
  "bolt-derive",
  "env_logger",
- "hashbrown 0.11.2",
+ "hashbrown 0.8.2",
  "hex",
  "itertools",
  "lightning",
@@ -2762,13 +2736,12 @@ dependencies = [
  "serde_bolt",
  "serde_derive",
  "serde_with",
- "tonic",
 ]
 
 [[package]]
 name = "vls-frontend"
 version = "0.1.0-5"
-source = "git+https://gitlab.com/lightning-signer/validating-lightning-signer.git?rev=df4e21122e6f702c2b7aa73993fdb977c7e419f7#df4e21122e6f702c2b7aa73993fdb977c7e419f7"
+source = "git+https://gitlab.com/lightning-signer/validating-lightning-signer.git?rev=5aec184d8b0fe582e10e5e53ddd0cee7c2b0daee#5aec184d8b0fe582e10e5e53ddd0cee7c2b0daee"
 dependencies = [
  "async-trait",
  "log",
@@ -2781,7 +2754,7 @@ dependencies = [
 [[package]]
 name = "vls-persist"
 version = "0.1.0"
-source = "git+https://gitlab.com/lightning-signer/validating-lightning-signer.git?rev=df4e21122e6f702c2b7aa73993fdb977c7e419f7#df4e21122e6f702c2b7aa73993fdb977c7e419f7"
+source = "git+https://gitlab.com/lightning-signer/validating-lightning-signer.git?rev=5aec184d8b0fe582e10e5e53ddd0cee7c2b0daee#5aec184d8b0fe582e10e5e53ddd0cee7c2b0daee"
 dependencies = [
  "hex",
  "kv",
@@ -2795,7 +2768,7 @@ dependencies = [
 [[package]]
 name = "vls-protocol"
 version = "0.1.0"
-source = "git+https://gitlab.com/lightning-signer/validating-lightning-signer.git?rev=df4e21122e6f702c2b7aa73993fdb977c7e419f7#df4e21122e6f702c2b7aa73993fdb977c7e419f7"
+source = "git+https://gitlab.com/lightning-signer/validating-lightning-signer.git?rev=5aec184d8b0fe582e10e5e53ddd0cee7c2b0daee#5aec184d8b0fe582e10e5e53ddd0cee7c2b0daee"
 dependencies = [
  "as-any",
  "bolt-derive",
@@ -2809,7 +2782,7 @@ dependencies = [
 [[package]]
 name = "vls-protocol-client"
 version = "0.1.0"
-source = "git+https://gitlab.com/lightning-signer/validating-lightning-signer.git?rev=df4e21122e6f702c2b7aa73993fdb977c7e419f7#df4e21122e6f702c2b7aa73993fdb977c7e419f7"
+source = "git+https://gitlab.com/lightning-signer/validating-lightning-signer.git?rev=5aec184d8b0fe582e10e5e53ddd0cee7c2b0daee#5aec184d8b0fe582e10e5e53ddd0cee7c2b0daee"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -2823,7 +2796,7 @@ dependencies = [
 [[package]]
 name = "vls-protocol-signer"
 version = "0.1.0"
-source = "git+https://gitlab.com/lightning-signer/validating-lightning-signer.git?rev=df4e21122e6f702c2b7aa73993fdb977c7e419f7#df4e21122e6f702c2b7aa73993fdb977c7e419f7"
+source = "git+https://gitlab.com/lightning-signer/validating-lightning-signer.git?rev=5aec184d8b0fe582e10e5e53ddd0cee7c2b0daee#5aec184d8b0fe582e10e5e53ddd0cee7c2b0daee"
 dependencies = [
  "bit-vec",
  "log",
@@ -2835,7 +2808,7 @@ dependencies = [
 [[package]]
 name = "vls-proxy"
 version = "0.1.0"
-source = "git+https://gitlab.com/lightning-signer/validating-lightning-signer.git?rev=df4e21122e6f702c2b7aa73993fdb977c7e419f7#df4e21122e6f702c2b7aa73993fdb977c7e419f7"
+source = "git+https://gitlab.com/lightning-signer/validating-lightning-signer.git?rev=5aec184d8b0fe582e10e5e53ddd0cee7c2b0daee#5aec184d8b0fe582e10e5e53ddd0cee7c2b0daee"
 dependencies = [
  "anyhow",
  "as-any",
@@ -2851,7 +2824,7 @@ dependencies = [
  "hyper",
  "lightning-storage-server",
  "log",
- "nix 0.22.3",
+ "nix",
  "prost",
  "serde",
  "thiserror",
@@ -2873,17 +2846,13 @@ dependencies = [
 [[package]]
 name = "vls-server"
 version = "0.1.0-5"
-source = "git+https://gitlab.com/lightning-signer/validating-lightning-signer.git?rev=df4e21122e6f702c2b7aa73993fdb977c7e419f7#df4e21122e6f702c2b7aa73993fdb977c7e419f7"
+source = "git+https://gitlab.com/lightning-signer/validating-lightning-signer.git?rev=5aec184d8b0fe582e10e5e53ddd0cee7c2b0daee#5aec184d8b0fe582e10e5e53ddd0cee7c2b0daee"
 dependencies = [
  "anyhow",
  "async-trait",
  "hex",
  "log",
- "prost",
- "serde",
  "time 0.3.17",
- "tokio",
- "tonic",
  "tonic-build",
  "vls-core",
  "vls-frontend",

@@ -2,6 +2,7 @@ use std::fs;
 use std::net::{Ipv4Addr, SocketAddr};
 use std::sync::Arc;
 
+use async_trait::async_trait;
 use bech32::u5;
 use bitcoin::psbt::PartiallySignedTransaction;
 use bitcoin::secp256k1::{
@@ -25,14 +26,18 @@ use tokio::runtime::Handle;
 use tokio::sync::mpsc::Sender;
 use tokio::sync::oneshot;
 use tokio::task;
-use vls_protocol_client::{Error, KeysManagerClient, Transport};
+use url::Url;
+use vls_protocol_client::{ClientResult, Error, KeysManagerClient, Transport};
 use vls_protocol_signer::handler::{Handler, RootHandler, RootHandlerBuilder};
 use vls_protocol_signer::vls_protocol::model::PubKey;
 use vls_protocol_signer::vls_protocol::msgs::{self, DeBolt, SerBolt};
 use vls_protocol_signer::vls_protocol::serde_bolt::WireString;
 use vls_proxy::grpc::adapter::{ChannelRequest, ClientId, HsmdService};
 use vls_proxy::grpc::incoming::TcpIncoming;
+use vls_proxy::portfront::SignerPortFront;
+use vls_proxy::vls_frontend::Frontend;
 use vls_proxy::vls_protocol_client;
+use vls_proxy::vls_protocol_client::SignerPort;
 use vls_proxy::vls_protocol_signer;
 
 use crate::bitcoin::Witness;
@@ -66,7 +71,7 @@ impl NullTransport {
 }
 
 impl Transport for NullTransport {
-	fn node_call(&self, message_ser: Vec<u8>) -> Result<Vec<u8>, Error> {
+	fn node_call(&self, message_ser: Vec<u8>) -> ClientResult<Vec<u8>> {
 		let message = msgs::from_vec(message_ser)?;
 		debug!("ENTER node_call {:?}", message);
 		let (result, _) = self.handler.handle(message).map_err(|e| {
@@ -77,7 +82,7 @@ impl Transport for NullTransport {
 		Ok(result.as_vec())
 	}
 
-	fn call(&self, dbid: u64, peer_id: PubKey, message_ser: Vec<u8>) -> Result<Vec<u8>, Error> {
+	fn call(&self, dbid: u64, peer_id: PubKey, message_ser: Vec<u8>) -> ClientResult<Vec<u8>> {
 		let message = msgs::from_vec(message_ser)?;
 		debug!("ENTER call({}) {:?}", dbid, message);
 		let handler = self.handler.for_new_client(0, peer_id, dbid);
@@ -87,6 +92,21 @@ impl Transport for NullTransport {
 		})?;
 		debug!("REPLY call({}) {:?}", dbid, result);
 		Ok(result.as_vec())
+	}
+}
+
+struct TransportSignerPort {
+	transport: Arc<dyn Transport>,
+}
+
+#[async_trait]
+impl SignerPort for TransportSignerPort {
+	async fn handle_message(&self, message: Vec<u8>) -> ClientResult<Vec<u8>> {
+		self.transport.node_call(message)
+	}
+
+	fn clone(&self) -> Box<dyn SignerPort> {
+		Box::new(TransportSignerPort { transport: self.transport.clone() })
 	}
 }
 
@@ -182,16 +202,22 @@ impl SpendableKeysInterface for KeysManager {
 }
 
 pub(crate) async fn make_null_signer(
-	network: Network, ldk_data_dir: String, sweep_address: Address,
+	network: Network, ldk_data_dir: String, sweep_address: Address, bitcoin_rpc_url: Url,
 ) -> Box<dyn SpendableKeysInterface<Signer = DynSigner>> {
 	let node_id_path = format!("{}/node_id", ldk_data_dir);
 
 	if let Ok(_node_id_hex) = fs::read_to_string(node_id_path.clone()) {
 		unimplemented!("read from disk {}", node_id_path);
 	} else {
-		let transport = NullTransport::new(sweep_address.clone());
+		let transport = Arc::new(NullTransport::new(sweep_address.clone()));
+
+		let signer_port = Box::new(TransportSignerPort { transport: transport.clone() });
+		let frontend =
+			Frontend::new(Arc::new(SignerPortFront { signer_port, network }), bitcoin_rpc_url);
+		frontend.start();
+
 		let node_id = transport.handler.node().get_id();
-		let client = KeysManagerClient::new(Arc::new(transport), network.to_string());
+		let client = KeysManagerClient::new(transport, network.to_string());
 		let keys_manager = KeysManager { client, sweep_address };
 		fs::write(node_id_path, node_id.to_string()).expect("write node_id");
 		Box::new(keys_manager)
@@ -209,7 +235,7 @@ struct GrpcTransport {
 impl GrpcTransport {
 	async fn new(
 		network: Network, sender: Sender<ChannelRequest>, sweep_address: Address,
-	) -> Result<Self, Error> {
+	) -> ClientResult<Self> {
 		info!("waiting for signer");
 		let init = msgs::HsmdInit2 {
 			derivation_style: 0,
@@ -235,7 +261,7 @@ impl GrpcTransport {
 	fn do_call(
 		handle: &Handle, sender: Sender<ChannelRequest>, message: Vec<u8>,
 		client_id: Option<ClientId>,
-	) -> Result<Vec<u8>, Error> {
+	) -> ClientResult<Vec<u8>> {
 		let join = handle.spawn_blocking(move || {
 			Handle::current().block_on(Self::do_call_async(sender, message, client_id)).unwrap()
 		});
@@ -245,7 +271,7 @@ impl GrpcTransport {
 
 	async fn do_call_async(
 		sender: Sender<ChannelRequest>, message: Vec<u8>, client_id: Option<ClientId>,
-	) -> Result<Vec<u8>, Error> {
+	) -> ClientResult<Vec<u8>> {
 		// Create a one-shot channel to receive the reply
 		let (reply_tx, reply_rx) = oneshot::channel();
 
@@ -260,11 +286,11 @@ impl GrpcTransport {
 }
 
 impl Transport for GrpcTransport {
-	fn node_call(&self, message: Vec<u8>) -> Result<Vec<u8>, Error> {
+	fn node_call(&self, message: Vec<u8>) -> ClientResult<Vec<u8>> {
 		Self::do_call(&self.handle, self.sender.clone(), message, None)
 	}
 
-	fn call(&self, dbid: u64, peer_id: PubKey, message: Vec<u8>) -> Result<Vec<u8>, Error> {
+	fn call(&self, dbid: u64, peer_id: PubKey, message: Vec<u8>) -> ClientResult<Vec<u8>> {
 		let client_id = Some(ClientId { peer_id: peer_id.0, dbid });
 
 		Self::do_call(&self.handle, self.sender.clone(), message, client_id)
@@ -273,7 +299,7 @@ impl Transport for GrpcTransport {
 
 pub(crate) async fn make_grpc_signer(
 	shutter: Shutter, signer_handle: Handle, vls_port: u16, network: Network, ldk_data_dir: String,
-	sweep_address: Address,
+	sweep_address: Address, bitcoin_rpc_url: Url,
 ) -> Box<dyn SpendableKeysInterface<Signer = DynSigner>> {
 	let node_id_path = format!("{}/node_id", ldk_data_dir);
 	let addr = SocketAddr::from((Ipv4Addr::LOCALHOST, vls_port));
@@ -285,14 +311,21 @@ pub(crate) async fn make_grpc_signer(
 
 	signer_handle.spawn(server.start(incoming, shutter.signal));
 
-	let transport = signer_handle
-		.spawn(GrpcTransport::new(network, sender, sweep_address.clone()))
-		.await
-		.expect("join")
-		.expect("gRPC transport init");
+	let transport = Arc::new(
+		signer_handle
+			.spawn(GrpcTransport::new(network, sender, sweep_address.clone()))
+			.await
+			.expect("join")
+			.expect("gRPC transport init"),
+	);
 	let node_id = transport.node_id();
 
-	let client = KeysManagerClient::new(Arc::new(transport), network.to_string());
+	let signer_port = Box::new(TransportSignerPort { transport: transport.clone() });
+	let frontend =
+		Frontend::new(Arc::new(SignerPortFront { signer_port, network }), bitcoin_rpc_url);
+	frontend.start();
+
+	let client = KeysManagerClient::new(transport, network.to_string());
 	let keys_manager = KeysManager { client, sweep_address };
 	fs::write(node_id_path, node_id.to_string()).expect("write node_id");
 
