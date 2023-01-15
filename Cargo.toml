@@ -86,12 +86,12 @@ features = ["rpc-client"]
 [dependencies.vls-core]
 features = ["std"]
 git = "https://gitlab.com/lightning-signer/validating-lightning-signer.git"
-rev = "5aec184d8b0fe582e10e5e53ddd0cee7c2b0daee"
+rev = "7aa79051a3787ff92d411ad2aa2bd7ebe9bfe473"
 #path = "../vls/vls-core"
 
 [dependencies.vls-proxy]
 git = "https://gitlab.com/lightning-signer/validating-lightning-signer.git"
-rev = "5aec184d8b0fe582e10e5e53ddd0cee7c2b0daee"  # VLS VERSION
+rev = "7aa79051a3787ff92d411ad2aa2bd7ebe9bfe473"  # VLS VERSION
 #path = "../vls/vls-proxy"
 
 [build-dependencies]
