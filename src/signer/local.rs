@@ -1,7 +1,7 @@
 //! Validating Lightning Signer integration
 
 use crate::{hex_utils, DynSigner, SpendableKeysInterface};
-use bitcoin::bech32::u5;
+use bech32::u5;
 use bitcoin::psbt::PartiallySignedTransaction;
 use bitcoin::secp256k1::ecdsa::RecoverableSignature;
 use bitcoin::secp256k1::{ecdh::SharedSecret, All, PublicKey, Scalar, Secp256k1, SecretKey};
@@ -20,11 +20,16 @@ use lightning_signer::signer::ClockStartingTimeFactory;
 use lightning_signer::util::clock::StandardClock;
 use lightning_signer::util::loopback::LoopbackSignerKeysInterface;
 use lightning_signer::{bitcoin, lightning};
+use lightning_signer_server::nodefront::SignerFront;
 use lightning_signer_server::persist::kv_json::KVJsonPersister;
 use log::info;
 use std::fs;
 use std::str::FromStr;
 use std::sync::Arc;
+use url::Url;
+use vls_frontend::Frontend;
+use vls_proxy::lightning_signer_server;
+use vls_proxy::vls_frontend;
 
 struct Adapter {
 	inner: LoopbackSignerKeysInterface,
@@ -118,7 +123,7 @@ impl SpendableKeysInterface for Adapter {
 }
 
 pub(crate) fn make_signer(
-	network: Network, ldk_data_dir: String, sweep_address: Address,
+	network: Network, ldk_data_dir: String, sweep_address: Address, bitcoin_rpc_url: Url,
 ) -> Box<dyn SpendableKeysInterface<Signer = DynSigner>> {
 	let node_id_path = format!("{}/node_id", ldk_data_dir);
 	let signer_path = format!("{}/signer", ldk_data_dir);
@@ -129,12 +134,17 @@ pub(crate) fn make_signer(
 	let clock = Arc::new(StandardClock());
 	let services = NodeServices { validator_factory, starting_time_factory, persister, clock };
 	// FIXME use Node directly - requires rework of LoopbackSignerKeysInterface in the rls crate
-	let signer = MultiSigner::new(services);
+	let signer = Arc::new(MultiSigner::new(services));
+
+	let frontend =
+		Frontend::new(Arc::new(SignerFront { signer: Arc::clone(&signer) }), bitcoin_rpc_url);
+	frontend.start();
+
 	if let Ok(node_id_hex) = fs::read_to_string(node_id_path.clone()) {
 		let node_id = PublicKey::from_str(&node_id_hex).unwrap();
 		assert!(signer.get_node(&node_id).is_ok());
 
-		let manager = LoopbackSignerKeysInterface { node_id, signer: Arc::new(signer) };
+		let manager = LoopbackSignerKeysInterface { node_id, signer };
 		Box::new(Adapter { inner: manager, sweep_address })
 	} else {
 		let node_config =
@@ -143,7 +153,7 @@ pub(crate) fn make_signer(
 		fs::write(node_id_path, node_id.to_string()).expect("write node_id");
 		let node = signer.get_node(&node_id).unwrap();
 
-		let manager = LoopbackSignerKeysInterface { node_id, signer: Arc::new(signer) };
+		let manager = LoopbackSignerKeysInterface { node_id, signer };
 
 		let shutdown_scriptpubkey = manager.get_shutdown_scriptpubkey().into();
 		let shutdown_address = Address::from_script(&shutdown_scriptpubkey, network)
