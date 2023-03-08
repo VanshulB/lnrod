@@ -6,8 +6,8 @@ use lnrod::log_utils::{parse_log_level_filter, ConsoleLogger, LOG_LEVEL_FILTER_N
 
 fn make_node_subapp() -> App<'static> {
 	App::new("node")
-		.about("control a node")
-		.subcommand(App::new("info").about("Get node information"))
+		.help("control a node")
+		.subcommand(App::new("info").help("Get node information"))
 }
 
 fn node_subcommand(cli: &CLI, matches: &ArgMatches) -> Result<(), Box<dyn std::error::Error>> {
@@ -24,41 +24,41 @@ fn node_subcommand(cli: &CLI, matches: &ArgMatches) -> Result<(), Box<dyn std::e
 
 fn make_channel_subapp() -> App<'static> {
 	App::new("channel")
-		.about("control channels")
-		.subcommand(App::new("list").about("List channels"))
+		.help("control channels")
+		.subcommand(App::new("list").help("List channels"))
 		.subcommand(
 			App::new("new")
-				.about("New channel")
+				.help("New channel")
 				.arg(
 					Arg::new("nodeid")
-						.about("node ID in hex")
+						.help("node ID in hex")
 						.required(true)
 						.validator(|s| hex::decode(s)),
 				)
 				.arg(
 					Arg::new("value")
-						.about("value in satoshi")
+						.help("value in satoshi")
 						.required(true)
 						.validator(|s| s.parse::<u64>()),
 				)
 				.arg(
 					Arg::new("push")
 						.long("push")
-						.about("push in milli-satoshi")
+						.help("push in milli-satoshi")
 						.validator(|s| s.parse::<u64>()),
 				)
-				.arg(Arg::new("public").short('b').long("public").about("announce the channel")),
+				.arg(Arg::new("public").short('b').long("public").help("announce the channel")),
 		)
 		.subcommand(
 			App::new("close")
-				.about("Close or force-close a channel")
+				.help("Close or force-close a channel")
 				.arg(
 					Arg::new("channelid")
-						.about("channel ID in hex")
+						.help("channel ID in hex")
 						.required(true)
 						.validator(|s| hex::decode(s)),
 				)
-				.arg(Arg::new("force").short('f').long("force").about("force-close")),
+				.arg(Arg::new("force").short('f').long("force").help("force-close")),
 		)
 }
 
@@ -91,15 +91,15 @@ fn channel_subcommand(cli: &CLI, matches: &ArgMatches) -> Result<(), Box<dyn std
 
 fn make_peer_subapp() -> App<'static> {
 	App::new("peer")
-		.about("control peer connections")
-		.subcommand(App::new("list").about("List peers"))
+		.help("control peer connections")
+		.subcommand(App::new("list").help("List peers"))
 		.subcommand(
 			App::new("connect")
-				.about("Connect to peer")
-				.arg(Arg::new("nodeid").about("node ID in hex").required(true))
+				.help("Connect to peer")
+				.arg(Arg::new("nodeid").help("node ID in hex").required(true))
 				.arg(
 					Arg::new("address")
-						.about("host:port - or include with the nodeid argument separated by @")
+						.help("host:port - or include with the nodeid argument separated by @")
 						.required(false),
 				),
 		)
@@ -133,10 +133,10 @@ fn peer_subcommand(cli: &CLI, matches: &ArgMatches) -> Result<(), Box<dyn std::e
 }
 
 fn make_invoice_subapp() -> App<'static> {
-	App::new("invoice").about("control invoices").subcommand(
-		App::new("new").about("Create invoice").arg(
+	App::new("invoice").help("control invoices").subcommand(
+		App::new("new").help("Create invoice").arg(
 			Arg::new("value")
-				.about("value in millisats")
+				.help("value in millisats")
 				.required(true)
 				.validator(|s| s.parse::<u64>()),
 		),
@@ -161,19 +161,19 @@ fn invoice_subcommand(cli: &CLI, matches: &ArgMatches) -> Result<(), Box<dyn std
 
 fn make_payment_subapp() -> App<'static> {
 	App::new("payment")
-		.about("control payments")
+		.help("control payments")
 		.subcommand(
 			App::new("send")
-				.about("Pay invoice")
-				.arg(Arg::new("invoice").about("serialized invoice").required(true)),
+				.help("Pay invoice")
+				.arg(Arg::new("invoice").help("serialized invoice").required(true)),
 		)
 		.subcommand(
 			App::new("keysend")
-				.about("Pay to node_id")
-				.arg(Arg::new("nodeid").about("the node ID").required(true))
-				.arg(Arg::new("value").about("the amount in milli sat").required(true)),
+				.help("Pay to node_id")
+				.arg(Arg::new("nodeid").help("the node ID").required(true))
+				.arg(Arg::new("value").help("the amount in milli sat").required(true)),
 		)
-		.subcommand(App::new("list").about("List incoming and outgoing payments"))
+		.subcommand(App::new("list").help("List incoming and outgoing payments"))
 }
 
 fn payment_subcommand(cli: &CLI, matches: &ArgMatches) -> Result<(), Box<dyn std::error::Error>> {
@@ -203,18 +203,18 @@ static CONSOLE_LOGGER: ConsoleLogger = ConsoleLogger;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
 	let mut app = App::new("client")
-		.about("a CLI utility which communicates with a running Lightning Signer server via gRPC")
+		.help("a CLI utility which communicates with a running Lightning Signer server via gRPC")
 		.arg(
 			Arg::new("rpc")
 				.short('c')
 				.long("rpc")
 				.default_value("http://127.0.0.1:8801")
-				.about("Connect to an RPC address")
+				.help("Connect to an RPC address")
 				.takes_value(true),
 		)
 		.arg(
 			Arg::new("loglevelconsole")
-				.about("logging level to console")
+				.help("logging level to console")
 				.short('V')
 				.long("log-level-console")
 				.possible_values(&LOG_LEVEL_FILTER_NAMES)

@@ -15,10 +15,10 @@ use lnrod::signer::SIGNER_NAMES;
 
 fn main() -> Result<()> {
 	let app = App::new("lnrod")
-		.about("Lightning Rod Node")
+		.help("Lightning Rod Node")
 		.arg(
 			Arg::new("lnport")
-				.about("Lightning peer listen port")
+				.help("Lightning peer listen port")
 				.short('l')
 				.long("lnport")
 				.default_value("9901")
@@ -27,7 +27,7 @@ fn main() -> Result<()> {
 		)
 		.arg(
 			Arg::new("rpcport")
-				.about("Lightning peer listen port")
+				.help("Lightning peer listen port")
 				.short('p')
 				.long("rpcport")
 				.default_value("8801")
@@ -36,7 +36,7 @@ fn main() -> Result<()> {
 		)
 		.arg(
 			Arg::new("vlsport")
-				.about("vlsd RPC port")
+				.help("vlsd RPC port")
 				.long("vlsport")
 				.default_value("50051")
 				.validator(|s| s.parse::<u16>())
@@ -47,19 +47,19 @@ fn main() -> Result<()> {
 				.short('d')
 				.long("datadir")
 				.default_value("data")
-				.about("data directory")
+				.help("data directory")
 				.takes_value(true),
 		)
 		.arg(
 			Arg::new("config")
 				.short('f')
 				.long("config")
-				.about("config file, default DATADIR/config")
+				.help("config file, default DATADIR/config")
 				.takes_value(true),
 		)
 		.arg(
 			Arg::new("bitcoin")
-				.about("Bitcoin RPC endpoint")
+				.help("Bitcoin RPC endpoint")
 				.short('b')
 				.long("bitcoin")
 				.default_value("http://user:pass@localhost:18443")
@@ -72,12 +72,12 @@ fn main() -> Result<()> {
 			Arg::new("name")
 				.long("name")
 				.takes_value(true)
-				.about("node name for p2p announcements, up to 32 bytes")
+				.help("node name for p2p announcements, up to 32 bytes")
 				.validator(|v| if v.len() <= 32 { Ok(()) } else { Err("more than 32 bytes long") }),
 		)
 		.arg(
 			Arg::new("logleveldisk")
-				.about("logging level to disk")
+				.help("logging level to disk")
 				.short('v')
 				.long("log-level-disk")
 				.possible_values(&LOG_LEVEL_FILTER_NAMES)
@@ -86,7 +86,7 @@ fn main() -> Result<()> {
 		)
 		.arg(
 			Arg::new("loglevelconsole")
-				.about("logging level to console")
+				.help("logging level to console")
 				.short('V')
 				.long("log-level-console")
 				.possible_values(&LOG_LEVEL_FILTER_NAMES)
@@ -95,7 +95,7 @@ fn main() -> Result<()> {
 		)
 		.arg(
 			Arg::new("signer")
-				.about("signer name - use vls for a remote Validating Lightning Signer")
+				.help("signer name - use vls for a remote Validating Lightning Signer")
 				.long("signer")
 				.possible_values(SIGNER_NAMES)
 				.default_value(SIGNER_NAMES[0])

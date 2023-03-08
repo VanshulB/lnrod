@@ -25,6 +25,7 @@ use bitcoin::hashes::hex::ToHex;
 use jsonrpc_async::error as rpc_error;
 use jsonrpc_async::simple_http::SimpleHttpTransport;
 use jsonrpc_async::Client;
+use lightning_signer::lightning::routing::utxo::{UtxoLookup, UtxoResult};
 use url::Url;
 
 // TODO why are we using tokio mutexes here?
@@ -218,6 +219,13 @@ impl BroadcasterInterface for BitcoindClient {
 				}
 			}
 		});
+	}
+}
+
+impl UtxoLookup for BitcoindClient {
+	fn get_utxo(&self, _genesis_hash: &BlockHash, _short_channel_id: u64) -> UtxoResult {
+		// apparently this is unused
+		unimplemented!()
 	}
 }
 

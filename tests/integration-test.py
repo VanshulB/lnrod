@@ -36,7 +36,7 @@ OPTIMIZATION = 'release' if USE_RELEASE_BINARIES else 'debug'
 DEV_MODE = False
 DEV_BINARIES_PATH = f'../vls/target/{OPTIMIZATION}'
 
-# options: test, vls, vls-local, vls2-null, vls2-grpc
+# options: test, vls-local, vls2-null, vls2-grpc
 SIGNER = os.environ.get("SIGNER", "vls2-null")
 
 logger = logging.getLogger()
@@ -111,6 +111,7 @@ class Bitcoind(object):
     def mine(self, count=1):
         if self.mine_address is None:
             self.mine_address = self.getnewaddress()
+        print(f"mine {count}")
         self.generatetoaddress(count, self.mine_address)
 
     def __getattr__(self, item):
@@ -218,6 +219,7 @@ def run(disaster_recovery_block_explorer, existing_bitcoin_rpc):
         alice.ChannelNew(ChannelNewRequest(node_id=bob_id, value_sat=CHANNEL_VALUE_SAT, is_public=True))
     except Exception as e:
         print(e)
+        time.sleep(10000)
         raise
 
     # we have to wait here to prevent a race condition on the bitcoin wallet UTXOs

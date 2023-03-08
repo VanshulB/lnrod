@@ -32,7 +32,11 @@ impl Connector {
 						std::task::Poll::Pending => {}
 					}
 					// Avoid blocking the tokio context by sleeping a bit
-					match peer_manager.get_peer_node_ids().iter().find(|id| **id == pubkey) {
+					match peer_manager
+						.get_peer_node_ids()
+						.iter()
+						.find(|(id, _address)| *id == pubkey)
+					{
 						Some(_) => break,
 						None => tokio::time::sleep(Duration::from_millis(10)).await,
 					}

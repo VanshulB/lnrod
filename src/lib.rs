@@ -26,6 +26,9 @@ use lightning::util::events::Event;
 use lightning_net_tokio::SocketDescriptor;
 use lightning_persister::FilesystemPersister;
 use lightning_signer::bitcoin::Address;
+use lightning_signer::lightning::chain::keysinterface::EntropySource;
+use lightning_signer::lightning::routing::router::DefaultRouter;
+use lightning_signer::lightning::routing::scoring::ProbabilisticScorer;
 use lightning_signer::{bitcoin, lightning, lightning_invoice};
 use rand::{thread_rng, Rng};
 use vls_proxy::lightning_signer;
@@ -65,7 +68,22 @@ pub(crate) enum HTLCStatus {
 	Failed = 2,
 }
 
-pub trait SyncAccess: chain::Access + Send + Sync {}
+pub(crate) struct MyEntropySource {}
+
+impl MyEntropySource {
+	pub fn new() -> Self {
+		Self {}
+	}
+}
+
+impl EntropySource for MyEntropySource {
+	fn get_secure_random_bytes(&self) -> [u8; 32] {
+		let mut bytes = [0u8; 32];
+		thread_rng().fill(&mut bytes);
+		bytes
+	}
+}
+
 pub trait SyncFilter: Filter + Send + Sync {}
 
 pub(crate) struct MilliSatoshiAmount(Option<u64>);
@@ -97,22 +115,33 @@ type ArcChainMonitor = ChainMonitor<
 	Arc<FilesystemPersister>,
 >;
 
-pub(crate) type PeerManager = SimpleArcPeerManager<SocketDescriptor, dyn SyncAccess, LoggerAdapter>;
+pub(crate) type PeerManager =
+	SimpleArcPeerManager<SocketDescriptor, BitcoindClient, LoggerAdapter, DynKeysInterface>;
 
-pub(crate) type SimpleArcPeerManager<SD, C, L> = RLPeerManager<
+pub(crate) type SimpleArcPeerManager<SD, C, L, NS> = RLPeerManager<
 	SD,
 	Arc<ChannelManager>,
 	Arc<P2PGossipSync<Arc<NetworkGraph<Arc<L>>>, Arc<C>, Arc<L>>>,
 	Arc<IgnoringMessageHandler>,
 	Arc<L>,
 	IgnoringMessageHandler,
+	Arc<NS>,
+>;
+
+pub(crate) type Router = DefaultRouter<
+	Arc<NetworkGraph<Arc<LoggerAdapter>>>,
+	Arc<LoggerAdapter>,
+	Arc<Mutex<ProbabilisticScorer<Arc<NetworkGraph<Arc<LoggerAdapter>>>, Arc<LoggerAdapter>>>>,
 >;
 
 pub(crate) type ChannelManager = RLChannelManager<
 	Arc<ArcChainMonitor>,
 	Arc<BitcoindClient>,
+	Arc<MyEntropySource>,
+	Arc<DynKeysInterface>,
 	Arc<DynKeysInterface>,
 	Arc<BitcoindClient>,
+	Arc<Router>,
 	Arc<LoggerAdapter>,
 >;
 
@@ -244,17 +273,29 @@ async fn handle_ldk_events(
 				}
 			}
 		}
+		Event::PendingHTLCsForwardable { time_forwardable } => {
+			info!("EVENT: HTLCs available for forwarding");
+			let forwarding_channel_manager = channel_manager.clone();
+			tokio::spawn(async move {
+				let min = time_forwardable.as_millis() as u64;
+				if min > 0 {
+					let millis_to_sleep = thread_rng().gen_range(min..min * 5) as u64;
+					tokio::time::sleep(Duration::from_millis(millis_to_sleep)).await;
+				}
+				forwarding_channel_manager.process_pending_htlc_forwards();
+			});
+		}
 		Event::PaymentPathFailed {
 			payment_hash,
 			payment_failed_permanently,
-			all_paths_failed,
 			short_channel_id,
+			failure,
 			..
 		} => {
 			error!(
-				"EVENT: Failed to send payment{} to payment hash {:?}: ",
-				if all_paths_failed { "" } else { " along MPP path" },
-				hex_utils::hex_str(&payment_hash.0)
+				"EVENT: Failed to send payment to payment hash {:?}: {:?}",
+				hex_utils::hex_str(&payment_hash.0),
+				failure
 			);
 			if let Some(scid) = short_channel_id {
 				error!(" because of failure at channel {}", scid);
@@ -271,18 +312,6 @@ async fn handle_ldk_events(
 				let payment = payments.get_mut(&payment_hash).unwrap();
 				payment.status = HTLCStatus::Failed;
 			}
-		}
-		Event::PendingHTLCsForwardable { time_forwardable } => {
-			info!("EVENT: HTLCs available for forwarding");
-			let forwarding_channel_manager = channel_manager.clone();
-			tokio::spawn(async move {
-				let min = time_forwardable.as_millis() as u64;
-				if min > 0 {
-					let millis_to_sleep = thread_rng().gen_range(min..min * 5) as u64;
-					tokio::time::sleep(Duration::from_millis(millis_to_sleep)).await;
-				}
-				forwarding_channel_manager.process_pending_htlc_forwards();
-			});
 		}
 		Event::SpendableOutputs { outputs } => {
 			info!("EVENT: got spendable outputs {:?}", outputs);
