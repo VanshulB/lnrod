@@ -4,12 +4,17 @@ use crate::{hex_utils, DynSigner, SpendableKeysInterface};
 use bech32::u5;
 use bitcoin::psbt::PartiallySignedTransaction;
 use bitcoin::secp256k1::ecdsa::RecoverableSignature;
-use bitcoin::secp256k1::{ecdh::SharedSecret, All, PublicKey, Scalar, Secp256k1, SecretKey};
+use bitcoin::secp256k1::{ecdh::SharedSecret, All, PublicKey, Scalar, Secp256k1};
 use bitcoin::{Address, Network, Script, Transaction, TxOut};
+use lightning::chain::keysinterface::SpendableOutputDescriptor;
 use lightning::chain::keysinterface::{KeyMaterial, Recipient};
-use lightning::chain::keysinterface::{KeysInterface, SpendableOutputDescriptor};
 use lightning::ln::msgs::DecodeError;
 use lightning::ln::script::ShutdownScript;
+use lightning_signer::bitcoin::secp256k1::ecdsa::Signature;
+use lightning_signer::lightning::chain::keysinterface::{
+	EntropySource, NodeSigner, SignerProvider,
+};
+use lightning_signer::lightning::ln::msgs::UnsignedGossipMessage;
 use lightning_signer::node::NodeConfig as SignerNodeConfig;
 use lightning_signer::node::NodeServices;
 use lightning_signer::persist::fs::FileSeedPersister;
@@ -20,42 +25,24 @@ use lightning_signer::signer::ClockStartingTimeFactory;
 use lightning_signer::util::clock::StandardClock;
 use lightning_signer::util::loopback::LoopbackSignerKeysInterface;
 use lightning_signer::{bitcoin, lightning};
-use lightning_signer_server::nodefront::SignerFront;
-use lightning_signer_server::persist::kv_json::KVJsonPersister;
 use log::info;
 use std::fs;
 use std::str::FromStr;
 use std::sync::Arc;
 use url::Url;
 use vls_frontend::Frontend;
-use vls_proxy::lightning_signer_server;
+use vls_persist::kv_json::KVJsonPersister;
+use vls_proxy::nodefront::SignerFront;
 use vls_proxy::vls_frontend;
+use vls_proxy::vls_frontend::frontend::SourceFactory;
 
 struct Adapter {
 	inner: LoopbackSignerKeysInterface,
 	sweep_address: Address,
 }
 
-impl KeysInterface for Adapter {
+impl SignerProvider for Adapter {
 	type Signer = DynSigner;
-
-	fn get_node_secret(&self, recipient: Recipient) -> Result<SecretKey, ()> {
-		self.inner.get_node_secret(recipient)
-	}
-
-	fn ecdh(
-		&self, recipient: Recipient, other_key: &PublicKey, tweak: Option<&Scalar>,
-	) -> Result<SharedSecret, ()> {
-		self.inner.ecdh(recipient, other_key, tweak)
-	}
-
-	fn get_destination_script(&self) -> Script {
-		self.inner.get_destination_script()
-	}
-
-	fn get_shutdown_scriptpubkey(&self) -> ShutdownScript {
-		self.inner.get_shutdown_scriptpubkey()
-	}
 
 	fn generate_channel_keys_id(
 		&self, inbound: bool, channel_value_satoshis: u64, user_channel_id: u128,
@@ -70,14 +57,44 @@ impl KeysInterface for Adapter {
 		DynSigner { inner: Box::new(inner) }
 	}
 
-	fn get_secure_random_bytes(&self) -> [u8; 32] {
-		self.inner.get_secure_random_bytes()
-	}
-
 	fn read_chan_signer(&self, reader: &[u8]) -> Result<Self::Signer, DecodeError> {
 		let inner = self.inner.read_chan_signer(reader)?;
 
 		Ok(DynSigner::new(inner))
+	}
+
+	fn get_destination_script(&self) -> Script {
+		self.inner.get_destination_script()
+	}
+
+	fn get_shutdown_scriptpubkey(&self) -> ShutdownScript {
+		self.inner.get_shutdown_scriptpubkey()
+	}
+}
+
+impl EntropySource for Adapter {
+	fn get_secure_random_bytes(&self) -> [u8; 32] {
+		self.inner.get_secure_random_bytes()
+	}
+}
+
+impl NodeSigner for Adapter {
+	fn get_inbound_payment_key_material(&self) -> KeyMaterial {
+		self.inner.get_inbound_payment_key_material()
+	}
+
+	fn get_node_id(&self, recipient: Recipient) -> Result<PublicKey, ()> {
+		match recipient {
+			Recipient::Node => {}
+			Recipient::PhantomNode => panic!("phantom node not supported"),
+		}
+		Ok(self.inner.node_id.clone())
+	}
+
+	fn ecdh(
+		&self, recipient: Recipient, other_key: &PublicKey, tweak: Option<&Scalar>,
+	) -> Result<SharedSecret, ()> {
+		self.inner.ecdh(recipient, other_key, tweak)
 	}
 
 	fn sign_invoice(
@@ -86,8 +103,8 @@ impl KeysInterface for Adapter {
 		self.inner.sign_invoice(hrp_bytes, invoice_data, recipient)
 	}
 
-	fn get_inbound_payment_key_material(&self) -> KeyMaterial {
-		self.inner.get_inbound_payment_key_material()
+	fn sign_gossip_message(&self, msg: UnsignedGossipMessage) -> Result<Signature, ()> {
+		self.inner.sign_gossip_message(msg)
 	}
 }
 
@@ -136,8 +153,12 @@ pub(crate) fn make_signer(
 	// FIXME use Node directly - requires rework of LoopbackSignerKeysInterface in the rls crate
 	let signer = Arc::new(MultiSigner::new(services));
 
-	let frontend =
-		Frontend::new(Arc::new(SignerFront { signer: Arc::clone(&signer) }), bitcoin_rpc_url);
+	let source_factory = Arc::new(SourceFactory::new(ldk_data_dir, network));
+	let frontend = Frontend::new(
+		Arc::new(SignerFront { signer: Arc::clone(&signer) }),
+		source_factory,
+		bitcoin_rpc_url,
+	);
 	frontend.start();
 
 	if let Ok(node_id_hex) = fs::read_to_string(node_id_path.clone()) {

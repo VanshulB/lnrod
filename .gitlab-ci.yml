@@ -36,6 +36,7 @@ get_bitcoin:
 
 # Compile lnrod
 compile:
+#  tags: [ saas-linux-large-amd64 ]
   stage: build
   cache:
     key: lnrod-compile
@@ -60,6 +61,7 @@ compile:
 
 # Compile vlsd2
 compile-vls:
+#  tags: [ saas-linux-large-amd64 ]
   stage: build
   cache:
     key: lnrod-vls
@@ -75,7 +77,7 @@ compile-vls:
     - echo "$vls_rev"
     - git clone https://gitlab.com/lightning-signer/validating-lightning-signer.git
     - cd validating-lightning-signer
-    - git checkout "$vls_rev"
+    - git checkout -q "$vls_rev"
     - cargo build --locked --bin vlsd2
     - ls -l target/debug
     - mkdir -p ../bin

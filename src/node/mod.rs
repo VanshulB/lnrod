@@ -9,37 +9,35 @@ use std::{cmp, env};
 use log::{self, *};
 
 use anyhow::Result;
-use bitcoin::blockdata::constants::genesis_block;
-use bitcoin::hashes::sha256::Hash as Sha256Hash;
 use bitcoin::hashes::Hash;
-use bitcoin::secp256k1::{PublicKey, Secp256k1};
+use bitcoin::secp256k1::PublicKey;
 use bitcoin::{BlockHash, Network};
 use lightning::chain;
 use lightning::chain::chainmonitor::ChainMonitor;
-use lightning::chain::keysinterface::KeysInterface;
-use lightning::chain::keysinterface::Recipient;
 use lightning::chain::BestBlock;
 use lightning::chain::Watch;
-use lightning::ln::channelmanager::{
-	ChainParameters, ChannelManagerReadArgs, MIN_FINAL_CLTV_EXPIRY,
-};
+use lightning::ln::channelmanager::{ChainParameters, ChannelManagerReadArgs};
 use lightning::ln::msgs::NetAddress;
 use lightning::ln::peer_handler::MessageHandler;
 use lightning::ln::{PaymentHash, PaymentPreimage};
-use lightning::routing::gossip::{NetworkGraph, P2PGossipSync, RoutingFees};
+use lightning::routing::gossip::P2PGossipSync;
 use lightning::routing::router::DefaultRouter;
-use lightning::routing::router::RouteHint;
-use lightning::routing::router::RouteHintHop;
 use lightning::routing::scoring::{ProbabilisticScorer, ProbabilisticScoringParameters};
 use lightning::util::events::{Event, EventHandler};
 use lightning::util::ser::ReadableArgs;
 use lightning_background_processor::{BackgroundProcessor, GossipSync as LdkGossipSync};
 use lightning_block_sync::{init, poll, SpvClient, UnboundedCache};
 use lightning_invoice::payment::PaymentError;
-use lightning_invoice::{payment, Invoice};
+use lightning_invoice::Invoice;
 use lightning_persister::FilesystemPersister;
 use lightning_rapid_gossip_sync::RapidGossipSync;
+use lightning_signer::lightning::chain::keysinterface::EntropySource;
 use lightning_signer::lightning::chain::ChannelMonitorUpdateStatus;
+use lightning_signer::lightning::ln::channelmanager::{PaymentId, Retry};
+use lightning_signer::lightning::routing::router::{PaymentParameters, RouteParameters};
+use lightning_signer::lightning_invoice::payment::pay_invoice;
+use lightning_signer::lightning_invoice::utils::create_invoice_from_channelmanager;
+use lightning_signer::lightning_invoice::Currency;
 use lightning_signer::{bitcoin, lightning};
 use rand::{thread_rng, RngCore};
 use tokio::runtime::Handle;
@@ -54,12 +52,12 @@ use crate::net::Connector;
 use crate::signer::get_keys_manager;
 use crate::tor::TorManager;
 use crate::util::Shutter;
-use crate::DynKeysInterface;
 use crate::{
 	disk, handle_ldk_events, ArcChainMonitor, ChannelManager, HTLCStatus, IgnoringMessageHandler,
 	MilliSatoshiAmount, PaymentInfoStorage, PeerManager, Sha256,
 };
 use crate::{lightning_invoice, PaymentInfo};
+use crate::{DynKeysInterface, MyEntropySource};
 
 #[derive(Clone)]
 pub struct NodeBuildArgs {
@@ -81,12 +79,6 @@ pub struct NodeBuildArgs {
 	pub config: Config,
 	pub vls_port: u16,
 }
-
-type Router = DefaultRouter<
-	Arc<NetworkGraph<Arc<LoggerAdapter>>>,
-	Arc<LoggerAdapter>,
-	Arc<Mutex<ProbabilisticScorer<Arc<NetworkGraph<Arc<LoggerAdapter>>>, Arc<LoggerAdapter>>>>,
->;
 
 type GossipSync<P, G, A, L> = LdkGossipSync<P, Arc<RapidGossipSync<G, L>>, G, A, L>;
 
@@ -116,14 +108,10 @@ impl EventHandler for MyEventHandler {
 	}
 }
 
-pub(crate) type InvoicePayer =
-	payment::InvoicePayer<Arc<ChannelManager>, Router, Arc<LoggerAdapter>, MyEventHandler>;
-
 #[allow(dead_code)]
 pub(crate) struct Node {
 	pub(crate) peer_manager: Arc<PeerManager>,
 	pub(crate) channel_manager: Arc<ChannelManager>,
-	pub(crate) payer: Arc<InvoicePayer>,
 	pub(crate) inbound_payments: PaymentInfoStorage,
 	pub(crate) outbound_payments: PaymentInfoStorage,
 	pub(crate) keys_manager: Arc<DynKeysInterface>,
@@ -133,6 +121,7 @@ pub(crate) struct Node {
 	pub(crate) background_processor: BackgroundProcessor,
 	pub(crate) chain_monitor: Arc<ArcChainMonitor>,
 	pub(crate) connector: Arc<Connector>,
+	pub(crate) logger: Arc<LoggerAdapter>,
 }
 
 pub(crate) struct NetworkController {
@@ -248,16 +237,47 @@ async fn build_with_signer(
 		persister.clone(),
 	));
 
+	let entropy_source = Arc::new(MyEntropySource::new());
+
 	// Step 7: Read ChannelMonitor state from disk
 	let monitors_path = format!("{}/monitors", ldk_data_dir.clone());
-	let mut outpoint_to_channelmonitor =
-		disk::read_channelmonitors(monitors_path.to_string(), keys_manager.clone()).unwrap();
+	let mut outpoint_to_channelmonitor = disk::read_channelmonitors(
+		monitors_path.to_string(),
+		entropy_source.clone(),
+		keys_manager.clone(),
+	)
+	.unwrap();
 
 	// Step 8: ... profit
 
 	// Step 9: Initialize the ChannelManager
 	let user_config = args.config.bitcoin_channel().into();
 	println!("CONFIG {:?}", user_config);
+
+	// Step 13: Optional: Initialize the P2PGossipSync
+	// XXX persist routing data
+	let network_graph_path = format!("{}/network_graph", ldk_data_dir.clone());
+	let network_graph = Arc::new(disk::read_network(
+		Path::new(&network_graph_path),
+		args.network,
+		logadapter.clone(),
+	));
+
+	let params = ProbabilisticScoringParameters::default();
+	let scorer = Arc::new(Mutex::new(ProbabilisticScorer::new(
+		params,
+		network_graph.clone(),
+		logadapter.clone(),
+	)));
+
+	let entropy_source = Arc::new(MyEntropySource::new());
+
+	let router = Arc::new(DefaultRouter::new(
+		network_graph.clone(),
+		logadapter.clone(),
+		entropy_source.get_secure_random_bytes(),
+		scorer.clone(),
+	));
 
 	let mut restarting_node = true;
 	let (channel_manager_blockhash, channel_manager) = {
@@ -267,10 +287,13 @@ async fn build_with_signer(
 				channel_monitor_mut_references.push(&mut channel_monitor.1);
 			}
 			let read_args = ChannelManagerReadArgs::new(
+				entropy_source.clone(),
+				keys_manager.clone(),
 				keys_manager.clone(),
 				fee_estimator.clone(),
 				chain_monitor.clone(),
 				broadcaster.clone(),
+				router,
 				logadapter.clone(),
 				user_config,
 				channel_monitor_mut_references,
@@ -287,7 +310,10 @@ async fn build_with_signer(
 				fee_estimator.clone(),
 				chain_monitor.clone(),
 				broadcaster.clone(),
+				router,
 				logadapter.clone(),
+				entropy_source,
+				keys_manager.clone(),
 				keys_manager.clone(),
 				user_config,
 				chain_params,
@@ -338,16 +364,6 @@ async fn build_with_signer(
 		assert_ne!(res, ChannelMonitorUpdateStatus::PermanentFailure);
 	}
 
-	// Step 13: Optional: Initialize the P2PGossipSync
-	// XXX persist routing data
-	let genesis_hash = genesis_block(args.network).header.block_hash();
-	let network_graph_path = format!("{}/network_graph", ldk_data_dir.clone());
-	let network_graph = Arc::new(disk::read_network(
-		Path::new(&network_graph_path),
-		genesis_hash,
-		logadapter.clone(),
-	));
-
 	let network_gossip =
 		Arc::new(P2PGossipSync::new(Arc::clone(&network_graph), None, logadapter.clone()));
 
@@ -362,13 +378,14 @@ async fn build_with_signer(
 		route_handler: network_gossip.clone(),
 		onion_message_handler: Arc::new(IgnoringMessageHandler {}),
 	};
+	let current_time = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs() as u32;
 	let peer_manager: Arc<PeerManager> = Arc::new(PeerManager::new(
 		lightning_msg_handler,
-		keys_manager.get_node_secret(Recipient::Node).unwrap(),
-		SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs() as u32,
+		current_time,
 		&ephemeral_bytes,
 		logadapter.clone(),
 		IgnoringMessageHandler {},
+		keys_manager.clone(),
 	));
 
 	// ## Running LDK
@@ -404,19 +421,6 @@ async fn build_with_signer(
 	let inbound_payments: PaymentInfoStorage = Arc::new(Mutex::new(HashMap::new()));
 	let outbound_payments: PaymentInfoStorage = Arc::new(Mutex::new(HashMap::new()));
 
-	let params = ProbabilisticScoringParameters::default();
-	let scorer = Arc::new(Mutex::new(ProbabilisticScorer::new(
-		params,
-		network_graph.clone(),
-		logadapter.clone(),
-	)));
-
-	let router = DefaultRouter::new(
-		network_graph.clone(),
-		logadapter.clone(),
-		keys_manager.get_secure_random_bytes(),
-		scorer.clone(),
-	);
 	let handle = Handle::current();
 
 	let channel_manager_event_listener = channel_manager.clone();
@@ -436,17 +440,9 @@ async fn build_with_signer(
 		network,
 	};
 
-	let invoice_payer = Arc::new(InvoicePayer::new(
-		channel_manager.clone(),
-		router,
-		logadapter.clone(),
-		event_handler,
-		payment::Retry::Attempts(5),
-	));
-
 	let background_processor = BackgroundProcessor::start(
 		persister,
-		invoice_payer.clone(),
+		event_handler,
 		chain_monitor.clone(),
 		channel_manager.clone(),
 		GossipSync::P2P(network_gossip.clone()),
@@ -483,7 +479,6 @@ async fn build_with_signer(
 	let node = Node {
 		peer_manager,
 		channel_manager,
-		payer: invoice_payer,
 		inbound_payments,
 		outbound_payments,
 		keys_manager,
@@ -493,6 +488,7 @@ async fn build_with_signer(
 		background_processor,
 		chain_monitor,
 		connector,
+		logger: logadapter,
 	};
 
 	tokio::spawn(async move {
@@ -501,7 +497,11 @@ async fn build_with_signer(
 			interval.tick().await;
 			match disk::read_channel_peer_data(Path::new(&peer_data_path)) {
 				Ok(info) => {
-					let peers = connect_pm.get_peer_node_ids();
+					let peers = connect_pm
+						.get_peer_node_ids()
+						.into_iter()
+						.map(|(key, _)| key)
+						.collect::<Vec<_>>();
 					for node_id in connect_cm
 						.list_channels()
 						.iter()
@@ -602,62 +602,27 @@ async fn setup_tor(
 
 impl Node {
 	pub fn new_invoice(&self, amount_msat: u64) -> Result<Invoice, String> {
+		let currency = match self.network {
+			Network::Bitcoin => Currency::Bitcoin,
+			Network::Testnet => Currency::BitcoinTestnet,
+			Network::Regtest => Currency::Regtest,
+			Network::Signet => Currency::Signet,
+		};
+
+		let invoice = create_invoice_from_channelmanager(
+			&self.channel_manager,
+			self.keys_manager.clone(),
+			self.logger.clone(),
+			currency,
+			Some(amount_msat),
+			"lnrod invoice".to_string(),
+			7200,
+			None,
+		)
+		.unwrap();
 		let mut payments = self.inbound_payments.lock().unwrap();
-		let secp_ctx = Secp256k1::new();
-
-		let (payment_hash, payment_secret) =
-			self.channel_manager.create_inbound_payment(Some(amount_msat), 7200).unwrap();
-
-		let our_node_pubkey = self.channel_manager.get_our_node_id();
-		let mut invoice = lightning_invoice::InvoiceBuilder::new(match self.network {
-			Network::Bitcoin => lightning_invoice::Currency::Bitcoin,
-			Network::Testnet => lightning_invoice::Currency::BitcoinTestnet,
-			Network::Regtest => lightning_invoice::Currency::Regtest,
-			Network::Signet => lightning_invoice::Currency::Signet,
-		})
-		.payment_hash(Sha256Hash::from_inner(payment_hash.0))
-		.payment_secret(payment_secret)
-		.description("lnrod invoice".to_string())
-		.amount_milli_satoshis(amount_msat)
-		.current_timestamp()
-		.min_final_cltv_expiry(MIN_FINAL_CLTV_EXPIRY as u64)
-		.payee_pub_key(our_node_pubkey);
-
-		// Add route hints to the invoice.
-		let our_channels = self.channel_manager.list_usable_channels();
-		for channel in our_channels {
-			let short_channel_id = match channel.short_channel_id {
-				Some(id) => id,
-				None => continue,
-			};
-			let forwarding_info = match channel.counterparty.forwarding_info {
-				Some(info) => info,
-				None => continue,
-			};
-			info!("VMW: adding routehop, info.fee base: {}", forwarding_info.fee_base_msat);
-			let hops = vec![RouteHintHop {
-				src_node_id: channel.counterparty.node_id,
-				short_channel_id,
-				cltv_expiry_delta: forwarding_info.cltv_expiry_delta,
-				htlc_minimum_msat: None,
-				fees: RoutingFees {
-					base_msat: forwarding_info.fee_base_msat,
-					proportional_millionths: forwarding_info.fee_proportional_millionths,
-				},
-				htlc_maximum_msat: None,
-			}];
-			invoice = invoice.private_route(RouteHint(hops));
-		}
-
-		// Sign the invoice.
-		let invoice = invoice
-			.build_signed(|msg_hash| {
-				secp_ctx.sign_ecdsa_recoverable(
-					msg_hash,
-					&self.keys_manager.get_node_secret(Recipient::Node).unwrap(),
-				)
-			})
-			.map_err(|e| format!("{:?}", e))?;
+		let payment_hash = PaymentHash(invoice.payment_hash().clone().into_inner());
+		let payment_secret = invoice.payment_secret().clone();
 
 		info!(
 			"generated invoice with hash {} secret {}",
@@ -666,7 +631,7 @@ impl Node {
 		);
 		let payment_info = PaymentInfo {
 			preimage: None,
-			secret: None,
+			secret: Some(payment_secret),
 			status: HTLCStatus::Pending,
 			amt_msat: MilliSatoshiAmount(Some(amount_msat)),
 		};
@@ -675,7 +640,11 @@ impl Node {
 	}
 
 	pub fn send_payment(&self, invoice: Invoice) -> Result<(), String> {
-		let status = match self.payer.pay_invoice(&invoice) {
+		let status = match pay_invoice(
+			&invoice,
+			Retry::Timeout(Duration::from_secs(1)),
+			&self.channel_manager,
+		) {
 			Ok(_payment_id) => {
 				let payee_pubkey = invoice.recover_payee_pub_key();
 				let amt_msat = invoice.amount_milli_satoshis().unwrap();
@@ -684,9 +653,6 @@ impl Node {
 			}
 			Err(PaymentError::Invoice(e)) => {
 				return Err(format!("ERROR: invalid invoice: {}", e));
-			}
-			Err(PaymentError::Routing(e)) => {
-				return Err(format!("ERROR: failed to find route: {:?}", e));
 			}
 			Err(PaymentError::Sending(e)) => {
 				error!("ERROR: failed to send payment: {:?}", e);
@@ -705,27 +671,25 @@ impl Node {
 		Ok(())
 	}
 
-	pub fn keysend_payment(&self, node_id: PublicKey, value_msat: u64) -> Result<(), String> {
+	pub fn keysend_payment(&self, payee_pubkey: PublicKey, value_msat: u64) -> Result<(), String> {
 		let mut payment_preimage = PaymentPreimage([0; 32]);
 		thread_rng().fill_bytes(&mut payment_preimage.0);
 		let payment_hash = PaymentHash(Sha256::hash(&payment_preimage.0).into_inner());
-		let status = match self.payer.pay_pubkey(
-			node_id,
-			payment_preimage,
-			value_msat,
-			MIN_FINAL_CLTV_EXPIRY,
+		let route_params = RouteParameters {
+			payment_params: PaymentParameters::for_keysend(payee_pubkey, 40),
+			final_value_msat: value_msat,
+		};
+		let status = match self.channel_manager.send_spontaneous_payment_with_retry(
+			Some(payment_preimage),
+			PaymentId(payment_hash.0),
+			route_params,
+			Retry::Timeout(Duration::from_secs(10)),
 		) {
 			Ok(_payment_id) => {
-				info!("initiated keysend of {} msat to {}", value_msat, node_id);
+				info!("initiated keysend of {} msat to {}", value_msat, payee_pubkey);
 				HTLCStatus::Pending
 			}
-			Err(PaymentError::Invoice(e)) => {
-				return Err(format!("ERROR: invalid invoice: {}", e));
-			}
-			Err(PaymentError::Routing(e)) => {
-				return Err(format!("ERROR: failed to find route: {:?}", e));
-			}
-			Err(PaymentError::Sending(e)) => {
+			Err(e) => {
 				error!("ERROR: failed to send payment: {:?}", e);
 				HTLCStatus::Failed
 			}
@@ -748,7 +712,7 @@ impl Node {
 	pub(crate) async fn connect_peer_if_necessary(
 		&self, pubkey: PublicKey, peer_addr: HostAndPort, peer_manager: Arc<PeerManager>,
 	) -> Result<(), ()> {
-		for node_pubkey in peer_manager.get_peer_node_ids() {
+		for (node_pubkey, _) in peer_manager.get_peer_node_ids() {
 			if node_pubkey == pubkey {
 				return Ok(());
 			}

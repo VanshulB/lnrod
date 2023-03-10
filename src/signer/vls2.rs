@@ -6,14 +6,17 @@ use async_trait::async_trait;
 use bech32::u5;
 use bitcoin::psbt::PartiallySignedTransaction;
 use bitcoin::secp256k1::{
-	ecdh::SharedSecret, ecdsa::RecoverableSignature, All, PublicKey, Scalar, Secp256k1, SecretKey,
+	ecdh::SharedSecret, ecdsa::RecoverableSignature, All, PublicKey, Scalar, Secp256k1,
 };
 use bitcoin::{Address, Network, Script, Transaction, TxOut};
-use lightning::chain::keysinterface::{
-	KeyMaterial, KeysInterface, Recipient, SpendableOutputDescriptor,
-};
+use lightning::chain::keysinterface::{KeyMaterial, Recipient, SpendableOutputDescriptor};
 use lightning::ln::msgs::DecodeError;
 use lightning::ln::script::ShutdownScript;
+use lightning_signer::bitcoin::secp256k1::ecdsa::Signature;
+use lightning_signer::lightning::chain::keysinterface::{
+	EntropySource, NodeSigner, SignerProvider,
+};
+use lightning_signer::lightning::ln::msgs::UnsignedGossipMessage;
 use lightning_signer::node::NodeServices;
 use lightning_signer::persist::DummyPersister;
 use lightning_signer::policy::simple_validator::{make_simple_policy, SimpleValidatorFactory};
@@ -39,6 +42,7 @@ use vls_proxy::grpc::adapter::{ChannelRequest, ClientId, HsmdService};
 use vls_proxy::grpc::incoming::TcpIncoming;
 use vls_proxy::portfront::SignerPortFront;
 use vls_proxy::vls_frontend;
+use vls_proxy::vls_frontend::frontend::SourceFactory;
 use vls_proxy::vls_protocol_client;
 use vls_proxy::vls_protocol_signer;
 
@@ -117,26 +121,8 @@ struct KeysManager {
 	sweep_address: Address,
 }
 
-impl KeysInterface for KeysManager {
+impl SignerProvider for KeysManager {
 	type Signer = DynSigner;
-
-	fn get_node_secret(&self, recipient: Recipient) -> Result<SecretKey, ()> {
-		self.client.get_node_secret(recipient)
-	}
-
-	fn ecdh(
-		&self, recipient: Recipient, other_key: &PublicKey, tweak: Option<&Scalar>,
-	) -> Result<SharedSecret, ()> {
-		self.client.ecdh(recipient, other_key, tweak)
-	}
-
-	fn get_destination_script(&self) -> Script {
-		self.client.get_destination_script()
-	}
-
-	fn get_shutdown_scriptpubkey(&self) -> ShutdownScript {
-		self.client.get_shutdown_scriptpubkey()
-	}
 
 	fn generate_channel_keys_id(
 		&self, inbound: bool, channel_value_satoshis: u64, user_channel_id: u128,
@@ -151,13 +137,39 @@ impl KeysInterface for KeysManager {
 		DynSigner::new(client)
 	}
 
-	fn get_secure_random_bytes(&self) -> [u8; 32] {
-		self.client.get_secure_random_bytes()
-	}
-
 	fn read_chan_signer(&self, reader: &[u8]) -> Result<Self::Signer, DecodeError> {
 		let signer = self.client.read_chan_signer(reader)?;
 		Ok(DynSigner::new(signer))
+	}
+
+	fn get_destination_script(&self) -> Script {
+		self.client.get_destination_script()
+	}
+
+	fn get_shutdown_scriptpubkey(&self) -> ShutdownScript {
+		self.client.get_shutdown_scriptpubkey()
+	}
+}
+
+impl EntropySource for KeysManager {
+	fn get_secure_random_bytes(&self) -> [u8; 32] {
+		self.client.get_secure_random_bytes()
+	}
+}
+
+impl NodeSigner for KeysManager {
+	fn get_inbound_payment_key_material(&self) -> KeyMaterial {
+		self.client.get_inbound_payment_key_material()
+	}
+
+	fn get_node_id(&self, recipient: Recipient) -> Result<PublicKey, ()> {
+		self.client.get_node_id(recipient)
+	}
+
+	fn ecdh(
+		&self, recipient: Recipient, other_key: &PublicKey, tweak: Option<&Scalar>,
+	) -> Result<SharedSecret, ()> {
+		self.client.ecdh(recipient, other_key, tweak)
 	}
 
 	fn sign_invoice(
@@ -166,8 +178,8 @@ impl KeysInterface for KeysManager {
 		self.client.sign_invoice(hrp_bytes, invoice_data, recipient)
 	}
 
-	fn get_inbound_payment_key_material(&self) -> KeyMaterial {
-		self.client.get_inbound_payment_key_material()
+	fn sign_gossip_message(&self, msg: UnsignedGossipMessage) -> Result<Signature, ()> {
+		self.client.sign_gossip_message(msg)
 	}
 }
 
@@ -214,8 +226,12 @@ pub(crate) async fn make_null_signer(
 		let transport = Arc::new(NullTransport::new(sweep_address.clone()));
 
 		let signer_port = Box::new(TransportSignerPort { transport: transport.clone() });
-		let frontend =
-			Frontend::new(Arc::new(SignerPortFront { signer_port, network }), bitcoin_rpc_url);
+		let source_factory = Arc::new(SourceFactory::new(ldk_data_dir, network));
+		let frontend = Frontend::new(
+			Arc::new(SignerPortFront::new(signer_port, network)),
+			source_factory,
+			bitcoin_rpc_url,
+		);
 		frontend.start();
 
 		let node_id = transport.handler.node().get_id();
@@ -228,8 +244,6 @@ pub(crate) async fn make_null_signer(
 
 struct GrpcTransport {
 	sender: Sender<ChannelRequest>,
-	#[allow(unused)]
-	node_secret: SecretKey,
 	node_id: PublicKey,
 	handle: Handle,
 }
@@ -247,13 +261,11 @@ impl GrpcTransport {
 		};
 		let init_reply_vec = Self::do_call_async(sender.clone(), init.as_vec(), None).await?;
 		let init_reply = msgs::HsmdInit2Reply::from_vec(init_reply_vec)?;
-		let node_secret = SecretKey::from_slice(&init_reply.node_secret.0).expect("node secret");
-		let secp_ctx = Secp256k1::new();
-		let node_id = PublicKey::from_secret_key(&secp_ctx, &node_secret);
+		let node_id = PublicKey::from_slice(&init_reply.node_id.0).expect("node id");
 		let handle = Handle::current();
 
 		info!("signer connected, node ID {}", node_id);
-		Ok(Self { sender, node_secret, node_id, handle })
+		Ok(Self { sender, node_id, handle })
 	}
 
 	fn node_id(&self) -> PublicKey {
@@ -322,9 +334,13 @@ pub(crate) async fn make_grpc_signer(
 	);
 	let node_id = transport.node_id();
 
+	let source_factory = Arc::new(SourceFactory::new(ldk_data_dir, network));
 	let signer_port = Box::new(TransportSignerPort { transport: transport.clone() });
-	let frontend =
-		Frontend::new(Arc::new(SignerPortFront { signer_port, network }), bitcoin_rpc_url);
+	let frontend = Frontend::new(
+		Arc::new(SignerPortFront::new(signer_port, network)),
+		source_factory,
+		bitcoin_rpc_url,
+	);
 	frontend.start();
 
 	let client = KeysManagerClient::new(transport, network.to_string());

@@ -1,4 +1,4 @@
-use crate::{hex_utils, DynKeysInterface, DynSigner, LoggerAdapter, NetworkGraph};
+use crate::{hex_utils, DynKeysInterface, DynSigner, LoggerAdapter, MyEntropySource, NetworkGraph};
 use anyhow::Result;
 use bitcoin::hashes::hex::FromHex;
 use bitcoin::secp256k1::PublicKey;
@@ -7,6 +7,7 @@ use lightning::chain::channelmonitor::ChannelMonitor;
 use lightning::chain::transaction::OutPoint;
 use lightning::util::ser::{ReadableArgs, Writeable};
 use lightning_signer::bitcoin;
+use lightning_signer::bitcoin::Network;
 use lightning_signer::lightning;
 use log::error;
 use regex::Regex;
@@ -25,7 +26,7 @@ use std::time::Duration;
 const MAX_CHANNEL_MONITOR_FILENAME_LENGTH: usize = 65;
 
 pub(crate) fn read_channelmonitors(
-	path: String, keys_manager: Arc<DynKeysInterface>,
+	path: String, entropy_source: Arc<MyEntropySource>, keys_manager: Arc<DynKeysInterface>,
 ) -> Result<HashMap<OutPoint, (BlockHash, ChannelMonitor<DynSigner>)>, std::io::Error> {
 	if !Path::new(&path).exists() {
 		return Ok(HashMap::new());
@@ -68,7 +69,7 @@ pub(crate) fn read_channelmonitors(
 
 		if let Ok((blockhash, channel_monitor)) = <(BlockHash, ChannelMonitor<DynSigner>)>::read(
 			&mut Cursor::new(&contents),
-			&*keys_manager,
+			(&*entropy_source, &*keys_manager),
 		) {
 			outpoint_to_channelmonitor
 				.insert(OutPoint { txid, index }, (blockhash, channel_monitor));
@@ -83,14 +84,14 @@ pub(crate) fn read_channelmonitors(
 }
 
 pub(crate) fn read_network(
-	path: &Path, genesis_hash: BlockHash, logger: Arc<LoggerAdapter>,
+	path: &Path, network: Network, logger: Arc<LoggerAdapter>,
 ) -> NetworkGraph<Arc<LoggerAdapter>> {
 	if let Ok(file) = File::open(path) {
 		if let Ok(graph) = NetworkGraph::read(&mut BufReader::new(file), logger.clone()) {
 			return graph;
 		}
 	}
-	NetworkGraph::new(genesis_hash, logger)
+	NetworkGraph::new(network, logger)
 }
 
 pub(crate) fn persist_network(

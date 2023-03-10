@@ -18,7 +18,6 @@ use std::time::SystemTime;
 pub struct InMemorySignerFactory {
 	seed: [u8; 32],
 	secp_ctx: Secp256k1<All>,
-	node_secret: SecretKey,
 }
 
 impl InMemorySignerFactory {
@@ -68,7 +67,6 @@ impl InMemorySignerFactory {
 
 		let signer = InMemorySigner::new(
 			&self.secp_ctx,
-			self.node_secret,
 			funding_key,
 			revocation_base_key,
 			payment_key,
@@ -82,8 +80,8 @@ impl InMemorySignerFactory {
 		signer
 	}
 
-	pub fn new(seed: &[u8; 32], node_secret: SecretKey) -> Self {
-		InMemorySignerFactory { seed: seed.clone(), secp_ctx: Secp256k1::new(), node_secret }
+	pub fn new(seed: &[u8; 32]) -> Self {
+		InMemorySignerFactory { seed: seed.clone(), secp_ctx: Secp256k1::new() }
 	}
 }
 

@@ -8,9 +8,9 @@ use anyhow::Result;
 use serde_json::json;
 use tonic::{transport::Server, Request, Response, Status};
 
-use bitcoin::secp256k1::{PublicKey, Secp256k1};
+use bitcoin::secp256k1::PublicKey;
 use lightning::chain::channelmonitor::Balance;
-use lightning::chain::keysinterface::{KeysInterface, Recipient};
+use lightning::chain::keysinterface::Recipient;
 use lightning::util::config::UserConfig;
 use lightning_invoice::Invoice;
 use lightning_signer::{bitcoin, lightning, lightning_invoice};
@@ -26,6 +26,7 @@ use crate::util::Shutter;
 use super::admin_api::admin_server::{Admin, AdminServer};
 use super::admin_api::{ChannelListReply, NodeInfoReply, PingReply, PingRequest, Void};
 use bitcoin::Address;
+use lightning_signer::lightning::chain::keysinterface::{NodeSigner, SignerProvider};
 use tokio::runtime::{Builder, Handle};
 
 struct AdminHandler {
@@ -63,10 +64,7 @@ impl Admin for AdminHandler {
 
 	async fn node_info(&self, _request: Request<Void>) -> Result<Response<NodeInfoReply>, Status> {
 		info!("ENTER node_info");
-		let node_pubkey = PublicKey::from_secret_key(
-			&Secp256k1::new(),
-			&self.node.keys_manager.get_node_secret(Recipient::Node).unwrap(),
-		);
+		let node_pubkey = self.node.keys_manager.get_node_id(Recipient::Node).unwrap();
 		let shutdown_scriptpubkey = self.node.keys_manager.get_shutdown_scriptpubkey();
 		let shutdown_address =
 			Address::from_script(&shutdown_scriptpubkey.into(), self.node.network)
@@ -201,7 +199,7 @@ impl Admin for AdminHandler {
 			.peer_manager
 			.get_peer_node_ids()
 			.iter()
-			.map(|pkey| Peer { node_id: pkey.serialize().to_vec() })
+			.map(|(pkey, _address)| Peer { node_id: pkey.serialize().to_vec() })
 			.collect();
 		let reply = PeerListReply { peers };
 		debug!("{}", type_and_value!(&reply));
@@ -364,10 +362,7 @@ pub async fn do_start(
 
 	let (node, _network_controller) =
 		build_node(args.clone(), shutter.clone(), p2p_handle, signer_handle).await;
-	let node_id = PublicKey::from_secret_key(
-		&Secp256k1::new(),
-		&node.keys_manager.get_node_secret(Recipient::Node).unwrap(),
-	);
+	let node_id = node.keys_manager.get_node_id(Recipient::Node).unwrap();
 
 	info!("p2p {} 127.0.0.1:{}", node_id, args.peer_listening_port);
 	info!(

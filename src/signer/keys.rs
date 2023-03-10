@@ -6,8 +6,9 @@ use bech32::u5;
 use bitcoin::blockdata::opcodes;
 use bitcoin::blockdata::script::Builder;
 use bitcoin::hash_types::WPubkeyHash;
-use bitcoin::hashes::sha256::Hash as Sha256;
+use bitcoin::hashes::sha256::Hash as Sha256Hash;
 use bitcoin::hashes::sha256::HashEngine as Sha256State;
+use bitcoin::hashes::sha256d::Hash as Sha256dHash;
 use bitcoin::hashes::{Hash, HashEngine};
 use bitcoin::psbt::PartiallySignedTransaction;
 use bitcoin::secp256k1::ecdsa::RecoverableSignature;
@@ -19,13 +20,19 @@ use bitcoin::{
 	EcdsaSighashType, Network, PackedLockTime, Script, Sequence, Transaction, TxIn, TxOut,
 };
 use lightning::chain::keysinterface::{
-	DelayedPaymentOutputDescriptor, InMemorySigner, KeysInterface, Recipient,
-	SpendableOutputDescriptor, StaticPaymentOutputDescriptor,
+	DelayedPaymentOutputDescriptor, InMemorySigner, Recipient, SpendableOutputDescriptor,
+	StaticPaymentOutputDescriptor,
 };
 use lightning::ln::msgs::DecodeError;
 use lightning::ln::script::ShutdownScript;
 use lightning::util::invoice::construct_invoice_preimage;
-use lightning::util::ser::ReadableArgs;
+use lightning_signer::bitcoin::secp256k1::ecdsa::Signature;
+use lightning_signer::bitcoin::secp256k1::Message;
+use lightning_signer::lightning::chain::keysinterface::{
+	EntropySource, NodeSigner, SignerProvider,
+};
+use lightning_signer::lightning::ln::msgs::UnsignedGossipMessage;
+use lightning_signer::lightning::util::ser::{Readable, Writeable};
 use lightning_signer::util::transaction_utils;
 use lightning_signer::util::transaction_utils::MAX_VALUE_MSAT;
 use lightning_signer::{bitcoin, lightning};
@@ -120,7 +127,7 @@ impl KeysManager {
 			.ckd_priv(&secp_ctx, ChildNumber::from_hardened_idx(4).unwrap())
 			.expect("Your RNG is busted");
 
-		let mut rand_bytes_unique_start = Sha256::engine();
+		let mut rand_bytes_unique_start = Sha256Hash::engine();
 		rand_bytes_unique_start.input(&byte_utils::be64_to_array(starting_time_secs));
 		rand_bytes_unique_start.input(&byte_utils::be32_to_array(starting_time_nanos));
 		rand_bytes_unique_start.input(seed);
@@ -132,7 +139,7 @@ impl KeysManager {
 		let mut inbound_pmt_key_bytes = [0; 32];
 		inbound_pmt_key_bytes.copy_from_slice(inbound_payment_key.as_ref());
 
-		let factory = InMemorySignerFactory::new(&seed, node_secret);
+		let factory = InMemorySignerFactory::new(&seed);
 
 		let mut res = KeysManager {
 			secp_ctx,
@@ -171,25 +178,8 @@ impl KeysManager {
 	}
 }
 
-impl KeysInterface for KeysManager {
+impl SignerProvider for KeysManager {
 	type Signer = DynSigner;
-
-	fn get_node_secret(&self, recipient: Recipient) -> Result<SecretKey, ()> {
-		match recipient {
-			Recipient::Node => Ok(self.node_secret.clone()),
-			Recipient::PhantomNode => Err(()),
-		}
-	}
-
-	fn ecdh(
-		&self, recipient: Recipient, other_key: &PublicKey, tweak: Option<&Scalar>,
-	) -> Result<SharedSecret, ()> {
-		let mut node_secret = self.get_node_secret(recipient)?;
-		if let Some(tweak) = tweak {
-			node_secret = node_secret.mul_tweak(tweak).map_err(|_| ())?;
-		}
-		Ok(SharedSecret::new(other_key, &node_secret))
-	}
 
 	fn get_destination_script(&self) -> Script {
 		self.destination_script.clone()
@@ -217,6 +207,15 @@ impl KeysInterface for KeysManager {
 		DynSigner::new(self.derive_channel_keys(channel_value_satoshis, &channel_keys_id))
 	}
 
+	fn read_chan_signer(&self, reader: &[u8]) -> Result<Self::Signer, DecodeError> {
+		let mut cursor = std::io::Cursor::new(reader);
+		// TODO(devrandom) make this polymorphic
+		let signer = InMemorySigner::read(&mut cursor)?;
+		Ok(DynSigner { inner: Box::new(signer) })
+	}
+}
+
+impl EntropySource for KeysManager {
 	fn get_secure_random_bytes(&self) -> [u8; 32] {
 		let mut sha = self.rand_bytes_unique_start.clone();
 
@@ -231,29 +230,58 @@ impl KeysInterface for KeysManager {
 		sha.input(child_privkey.private_key.as_ref());
 
 		sha.input(b"Unique Secure Random Bytes Salt");
-		Sha256::from_engine(sha).into_inner()
+		Sha256Hash::from_engine(sha).into_inner()
+	}
+}
+
+impl NodeSigner for KeysManager {
+	fn get_inbound_payment_key_material(&self) -> KeyMaterial {
+		self.inbound_payment_key
 	}
 
-	fn read_chan_signer(&self, reader: &[u8]) -> Result<Self::Signer, DecodeError> {
-		let mut cursor = std::io::Cursor::new(reader);
-		// TODO(devrandom) make this polymorphic
-		let signer = InMemorySigner::read(&mut cursor, self.node_secret)?;
-		Ok(DynSigner { inner: Box::new(signer) })
+	fn get_node_id(&self, recipient: Recipient) -> std::result::Result<PublicKey, ()> {
+		match recipient {
+			Recipient::Node => {}
+			Recipient::PhantomNode => panic!("phantom node not supported"),
+		}
+		Ok(PublicKey::from_secret_key(&self.secp_ctx, &self.node_secret))
+	}
+
+	fn ecdh(
+		&self, recipient: Recipient, other_key: &PublicKey, tweak: Option<&Scalar>,
+	) -> Result<SharedSecret, ()> {
+		match recipient {
+			Recipient::Node => {}
+			Recipient::PhantomNode => panic!("phantom node not supported"),
+		}
+		let mut node_secret = self.node_secret.clone();
+		if let Some(tweak) = tweak {
+			node_secret = node_secret.mul_tweak(tweak).map_err(|_| ())?;
+		}
+		Ok(SharedSecret::new(other_key, &node_secret))
 	}
 
 	fn sign_invoice(
 		&self, hrp_bytes: &[u8], invoice_data: &[u5], recipient: Recipient,
 	) -> Result<RecoverableSignature, ()> {
+		match recipient {
+			Recipient::Node => {}
+			Recipient::PhantomNode => panic!("phantom node not supported"),
+		}
+		let node_secret = self.node_secret.clone();
 		let invoice_preimage = construct_invoice_preimage(&hrp_bytes, &invoice_data);
-		let hash = Sha256::hash(invoice_preimage.as_slice());
+		let hash = Sha256Hash::hash(invoice_preimage.as_slice());
 		let message = secp256k1::Message::from_slice(&hash).unwrap();
-		Ok(self
-			.secp_ctx
-			.sign_ecdsa_recoverable(&message, &self.get_node_secret(recipient).unwrap()))
+		Ok(self.secp_ctx.sign_ecdsa_recoverable(&message, &node_secret))
 	}
 
-	fn get_inbound_payment_key_material(&self) -> KeyMaterial {
-		self.inbound_payment_key
+	fn sign_gossip_message(
+		&self, msg: UnsignedGossipMessage,
+	) -> std::result::Result<Signature, ()> {
+		let encoded = &msg.encode()[..];
+		let msg_hash = Sha256dHash::hash(encoded);
+		let encmsg = Message::from_slice(&msg_hash[..]).map_err(|_| ())?;
+		Ok(self.secp_ctx.sign_ecdsa(&encmsg, &self.node_secret))
 	}
 }
 

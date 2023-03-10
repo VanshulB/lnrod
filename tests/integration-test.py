@@ -36,7 +36,7 @@ OPTIMIZATION = 'release' if USE_RELEASE_BINARIES else 'debug'
 DEV_MODE = False
 DEV_BINARIES_PATH = f'../vls/target/{OPTIMIZATION}'
 
-# options: test, vls, vls-local, vls2-null, vls2-grpc
+# options: test, vls-local, vls2-null, vls2-grpc
 SIGNER = os.environ.get("SIGNER", "vls2-null")
 
 logger = logging.getLogger()
@@ -111,6 +111,7 @@ class Bitcoind(object):
     def mine(self, count=1):
         if self.mine_address is None:
             self.mine_address = self.getnewaddress()
+        print(f"mine {count}")
         self.generatetoaddress(count, self.mine_address)
 
     def __getattr__(self, item):
@@ -143,7 +144,7 @@ class Bitcoind(object):
 
         return resp['result']
 
-@retry(stop_max_attempt_number=50, wait_fixed=100)
+@retry(stop_max_attempt_number=10, wait_fixed=500)
 def grpc_client(url):
     channel = grpc.insecure_channel(url)
     stub = AdminStub(channel)
@@ -208,6 +209,9 @@ def run(disaster_recovery_block_explorer, existing_bitcoin_rpc):
     balance = btc.getbalance()
     assert balance > 0
 
+    time.sleep(5)
+    print("at height", btc.getblockchaininfo()['blocks'])
+
     alice_id = alice.NodeInfo(Void()).node_id
     bob_id = bob.NodeInfo(Void()).node_id
     charlie_id = charlie.NodeInfo(Void()).node_id
@@ -218,6 +222,7 @@ def run(disaster_recovery_block_explorer, existing_bitcoin_rpc):
         alice.ChannelNew(ChannelNewRequest(node_id=bob_id, value_sat=CHANNEL_VALUE_SAT, is_public=True))
     except Exception as e:
         print(e)
+        time.sleep(10000)
         raise
 
     # we have to wait here to prevent a race condition on the bitcoin wallet UTXOs
@@ -257,6 +262,9 @@ def run(disaster_recovery_block_explorer, existing_bitcoin_rpc):
 
     wait_until('active at both', channel_active)
 
+    time.sleep(5)
+    print("at height", btc.getblockchaininfo()['blocks'])
+
     def best_block_sync(node):
         return node.NodeInfo(Void()).best_block_hash[::-1].hex() == btc.getblockchaininfo()['bestblockhash']
 
@@ -269,6 +277,9 @@ def run(disaster_recovery_block_explorer, existing_bitcoin_rpc):
 
     print(f'Alice initial balance {alice.ChannelList(Void()).channels[0].outbound_msat}')
     print(PAYMENT_MSAT * CHANNEL_BALANCE_SYNC_INTERVAL)
+
+    time.sleep(5)
+    print("at height", btc.getblockchaininfo()['blocks'])
 
     for i in range(1, NUM_PAYMENTS + 1):
         print(f'Pay invoice {i}')
@@ -387,6 +398,7 @@ def start_bitcoind():
         # 'strace', '-o', '/tmp/out', '-s', '10000', '-f',
         'bitcoind', '--regtest', '--fallbackfee=0.0000001',
         '--rpcuser=user', '--rpcpassword=pass',
+        '--debug=rpc',
         f'--datadir={OUTPUT_DIR}']
     btc_proc = Popen(popen_args, stdout=btc_log)
     processes.append(btc_proc)
