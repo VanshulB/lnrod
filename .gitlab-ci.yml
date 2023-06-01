@@ -144,9 +144,10 @@ integration2:
     - ./scripts/compile-proto
     - export PATH="$PATH:`pwd`/bin"
     - export VLS_ONCHAIN_VALIDATION_DISABLE=1
-    - SIGNER=vls2-grpc  ./tests/integration-test.py --test-disaster bitcoind
+    # offset ports by 10 to avoid conflicts with integration1
+    - SIGNER=vls2-grpc  ./tests/integration-test.py --test-disaster bitcoind --instance 1
     - sleep 5 # wait for bitcoind to stop
-    - SIGNER=vls2-grpc  ./tests/integration-test.py
+    - SIGNER=vls2-grpc  ./tests/integration-test.py --instance 1
   artifacts:
     when: always
     paths:

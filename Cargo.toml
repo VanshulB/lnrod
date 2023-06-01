@@ -84,25 +84,25 @@ features = ["rpc-client"]
 
 [dependencies.vls-core]
 features = ["std"]
-version = "0.9.0-rc.1"
+version = "0.9.0"
 #git = "https://gitlab.com/lightning-signer/validating-lightning-signer.git"
 #rev = "064cb514d7693eb6434ebcfb9be74253c78dd116"
 #path = "../vls/vls-core"
 
 [dependencies.vls-persist]
-version = "0.9.0-rc.1"
+version = "0.9.0"
 #git = "https://gitlab.com/lightning-signer/validating-lightning-signer.git"
 #rev = "064cb514d7693eb6434ebcfb9be74253c78dd116"
 features = ["kv"]
 #path = "../vls/vls-persist"
 
 [dependencies.vls-proxy]
-version = "0.9.0-rc.1"
+version = "0.9.0"
 #git = "https://gitlab.com/lightning-signer/validating-lightning-signer.git"
 #path = "../vls/vls-proxy"
 
 # keep this line - it lets scripts/vls-revision figure out which version of VLS to build
-#rev = "v0.9.0-rc.1"  # VLS VERSION
+#rev = "v0.9.0"  # VLS VERSION
 
 [build-dependencies]
 tonic-build = "0.8"
