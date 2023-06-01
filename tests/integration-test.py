@@ -345,7 +345,7 @@ def run(disaster_recovery_block_explorer, existing_bitcoin_rpc):
                   '--datadir', f'{OUTPUT_DIR}/vls3',
                   '--recover-type', recover_type,
                   '--recover-rpc', recover_rpc,
-                  '--recover-close', destination],
+                  '--recover-to', destination],
                  stdout=stdout_log,
                  stderr=subprocess.STDOUT)
         assert p == 0
@@ -358,7 +358,7 @@ def run(disaster_recovery_block_explorer, existing_bitcoin_rpc):
                   '--datadir', f'{OUTPUT_DIR}/vls3',
                   '--recover-type', recover_type,
                   '--recover-rpc', recover_rpc,
-                  '--recover-close', destination],
+                  '--recover-to', destination],
                  stdout=stdout_log,
                  stderr=subprocess.STDOUT)
         assert p == 0

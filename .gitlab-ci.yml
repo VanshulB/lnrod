@@ -122,7 +122,7 @@ integration1:
     - pip3 install -r requirements.txt
     - ./scripts/compile-proto
     - export PATH="$PATH:`pwd`/bin"
-    - export VLS_CHAINFOLLOWER_ENABLE=1
+    - export VLS_ONCHAIN_VALIDATION_DISABLE=1
     - SIGNER=vls-local ./tests/integration-test.py
     - sleep 5 # wait for bitcoind to stop
     - SIGNER=vls2-null  ./tests/integration-test.py
@@ -143,7 +143,7 @@ integration2:
     - pip3 install -r requirements.txt
     - ./scripts/compile-proto
     - export PATH="$PATH:`pwd`/bin"
-    - export VLS_CHAINFOLLOWER_ENABLE=1
+    - export VLS_ONCHAIN_VALIDATION_DISABLE=1
     - SIGNER=vls2-grpc  ./tests/integration-test.py --test-disaster bitcoind
     - sleep 5 # wait for bitcoind to stop
     - SIGNER=vls2-grpc  ./tests/integration-test.py

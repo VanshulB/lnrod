@@ -155,7 +155,7 @@ pub(crate) fn make_signer(
 
 	let source_factory = Arc::new(SourceFactory::new(ldk_data_dir, network));
 	let frontend = Frontend::new(
-		Arc::new(SignerFront { signer: Arc::clone(&signer) }),
+		Arc::new(SignerFront { signer: Arc::clone(&signer), external_persist: None }),
 		source_factory,
 		bitcoin_rpc_url,
 	);
@@ -168,8 +168,11 @@ pub(crate) fn make_signer(
 		let manager = LoopbackSignerKeysInterface { node_id, signer };
 		Box::new(Adapter { inner: manager, sweep_address })
 	} else {
-		let node_config =
-			SignerNodeConfig { network, key_derivation_style: KeyDerivationStyle::Ldk };
+		let node_config = SignerNodeConfig {
+			network,
+			key_derivation_style: KeyDerivationStyle::Ldk,
+			use_checkpoints: true,
+		};
 		let (node_id, _seed) = signer.new_node(node_config, seed_persister).unwrap();
 		fs::write(node_id_path, node_id.to_string()).expect("write node_id");
 		let node = signer.get_node(&node_id).unwrap();

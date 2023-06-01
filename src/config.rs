@@ -74,6 +74,7 @@ impl Into<ChannelHandshakeConfig> for ConfigProposeCoinChannel {
 			announced_channel: self.announced_channel.unwrap_or(false),
 			commit_upfront_shutdown_pubkey: self.commit_upfront_shutdown_pubkey.unwrap_or(true),
 			their_channel_reserve_proportional_millionths: 0,
+			our_max_accepted_htlcs: 100,
 		}
 	}
 }
