@@ -64,7 +64,7 @@ impl InMemorySignerFactory {
 		let payment_key = key_step!(b"payment key", revocation_base_key);
 		let delayed_payment_base_key = key_step!(b"delayed payment base key", payment_key);
 		let htlc_base_key = key_step!(b"HTLC base key", delayed_payment_base_key);
-		let unique_start = key_step!(b"unique tart", commitment_seed).secret_bytes();
+		let unique_start = key_step!(b"unique start", commitment_seed).secret_bytes();
 
 		let signer = InMemorySigner::new(
 			&self.secp_ctx,
