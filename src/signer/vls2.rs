@@ -82,7 +82,7 @@ impl Transport for NullTransport {
 		debug!("ENTER node_call {:?}", message);
 		let (result, _) = self.handler.handle(message).map_err(|e| {
 			error!("error in handle: {:?}", e);
-			Error::TransportError
+			Error::Transport
 		})?;
 		debug!("REPLY node_call {:?}", result);
 		Ok(result.as_vec())
@@ -94,7 +94,7 @@ impl Transport for NullTransport {
 		let handler = self.handler.for_new_client(0, peer_id, dbid);
 		let (result, _) = handler.handle(message).map_err(|e| {
 			error!("error in handle: {:?}", e);
-			Error::TransportError
+			Error::Transport
 		})?;
 		debug!("REPLY call({}) {:?}", dbid, result);
 		Ok(result.as_vec())
@@ -111,8 +111,8 @@ impl SignerPort for TransportSignerPort {
 		self.transport.node_call(message)
 	}
 
-	fn clone(&self) -> Box<dyn SignerPort> {
-		Box::new(TransportSignerPort { transport: self.transport.clone() })
+	fn is_ready(&self) -> bool {
+		true
 	}
 }
 
@@ -225,7 +225,7 @@ pub(crate) async fn make_null_signer(
 	} else {
 		let transport = Arc::new(NullTransport::new(sweep_address.clone()));
 
-		let signer_port = Box::new(TransportSignerPort { transport: transport.clone() });
+		let signer_port = Arc::new(TransportSignerPort { transport: transport.clone() });
 		let source_factory = Arc::new(SourceFactory::new(ldk_data_dir, network));
 		let frontend = Frontend::new(
 			Arc::new(SignerPortFront::new(signer_port, network)),
@@ -293,8 +293,8 @@ impl GrpcTransport {
 		let request = ChannelRequest { client_id, message, reply_tx };
 
 		// This can fail if gRPC adapter shut down
-		sender.send(request).await.map_err(|_| Error::TransportError)?;
-		let reply = reply_rx.await.map_err(|_| Error::TransportError)?;
+		sender.send(request).await.map_err(|_| Error::Transport)?;
+		let reply = reply_rx.await.map_err(|_| Error::Transport)?;
 		Ok(reply.reply)
 	}
 }
@@ -335,7 +335,7 @@ pub(crate) async fn make_grpc_signer(
 	let node_id = transport.node_id();
 
 	let source_factory = Arc::new(SourceFactory::new(ldk_data_dir, network));
-	let signer_port = Box::new(TransportSignerPort { transport: transport.clone() });
+	let signer_port = Arc::new(TransportSignerPort { transport: transport.clone() });
 	let frontend = Frontend::new(
 		Arc::new(SignerPortFront::new(signer_port, network)),
 		source_factory,

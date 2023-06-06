@@ -14,31 +14,31 @@ use bitcoin::secp256k1::PublicKey;
 use bitcoin::{BlockHash, Network};
 use lightning::chain;
 use lightning::chain::chainmonitor::ChainMonitor;
+use lightning::chain::keysinterface::EntropySource;
 use lightning::chain::BestBlock;
+use lightning::chain::ChannelMonitorUpdateStatus;
 use lightning::chain::Watch;
+use lightning::events::{Event, EventHandler};
 use lightning::ln::channelmanager::{ChainParameters, ChannelManagerReadArgs};
+use lightning::ln::channelmanager::{PaymentId, RecipientOnionFields, Retry};
 use lightning::ln::msgs::NetAddress;
 use lightning::ln::peer_handler::MessageHandler;
 use lightning::ln::{PaymentHash, PaymentPreimage};
 use lightning::routing::gossip::P2PGossipSync;
 use lightning::routing::router::DefaultRouter;
+use lightning::routing::router::{PaymentParameters, RouteParameters};
 use lightning::routing::scoring::{ProbabilisticScorer, ProbabilisticScoringParameters};
-use lightning::util::events::{Event, EventHandler};
 use lightning::util::ser::ReadableArgs;
 use lightning_background_processor::{BackgroundProcessor, GossipSync as LdkGossipSync};
 use lightning_block_sync::{init, poll, SpvClient, UnboundedCache};
+use lightning_invoice::payment::pay_invoice;
 use lightning_invoice::payment::PaymentError;
+use lightning_invoice::utils::create_invoice_from_channelmanager;
+use lightning_invoice::Currency;
 use lightning_invoice::Invoice;
 use lightning_persister::FilesystemPersister;
 use lightning_rapid_gossip_sync::RapidGossipSync;
-use lightning_signer::lightning::chain::keysinterface::EntropySource;
-use lightning_signer::lightning::chain::ChannelMonitorUpdateStatus;
-use lightning_signer::lightning::ln::channelmanager::{PaymentId, Retry};
-use lightning_signer::lightning::routing::router::{PaymentParameters, RouteParameters};
-use lightning_signer::lightning_invoice::payment::pay_invoice;
-use lightning_signer::lightning_invoice::utils::create_invoice_from_channelmanager;
-use lightning_signer::lightning_invoice::Currency;
-use lightning_signer::{bitcoin, lightning};
+use lightning_signer::{bitcoin, lightning, lightning_invoice};
 use rand::{thread_rng, RngCore};
 use tokio::runtime::Handle;
 
@@ -52,11 +52,11 @@ use crate::net::Connector;
 use crate::signer::get_keys_manager;
 use crate::tor::TorManager;
 use crate::util::Shutter;
+use crate::PaymentInfo;
 use crate::{
 	disk, handle_ldk_events, ArcChainMonitor, ChannelManager, HTLCStatus, IgnoringMessageHandler,
 	MilliSatoshiAmount, PaymentInfoStorage, PeerManager, Sha256,
 };
-use crate::{lightning_invoice, PaymentInfo};
 use crate::{DynKeysInterface, MyEntropySource};
 
 #[derive(Clone)]
@@ -681,6 +681,7 @@ impl Node {
 		};
 		let status = match self.channel_manager.send_spontaneous_payment_with_retry(
 			Some(payment_preimage),
+			RecipientOnionFields::spontaneous_empty(),
 			PaymentId(payment_hash.0),
 			route_params,
 			Retry::Timeout(Duration::from_secs(10)),

@@ -7,39 +7,36 @@ use std::{fmt, io};
 
 use log::{debug, error, info};
 
+use crate::lightning::ln::PaymentSecret;
 use bitcoin::consensus::encode;
 use bitcoin::hashes::sha256::Hash as Sha256;
 use bitcoin::hashes::Hash;
 use bitcoin::secp256k1::Secp256k1;
 use bitcoin::{Network, Transaction};
+use bitcoind_client::BitcoindClient;
 use lightning::chain;
 use lightning::chain::chaininterface::{BroadcasterInterface, ConfirmationTarget, FeeEstimator};
 use lightning::chain::chainmonitor::ChainMonitor;
 use lightning::chain::transaction::OutPoint;
 use lightning::chain::Filter;
+use lightning::events::{Event, PaymentPurpose};
 use lightning::ln::channelmanager::ChannelManager as RLChannelManager;
 use lightning::ln::peer_handler::IgnoringMessageHandler;
 use lightning::ln::peer_handler::PeerManager as RLPeerManager;
 use lightning::ln::{PaymentHash, PaymentPreimage};
 use lightning::routing::gossip::{NetworkGraph, P2PGossipSync};
-use lightning::util::events::Event;
 use lightning_net_tokio::SocketDescriptor;
 use lightning_persister::FilesystemPersister;
 use lightning_signer::bitcoin::Address;
 use lightning_signer::lightning::chain::keysinterface::EntropySource;
 use lightning_signer::lightning::routing::router::DefaultRouter;
 use lightning_signer::lightning::routing::scoring::ProbabilisticScorer;
-use lightning_signer::{bitcoin, lightning, lightning_invoice};
+use lightning_signer::{bitcoin, lightning};
+use logadapter::LoggerAdapter;
 use rand::{thread_rng, Rng};
+use vls_protocol_client::{DynKeysInterface, DynSigner, SpendableKeysInterface};
 use vls_proxy::lightning_signer;
 use vls_proxy::vls_protocol_client;
-
-use vls_protocol_client::{DynKeysInterface, DynSigner, SpendableKeysInterface};
-
-use crate::lightning::ln::PaymentSecret;
-use crate::lightning::util::events::PaymentPurpose;
-use bitcoind_client::BitcoindClient;
-use logadapter::LoggerAdapter;
 
 #[macro_use]
 #[allow(unused_macros)]
@@ -356,6 +353,9 @@ async fn handle_ldk_events(
 		}
 		Event::ChannelReady { channel_id, .. } => {
 			info!("EVENT: Channel {} ready", hex_utils::hex_str(&channel_id));
+		}
+		Event::ChannelPending { funding_txo, .. } => {
+			info!("EVENT: Channel pending with funding txo {}", funding_txo);
 		}
 	}
 }

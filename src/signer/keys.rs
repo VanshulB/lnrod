@@ -32,7 +32,7 @@ use lightning_signer::lightning::chain::keysinterface::{
 	EntropySource, NodeSigner, SignerProvider,
 };
 use lightning_signer::lightning::ln::msgs::UnsignedGossipMessage;
-use lightning_signer::lightning::util::ser::{Readable, Writeable};
+use lightning_signer::lightning::util::ser::{ReadableArgs, Writeable};
 use lightning_signer::util::transaction_utils;
 use lightning_signer::util::transaction_utils::MAX_VALUE_MSAT;
 use lightning_signer::{bitcoin, lightning};
@@ -210,7 +210,7 @@ impl SignerProvider for KeysManager {
 	fn read_chan_signer(&self, reader: &[u8]) -> Result<Self::Signer, DecodeError> {
 		let mut cursor = std::io::Cursor::new(reader);
 		// TODO(devrandom) make this polymorphic
-		let signer = InMemorySigner::read(&mut cursor)?;
+		let signer = InMemorySigner::read(&mut cursor, self)?;
 		Ok(DynSigner { inner: Box::new(signer) })
 	}
 }

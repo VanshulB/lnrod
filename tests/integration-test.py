@@ -24,6 +24,7 @@ from admin_pb2 import PingRequest, ChannelNewRequest, ChannelCloseRequest, Void,
 
 processes: [Popen] = []
 OUTPUT_DIR = 'test-output'
+INSTANCE_OFFSET = 0  # this helps us ensure we use different ports when we run concurrent tests
 NUM_PAYMENTS = 250
 WAIT_TIMEOUT = 10
 CHANNEL_BALANCE_SYNC_INTERVAL = 50
@@ -345,7 +346,7 @@ def run(disaster_recovery_block_explorer, existing_bitcoin_rpc):
                   '--datadir', f'{OUTPUT_DIR}/vls3',
                   '--recover-type', recover_type,
                   '--recover-rpc', recover_rpc,
-                  '--recover-close', destination],
+                  '--recover-to', destination],
                  stdout=stdout_log,
                  stderr=subprocess.STDOUT)
         assert p == 0
@@ -358,7 +359,7 @@ def run(disaster_recovery_block_explorer, existing_bitcoin_rpc):
                   '--datadir', f'{OUTPUT_DIR}/vls3',
                   '--recover-type', recover_type,
                   '--recover-rpc', recover_rpc,
-                  '--recover-close', destination],
+                  '--recover-to', destination],
                  stdout=stdout_log,
                  stderr=subprocess.STDOUT)
         assert p == 0
@@ -427,10 +428,10 @@ def start_vlsd(n):
                # '--log-level-console=TRACE',
                '--network=regtest',
                '--datadir', f'{OUTPUT_DIR}/vls{n}',
-               '--port', str(7700 + n)],
+               '--port', str(7700 + INSTANCE_OFFSET + n)],
               stdout=stdout_log, stderr=subprocess.STDOUT)
     processes.append(p)
-    # return grpc_client(f'localhost:{7700 + n}')
+    # return grpc_client(f'localhost:{7700 + INSTANCE_OFFSET + n}')
     time.sleep(1)
     return p
 
@@ -444,7 +445,7 @@ def start_vlsd2(n):
                # '--log-level-console=TRACE',
                '--network=regtest',
                '--datadir', f'{OUTPUT_DIR}/vls{n}',
-               '--connect', f"http://127.0.0.1:{str(7700 + n)}"],
+               '--connect', f"http://127.0.0.1:{str(7700 + INSTANCE_OFFSET + n)}"],
               stdout=stdout_log, stderr=subprocess.STDOUT)
     processes.append(p)
     time.sleep(1)
@@ -462,9 +463,9 @@ def start_node(n, bitcoin_rpc):
                '--regtest',
                '--datadir', f'{OUTPUT_DIR}/data{n}',
                '--signer', SIGNER,
-               '--vlsport', str(7700 + n),
-               '--rpcport', str(8800 + n),
-               '--lnport', str(9900 + n),
+               '--vlsport', str(7700 + INSTANCE_OFFSET + n),
+               '--rpcport', str(8800 + INSTANCE_OFFSET + n),
+               '--lnport', str(9900 + INSTANCE_OFFSET + n),
                '--bitcoin', bitcoin_rpc,
                ],
               stdout=stdout_log, stderr=subprocess.STDOUT)
@@ -474,8 +475,8 @@ def start_node(n, bitcoin_rpc):
     if SIGNER == 'vls2-grpc':
         p2 = start_vlsd2(n)
 
-    lnrod = grpc_client(f'localhost:{8800 + n}')
-    lnrod.lnport = 9900 + n
+    lnrod = grpc_client(f'localhost:{8800 + INSTANCE_OFFSET + n}')
+    lnrod.lnport = 9900 + INSTANCE_OFFSET + n
     return lnrod, p, p2
 
 
@@ -486,7 +487,9 @@ if __name__ == '__main__':
     parser.add_argument("--test-disaster", help=f"test disaster recovery, with choice of block explorer / bitcoind",
                         choices=['bitcoind', 'esplora'])
     parser.add_argument("--bitcoin", help="bitcoin RPC to use instead of starting a new one, e.g. http://user:pass@localhost:18443")
+    parser.add_argument("--instance", help="offset ports for concurrent runs", type=int, default=0)
     args = parser.parse_args()
+    INSTANCE_OFFSET = args.instance * 10
     if args.dev:
         DEV_MODE = True
     run(disaster_recovery_block_explorer=args.test_disaster, existing_bitcoin_rpc=args.bitcoin)
