@@ -71,7 +71,7 @@ impl NullTransport {
 		let services = NodeServices { validator_factory, starting_time_factory, persister, clock };
 		let seed = generate_seed();
 		let builder = RootHandlerBuilder::new(network, 0, services, seed).allowlist(allowlist);
-		let (handler, _) = builder.build();
+		let (handler, _) = builder.build().unwrap();
 		NullTransport { handler }
 	}
 }

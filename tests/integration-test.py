@@ -444,6 +444,7 @@ def start_vlsd2(n):
     p = Popen([vlsd,
                # '--log-level-console=TRACE',
                '--network=regtest',
+               '--policy-filter=policy-commitment-htlc-routing-balance:warn',  # FIXME we need add_invoice on vlsd2
                '--datadir', f'{OUTPUT_DIR}/vls{n}',
                '--connect', f"http://127.0.0.1:{str(7700 + INSTANCE_OFFSET + n)}"],
               stdout=stdout_log, stderr=subprocess.STDOUT)

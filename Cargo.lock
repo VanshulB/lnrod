@@ -2837,9 +2837,9 @@ checksum = "49874b5167b65d7193b8aba1567f5c7d93d001cafc34600cee003eda787e483f"
 
 [[package]]
 name = "vls-core"
-version = "0.9.0"
+version = "0.9.1-rc.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2d23ccf3184edb0100f15c54f4748ee8706ff25448d40ccc12bb662129d9fb75"
+checksum = "04e0b5485155b483c2a3f24255b50c40c2d95a89e7d3f7b75087d50e18db9cc7"
 dependencies = [
  "anyhow",
  "backtrace",
@@ -2862,9 +2862,9 @@ dependencies = [
 
 [[package]]
 name = "vls-frontend"
-version = "0.9.0"
+version = "0.9.1-rc.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d9d722d0e6cdfe6d3ce5407f232450b81e7bf31b5dd07bef536c50026651da38"
+checksum = "8533a7a360419965a18b129908a3ba7cc473368dad921d220528e6f25bf8da7c"
 dependencies = [
  "async-trait",
  "lightning-storage-server",
@@ -2877,9 +2877,9 @@ dependencies = [
 
 [[package]]
 name = "vls-persist"
-version = "0.9.0"
+version = "0.9.1-rc.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b2ad64a37b48b66e6b9038c06f7325fda0804855402481f1ea91f62bfb9953cd"
+checksum = "9cb1cedc10aaa57bef3b784646444741bba79aa467b0c3a7c267705723a5a298"
 dependencies = [
  "hex",
  "kv",
@@ -2892,9 +2892,9 @@ dependencies = [
 
 [[package]]
 name = "vls-protocol"
-version = "0.9.0"
+version = "0.9.1-rc.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5a32092e8cdf50f5a3b9c7adc84f9a6a568546c40b18a2e11f7c09c34f630bf7"
+checksum = "9d6113feb9f94c484d8caae56bf7e97ed8172f8bc9bdb10f11ce40f1f1bb4cc0"
 dependencies = [
  "as-any",
  "bolt-derive",
@@ -2907,9 +2907,9 @@ dependencies = [
 
 [[package]]
 name = "vls-protocol-client"
-version = "0.9.0"
+version = "0.9.1-rc.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1d36e544df7422b5b38f6a99b394721e1d1464bacf3a0bb6c15ad90a8218bf81"
+checksum = "635df1230292f6104877fda00db36ceca43f25b5b58d9875a3056a53086c7f34"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -2923,9 +2923,9 @@ dependencies = [
 
 [[package]]
 name = "vls-protocol-signer"
-version = "0.9.0"
+version = "0.9.1-rc.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6651198ebb86db7f336e96c06c3d335fcd5e73b3637ec26ede21de2a1d8a91c9"
+checksum = "786c8e917f2abc61a20671245ad763c4f7a3d77b612d985972b8756f8dca7257"
 dependencies = [
  "bit-vec",
  "log",
@@ -2936,9 +2936,9 @@ dependencies = [
 
 [[package]]
 name = "vls-proxy"
-version = "0.9.0"
+version = "0.9.1-rc.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cbe2dab5b2de7b25aa6826203365eee90b61729653830e49851783f730dcacc3"
+checksum = "61247f682efd169c9f890d1d050ffd46cd1f77433836c4db733c3de19f294328"
 dependencies = [
  "anyhow",
  "as-any",
