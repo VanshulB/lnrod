@@ -31,7 +31,7 @@ use std::str::FromStr;
 use std::sync::Arc;
 use url::Url;
 use vls_frontend::Frontend;
-use vls_persist::kv_json::KVJsonPersister;
+use vls_persist::kvv::redb::RedbKVVStore;
 use vls_proxy::nodefront::SignerFront;
 use vls_proxy::vls_frontend;
 use vls_proxy::vls_frontend::frontend::SourceFactory;
@@ -112,7 +112,7 @@ impl SpendableKeysInterface for Adapter {
 	fn spend_spendable_outputs(
 		&self, descriptors: &[&SpendableOutputDescriptor], outputs: Vec<TxOut>,
 		change_destination_script: Script, feerate_sat_per_1000_weight: u32,
-		secp_ctx: &Secp256k1<All>,
+		_secp_ctx: &Secp256k1<All>,
 	) -> anyhow::Result<Transaction> {
 		let tx = self
 			.inner
@@ -121,7 +121,6 @@ impl SpendableKeysInterface for Adapter {
 				outputs,
 				change_destination_script,
 				feerate_sat_per_1000_weight,
-				secp_ctx,
 			)
 			.map_err(|()| anyhow::anyhow!("failed in spend_spendable_outputs"))?;
 		info!("spend spendable {}", bitcoin::consensus::encode::serialize_hex(&tx));
@@ -144,7 +143,7 @@ pub(crate) fn make_signer(
 ) -> Box<dyn SpendableKeysInterface<Signer = DynSigner>> {
 	let node_id_path = format!("{}/node_id", ldk_data_dir);
 	let signer_path = format!("{}/signer", ldk_data_dir);
-	let persister = Arc::new(KVJsonPersister::new(&signer_path));
+	let persister = Arc::new(RedbKVVStore::new(&signer_path));
 	let seed_persister = Arc::new(FileSeedPersister::new(&signer_path));
 	let validator_factory = Arc::new(SimpleValidatorFactory::new());
 	let starting_time_factory = ClockStartingTimeFactory::new();

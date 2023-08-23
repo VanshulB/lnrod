@@ -33,7 +33,7 @@ use url::Url;
 use vls_frontend::Frontend;
 use vls_protocol::model::PubKey;
 use vls_protocol::msgs::{self, DeBolt, SerBolt};
-use vls_protocol::serde_bolt::WireString;
+use vls_protocol::serde_bolt::{Array, WireString};
 use vls_protocol_client::SignerPort;
 use vls_protocol_client::{ClientResult, Error, KeysManagerClient, Transport};
 use vls_protocol_signer::handler::{Handler, RootHandler, RootHandlerBuilder};
@@ -257,7 +257,7 @@ impl GrpcTransport {
 			derivation_style: 0,
 			network_name: WireString(network.to_string().into_bytes()),
 			dev_seed: None,
-			dev_allowlist: vec![WireString(sweep_address.to_string().into_bytes())],
+			dev_allowlist: Array(vec![WireString(sweep_address.to_string().into_bytes())]),
 		};
 		let init_reply_vec = Self::do_call_async(sender.clone(), init.as_vec(), None).await?;
 		let init_reply = msgs::HsmdInit2Reply::from_vec(init_reply_vec)?;
