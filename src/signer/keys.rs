@@ -12,6 +12,8 @@ use bitcoin::hashes::sha256d::Hash as Sha256dHash;
 use bitcoin::hashes::{Hash, HashEngine};
 use bitcoin::psbt::PartiallySignedTransaction;
 use bitcoin::secp256k1::ecdsa::RecoverableSignature;
+use bitcoin::secp256k1::ecdsa::Signature;
+use bitcoin::secp256k1::Message;
 use bitcoin::secp256k1::{ecdh::SharedSecret, PublicKey, Scalar, Secp256k1, SecretKey};
 use bitcoin::util::bip32::{ChildNumber, ExtendedPrivKey, ExtendedPubKey};
 use bitcoin::util::sighash;
@@ -19,25 +21,20 @@ use bitcoin::{secp256k1, Address, Witness};
 use bitcoin::{
 	EcdsaSighashType, Network, PackedLockTime, Script, Sequence, Transaction, TxIn, TxOut,
 };
-use lightning::chain::keysinterface::{
-	DelayedPaymentOutputDescriptor, InMemorySigner, Recipient, SpendableOutputDescriptor,
-	StaticPaymentOutputDescriptor,
-};
 use lightning::ln::msgs::DecodeError;
+use lightning::ln::msgs::UnsignedGossipMessage;
 use lightning::ln::script::ShutdownScript;
-use lightning::util::invoice::construct_invoice_preimage;
-use lightning_signer::bitcoin::secp256k1::ecdsa::Signature;
-use lightning_signer::bitcoin::secp256k1::Message;
-use lightning_signer::lightning::chain::keysinterface::{
-	EntropySource, NodeSigner, SignerProvider,
+use lightning::sign::{
+	DelayedPaymentOutputDescriptor, InMemorySigner, KeyMaterial, Recipient,
+	SpendableOutputDescriptor, StaticPaymentOutputDescriptor,
 };
-use lightning_signer::lightning::ln::msgs::UnsignedGossipMessage;
-use lightning_signer::lightning::util::ser::{ReadableArgs, Writeable};
+use lightning::sign::{EntropySource, NodeSigner, SignerProvider};
+use lightning::util::invoice::construct_invoice_preimage;
+use lightning::util::ser::{ReadableArgs, Writeable};
 use lightning_signer::util::transaction_utils;
 use lightning_signer::util::transaction_utils::MAX_VALUE_MSAT;
 use lightning_signer::{bitcoin, lightning};
 
-use crate::chain::keysinterface::KeyMaterial;
 use crate::signer::test_signer::InMemorySignerFactory;
 use crate::{byte_utils, DynSigner, SpendableKeysInterface};
 
@@ -181,12 +178,12 @@ impl KeysManager {
 impl SignerProvider for KeysManager {
 	type Signer = DynSigner;
 
-	fn get_destination_script(&self) -> Script {
-		self.destination_script.clone()
+	fn get_destination_script(&self) -> Result<Script, ()> {
+		Ok(self.destination_script.clone())
 	}
 
-	fn get_shutdown_scriptpubkey(&self) -> ShutdownScript {
-		ShutdownScript::new_p2wpkh(&WPubkeyHash::hash(&self.shutdown_pubkey.serialize()))
+	fn get_shutdown_scriptpubkey(&self) -> Result<ShutdownScript, ()> {
+		Ok(ShutdownScript::new_p2wpkh(&WPubkeyHash::hash(&self.shutdown_pubkey.serialize())))
 	}
 
 	fn generate_channel_keys_id(

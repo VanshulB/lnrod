@@ -1,6 +1,6 @@
 use anyhow::Result;
 use bitcoin::Network;
-use lightning::chain::keysinterface::Recipient;
+use lightning::sign::Recipient;
 use lightning_signer::bitcoin;
 use lightning_signer::lightning;
 use log::info;

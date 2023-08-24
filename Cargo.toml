@@ -52,31 +52,31 @@ triggered = "0.1"
 ctrlc = { version = "3.1", features = ["termination"] }
 
 [dependencies.lightning-net-tokio]
-version = "0.0.115"
+version = "0.0.116"
 #git = "https://github.com/lightningdevkit/rust-lightning"
 #rev = "af7c2920e1e5ae4ba3f522730e5cce99bedacc8c"
 #path = "../rust-lightning/lightning-net-tokio"
 
 [dependencies.lightning-rapid-gossip-sync]
-version = "0.0.115"
+version = "0.0.116"
 #git = "https://github.com/lightningdevkit/rust-lightning"
 #rev = "af7c2920e1e5ae4ba3f522730e5cce99bedacc8c"
 #path = "../rust-lightning/lightning-rapid-gossip-sync"
 
 [dependencies.lightning-background-processor]
-version = "0.0.115"
+version = "0.0.116"
 #git = "https://github.com/lightningdevkit/rust-lightning"
 #rev = "af7c2920e1e5ae4ba3f522730e5cce99bedacc8c"
 #path = "../rust-lightning/lightning-background-processor"
 
 [dependencies.lightning-persister]
-version = "0.0.115"
+version = "0.0.116"
 #git = "https://github.com/lightningdevkit/rust-lightning"
 #rev = "af7c2920e1e5ae4ba3f522730e5cce99bedacc8c"
 #path = "../rust-lightning/lightning-persister"
 
 [dependencies.lightning-block-sync]
-version = "0.0.115"
+version = "0.0.116"
 #git = "https://github.com/lightningdevkit/rust-lightning"
 #rev = "af7c2920e1e5ae4ba3f522730e5cce99bedacc8c"
 #path = "../rust-lightning/lightning-block-sync"
@@ -85,20 +85,21 @@ features = ["rpc-client"]
 [dependencies.vls-core]
 features = ["std"]
 version = "0.10.0"
-#git = "https://gitlab.com/lightning-signer/validating-lightning-signer.git"
-#rev = "064cb514d7693eb6434ebcfb9be74253c78dd116"
+git = "https://gitlab.com/lightning-signer/validating-lightning-signer.git"
+rev = "4bffd8243055658a177e256acf9b874d54c35e8e"
 #path = "../vls/vls-core"
 
 [dependencies.vls-persist]
 version = "0.10.0"
-#git = "https://gitlab.com/lightning-signer/validating-lightning-signer.git"
-#rev = "064cb514d7693eb6434ebcfb9be74253c78dd116"
+git = "https://gitlab.com/lightning-signer/validating-lightning-signer.git"
+rev = "4bffd8243055658a177e256acf9b874d54c35e8e"
 features = ["redb-kvv"]
 #path = "../vls/vls-persist"
 
 [dependencies.vls-proxy]
 version = "0.10.0"
-#git = "https://gitlab.com/lightning-signer/validating-lightning-signer.git"
+git = "https://gitlab.com/lightning-signer/validating-lightning-signer.git"
+rev = "4bffd8243055658a177e256acf9b874d54c35e8e"
 #path = "../vls/vls-proxy"
 
 # keep this line - it lets scripts/vls-revision figure out which version of VLS to build

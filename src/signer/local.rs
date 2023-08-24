@@ -4,17 +4,14 @@ use crate::{hex_utils, DynSigner, SpendableKeysInterface};
 use bech32::u5;
 use bitcoin::psbt::PartiallySignedTransaction;
 use bitcoin::secp256k1::ecdsa::RecoverableSignature;
+use bitcoin::secp256k1::ecdsa::Signature;
 use bitcoin::secp256k1::{ecdh::SharedSecret, All, PublicKey, Scalar, Secp256k1};
 use bitcoin::{Address, Network, Script, Transaction, TxOut};
-use lightning::chain::keysinterface::SpendableOutputDescriptor;
-use lightning::chain::keysinterface::{KeyMaterial, Recipient};
 use lightning::ln::msgs::DecodeError;
+use lightning::ln::msgs::UnsignedGossipMessage;
 use lightning::ln::script::ShutdownScript;
-use lightning_signer::bitcoin::secp256k1::ecdsa::Signature;
-use lightning_signer::lightning::chain::keysinterface::{
-	EntropySource, NodeSigner, SignerProvider,
-};
-use lightning_signer::lightning::ln::msgs::UnsignedGossipMessage;
+use lightning::sign::{EntropySource, NodeSigner, SignerProvider};
+use lightning::sign::{KeyMaterial, Recipient, SpendableOutputDescriptor};
 use lightning_signer::node::NodeConfig as SignerNodeConfig;
 use lightning_signer::node::NodeServices;
 use lightning_signer::persist::fs::FileSeedPersister;
@@ -63,11 +60,11 @@ impl SignerProvider for Adapter {
 		Ok(DynSigner::new(inner))
 	}
 
-	fn get_destination_script(&self) -> Script {
+	fn get_destination_script(&self) -> Result<Script, ()> {
 		self.inner.get_destination_script()
 	}
 
-	fn get_shutdown_scriptpubkey(&self) -> ShutdownScript {
+	fn get_shutdown_scriptpubkey(&self) -> Result<ShutdownScript, ()> {
 		self.inner.get_shutdown_scriptpubkey()
 	}
 }
@@ -178,7 +175,7 @@ pub(crate) fn make_signer(
 
 		let manager = LoopbackSignerKeysInterface { node_id, signer };
 
-		let shutdown_scriptpubkey = manager.get_shutdown_scriptpubkey().into();
+		let shutdown_scriptpubkey = manager.get_shutdown_scriptpubkey().unwrap().into();
 		let shutdown_address = Address::from_script(&shutdown_scriptpubkey, network)
 			.expect("shutdown script must be convertible to address");
 		info!(

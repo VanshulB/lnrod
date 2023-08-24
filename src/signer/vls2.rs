@@ -5,18 +5,16 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use bech32::u5;
 use bitcoin::psbt::PartiallySignedTransaction;
+use bitcoin::secp256k1::ecdsa::Signature;
 use bitcoin::secp256k1::{
 	ecdh::SharedSecret, ecdsa::RecoverableSignature, All, PublicKey, Scalar, Secp256k1,
 };
 use bitcoin::{Address, Network, Script, Transaction, TxOut};
-use lightning::chain::keysinterface::{KeyMaterial, Recipient, SpendableOutputDescriptor};
 use lightning::ln::msgs::DecodeError;
+use lightning::ln::msgs::UnsignedGossipMessage;
 use lightning::ln::script::ShutdownScript;
-use lightning_signer::bitcoin::secp256k1::ecdsa::Signature;
-use lightning_signer::lightning::chain::keysinterface::{
-	EntropySource, NodeSigner, SignerProvider,
-};
-use lightning_signer::lightning::ln::msgs::UnsignedGossipMessage;
+use lightning::sign::{EntropySource, NodeSigner, SignerProvider};
+use lightning::sign::{KeyMaterial, Recipient, SpendableOutputDescriptor};
 use lightning_signer::node::NodeServices;
 use lightning_signer::persist::DummyPersister;
 use lightning_signer::policy::simple_validator::{make_simple_policy, SimpleValidatorFactory};
@@ -142,11 +140,11 @@ impl SignerProvider for KeysManager {
 		Ok(DynSigner::new(signer))
 	}
 
-	fn get_destination_script(&self) -> Script {
+	fn get_destination_script(&self) -> Result<Script, ()> {
 		self.client.get_destination_script()
 	}
 
-	fn get_shutdown_scriptpubkey(&self) -> ShutdownScript {
+	fn get_shutdown_scriptpubkey(&self) -> Result<ShutdownScript, ()> {
 		self.client.get_shutdown_scriptpubkey()
 	}
 }

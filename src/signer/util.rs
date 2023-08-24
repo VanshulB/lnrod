@@ -1,12 +1,11 @@
 use anyhow::{anyhow, Result};
-use lightning_signer::bitcoin::{
-	PackedLockTime, Script, Sequence, Transaction, TxIn, TxOut, Witness,
-};
-use lightning_signer::lightning::chain::keysinterface::{
+use bitcoin::{PackedLockTime, Script, Sequence, Transaction, TxIn, TxOut, Witness};
+use lightning::sign::{
 	DelayedPaymentOutputDescriptor, SpendableOutputDescriptor, StaticPaymentOutputDescriptor,
 };
 use lightning_signer::util::transaction_utils;
 use lightning_signer::util::transaction_utils::MAX_VALUE_MSAT;
+use lightning_signer::{bitcoin, lightning};
 use std::collections::HashSet;
 
 pub fn create_spending_transaction(

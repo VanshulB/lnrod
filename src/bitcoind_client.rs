@@ -165,7 +165,7 @@ impl BitcoindClient {
 		let queue: Vec<Transaction> = { self.queued_transactions.lock().await.drain(..).collect() };
 		info!("on_new_block height {} with {} queued txs", info.latest_height, queue.len());
 		for tx in queue.iter() {
-			self.broadcast_transaction(tx);
+			self.broadcast_transactions(&[tx]);
 		}
 	}
 }
@@ -182,43 +182,48 @@ impl FeeEstimator for BitcoindClient {
 			ConfirmationTarget::HighPriority => {
 				self.fees.get(&Target::HighPriority).unwrap().load(Ordering::Acquire)
 			}
+			ConfirmationTarget::MempoolMinimum => {
+				unimplemented!()
+			}
 		}
 	}
 }
 
 impl BroadcasterInterface for BitcoindClient {
-	fn broadcast_transaction(&self, tx_ref: &Transaction) {
-		let tx = tx_ref.clone();
-		info!("before broadcast txid {}", tx.txid());
-		debug!("before broadcast tx {:?}", tx);
-		let rpc = Arc::clone(&self.rpc);
-		let queue = Arc::clone(&self.queued_transactions);
-		let ser = hex::encode(tx.serialize());
-		tokio::spawn(async move {
-			let result: Result<String, _> = {
-				let rpc = rpc.lock().await;
-				let raw_args = [serde_json::value::to_raw_value(&json![ser]).unwrap()];
-				let req = rpc.build_request("sendrawtransaction", &raw_args);
-				rpc.send_request(req).await.map_err(Error::from).unwrap().result()
-			};
+	fn broadcast_transactions(&self, txs: &[&Transaction]) {
+		for tx_ref in txs {
+			let tx = (*tx_ref).clone();
+			info!("before broadcast txid {}", tx.txid());
+			debug!("before broadcast tx {:?}", tx);
+			let rpc = Arc::clone(&self.rpc);
+			let queue = Arc::clone(&self.queued_transactions);
+			let ser = hex::encode(tx.serialize());
+			tokio::spawn(async move {
+				let result: Result<String, _> = {
+					let rpc = rpc.lock().await;
+					let raw_args = [serde_json::value::to_raw_value(&json![ser]).unwrap()];
+					let req = rpc.build_request("sendrawtransaction", &raw_args);
+					rpc.send_request(req).await.map_err(Error::from).unwrap().result()
+				};
 
-			match result {
-				Ok(txid) => {
-					info!("broadcast {}", txid);
-				}
-				Err(rpc_error::Error::Rpc(e)) => {
-					if e.code == -26 {
-						warn!("non-final {}, will retry, for {}", e.message, ser);
-						queue.lock().await.push(tx.clone());
-					} else {
-						error!("RPC error on broadcast: {:?} for {}", e, ser)
+				match result {
+					Ok(txid) => {
+						info!("broadcast {}", txid);
+					}
+					Err(rpc_error::Error::Rpc(e)) => {
+						if e.code == -26 {
+							warn!("non-final {}, will retry, for {}", e.message, ser);
+							queue.lock().await.push(tx.clone());
+						} else {
+							error!("RPC error on broadcast: {:?} for {}", e, ser)
+						}
+					}
+					Err(e) => {
+						error!("could not broadcast: {} for {}", e, ser)
 					}
 				}
-				Err(e) => {
-					error!("could not broadcast: {} for {}", e, ser)
-				}
-			}
-		});
+			});
+		}
 	}
 }
 

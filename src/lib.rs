@@ -14,7 +14,6 @@ use bitcoin::hashes::Hash;
 use bitcoin::secp256k1::Secp256k1;
 use bitcoin::{Network, Transaction};
 use bitcoind_client::BitcoindClient;
-use lightning::chain;
 use lightning::chain::chaininterface::{BroadcasterInterface, ConfirmationTarget, FeeEstimator};
 use lightning::chain::chainmonitor::ChainMonitor;
 use lightning::chain::transaction::OutPoint;
@@ -25,12 +24,13 @@ use lightning::ln::peer_handler::IgnoringMessageHandler;
 use lightning::ln::peer_handler::PeerManager as RLPeerManager;
 use lightning::ln::{PaymentHash, PaymentPreimage};
 use lightning::routing::gossip::{NetworkGraph, P2PGossipSync};
+use lightning::routing::router::DefaultRouter;
+use lightning::routing::scoring::ProbabilisticScorer;
+use lightning::sign::EntropySource;
 use lightning_net_tokio::SocketDescriptor;
 use lightning_persister::FilesystemPersister;
 use lightning_signer::bitcoin::Address;
-use lightning_signer::lightning::chain::keysinterface::EntropySource;
-use lightning_signer::lightning::routing::router::DefaultRouter;
-use lightning_signer::lightning::routing::scoring::ProbabilisticScorer;
+use lightning_signer::lightning::routing::scoring::ProbabilisticScoringFeeParameters;
 use lightning_signer::{bitcoin, lightning};
 use logadapter::LoggerAdapter;
 use rand::{thread_rng, Rng};
@@ -125,10 +125,13 @@ pub(crate) type SimpleArcPeerManager<SD, C, L, NS> = RLPeerManager<
 	Arc<NS>,
 >;
 
+type Scorer = ProbabilisticScorer<Arc<NetworkGraph<Arc<LoggerAdapter>>>, Arc<LoggerAdapter>>;
 pub(crate) type Router = DefaultRouter<
 	Arc<NetworkGraph<Arc<LoggerAdapter>>>,
 	Arc<LoggerAdapter>,
-	Arc<Mutex<ProbabilisticScorer<Arc<NetworkGraph<Arc<LoggerAdapter>>>, Arc<LoggerAdapter>>>>,
+	Arc<Mutex<Scorer>>,
+	ProbabilisticScoringFeeParameters,
+	Scorer,
 >;
 
 pub(crate) type ChannelManager = RLChannelManager<
@@ -326,7 +329,7 @@ async fn handle_ldk_events(
 					&Secp256k1::new(),
 				)
 				.unwrap();
-			bitcoind_client.broadcast_transaction(&spending_tx);
+			bitcoind_client.broadcast_transactions(&[&spending_tx]);
 			// XXX maybe need to rescan and blah?
 		}
 		Event::PaymentForwarded { .. } => {}
@@ -356,6 +359,9 @@ async fn handle_ldk_events(
 		}
 		Event::ChannelPending { funding_txo, .. } => {
 			info!("EVENT: Channel pending with funding txo {}", funding_txo);
+		}
+		Event::BumpTransaction(_) => {
+			unimplemented!("BumpTransaction")
 		}
 	}
 }

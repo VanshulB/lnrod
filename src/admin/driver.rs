@@ -9,11 +9,13 @@ use serde_json::json;
 use tonic::{transport::Server, Request, Response, Status};
 
 use bitcoin::secp256k1::PublicKey;
+use bitcoin::Address;
 use lightning::chain::channelmonitor::Balance;
-use lightning::chain::keysinterface::Recipient;
+use lightning::sign::{NodeSigner, Recipient, SignerProvider};
 use lightning::util::config::UserConfig;
-use lightning_invoice::Invoice;
+use lightning_invoice::Bolt11Invoice;
 use lightning_signer::{bitcoin, lightning, lightning_invoice};
+use tokio::runtime::{Builder, Handle};
 
 use crate::admin::admin_api::{
 	Channel, ChannelCloseRequest, ChannelNewReply, ChannelNewRequest, InvoiceNewReply,
@@ -25,9 +27,6 @@ use crate::util::Shutter;
 
 use super::admin_api::admin_server::{Admin, AdminServer};
 use super::admin_api::{ChannelListReply, NodeInfoReply, PingReply, PingRequest, Void};
-use bitcoin::Address;
-use lightning_signer::lightning::chain::keysinterface::{NodeSigner, SignerProvider};
-use tokio::runtime::{Builder, Handle};
 
 struct AdminHandler {
 	node: Node,
@@ -67,7 +66,7 @@ impl Admin for AdminHandler {
 		let node_pubkey = self.node.keys_manager.get_node_id(Recipient::Node).unwrap();
 		let shutdown_scriptpubkey = self.node.keys_manager.get_shutdown_scriptpubkey();
 		let shutdown_address =
-			Address::from_script(&shutdown_scriptpubkey.into(), self.node.network)
+			Address::from_script(&shutdown_scriptpubkey.unwrap().into(), self.node.network)
 				.unwrap()
 				.to_string();
 		let chain_info = self.node.blockchain_info().await;
@@ -227,7 +226,7 @@ impl Admin for AdminHandler {
 		let req = request.into_inner();
 		info!("ENTER payment_send");
 		debug!("{}", type_and_value!(&req));
-		let invoice = Invoice::from_str(req.invoice.as_str())
+		let invoice = Bolt11Invoice::from_str(req.invoice.as_str())
 			.map_err(|_| Status::invalid_argument("invalid invoice"))?;
 		self.node.send_payment(invoice).map_err(|e| Status::invalid_argument(e))?;
 		let reply = PaymentSendReply {};
