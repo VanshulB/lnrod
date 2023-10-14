@@ -183,7 +183,7 @@ impl FeeEstimator for BitcoindClient {
 				self.fees.get(&Target::HighPriority).unwrap().load(Ordering::Acquire)
 			}
 			ConfirmationTarget::MempoolMinimum => {
-				unimplemented!()
+				self.fees.get(&Target::Normal).unwrap().load(Ordering::Acquire)
 			}
 		}
 	}
