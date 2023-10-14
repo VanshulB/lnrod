@@ -4,7 +4,6 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use bech32::u5;
-use bitcoin::psbt::PartiallySignedTransaction;
 use bitcoin::secp256k1::ecdsa::Signature;
 use bitcoin::secp256k1::{
 	ecdh::SharedSecret, ecdsa::RecoverableSignature, All, PublicKey, Scalar, Secp256k1,
@@ -204,12 +203,6 @@ impl SpendableKeysInterface for KeysManager {
 
 	fn get_sweep_address(&self) -> Address {
 		self.sweep_address.clone()
-	}
-
-	fn sign_from_wallet(
-		&self, _psbt: &PartiallySignedTransaction, _derivations: Vec<u32>,
-	) -> PartiallySignedTransaction {
-		unimplemented!("TODO")
 	}
 }
 

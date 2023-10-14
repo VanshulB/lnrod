@@ -10,7 +10,6 @@ use bitcoin::hashes::sha256::Hash as Sha256Hash;
 use bitcoin::hashes::sha256::HashEngine as Sha256State;
 use bitcoin::hashes::sha256d::Hash as Sha256dHash;
 use bitcoin::hashes::{Hash, HashEngine};
-use bitcoin::psbt::PartiallySignedTransaction;
 use bitcoin::secp256k1::ecdsa::RecoverableSignature;
 use bitcoin::secp256k1::ecdsa::Signature;
 use bitcoin::secp256k1::Message;
@@ -463,12 +462,6 @@ impl SpendableKeysInterface for KeysManager {
 
 	fn get_sweep_address(&self) -> Address {
 		self.sweep_address.clone()
-	}
-
-	fn sign_from_wallet(
-		&self, _psbt: &PartiallySignedTransaction, _derivations: Vec<u32>,
-	) -> PartiallySignedTransaction {
-		unimplemented!("TODO")
 	}
 }
 

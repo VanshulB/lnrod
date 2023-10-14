@@ -7,7 +7,7 @@ authors = [
     "Ken Sedgwick <ken@bonsai.com>",
 ]
 license = "MIT OR Apache-2.0"
-edition = "2018"
+edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
@@ -33,7 +33,7 @@ serde_json = { version = "1.0" }
 tokio = { version = "1.24", features = ["macros", "rt-multi-thread"] }
 hyper = "0.14"
 prost = "0.11"
-tonic = "0.8"
+tonic = "0.9"
 clap = "3.2"
 toml = "0.5.8"
 url = "2.3"
@@ -86,27 +86,27 @@ features = ["rpc-client"]
 features = ["std"]
 version = "0.10.0"
 git = "https://gitlab.com/lightning-signer/validating-lightning-signer.git"
-rev = "4bffd8243055658a177e256acf9b874d54c35e8e"
+rev = "b181714ba50c3f5dc48db289510923b5313f3f86"
 #path = "../vls/vls-core"
 
 [dependencies.vls-persist]
+features = ["redb-kvv"]
 version = "0.10.0"
 git = "https://gitlab.com/lightning-signer/validating-lightning-signer.git"
-rev = "4bffd8243055658a177e256acf9b874d54c35e8e"
-features = ["redb-kvv"]
+rev = "b181714ba50c3f5dc48db289510923b5313f3f86"
 #path = "../vls/vls-persist"
 
 [dependencies.vls-proxy]
 version = "0.10.0"
 git = "https://gitlab.com/lightning-signer/validating-lightning-signer.git"
-rev = "4bffd8243055658a177e256acf9b874d54c35e8e"
+rev = "b181714ba50c3f5dc48db289510923b5313f3f86"
 #path = "../vls/vls-proxy"
 
 # keep this line - it lets scripts/vls-revision figure out which version of VLS to build
 #rev = "v0.10.0"  # VLS VERSION
 
 [build-dependencies]
-tonic-build = "0.8"
+tonic-build = "0.9"
 
 [[bin]]
 name = "lnrod"
