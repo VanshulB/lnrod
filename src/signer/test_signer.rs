@@ -7,7 +7,7 @@ use bitcoin::hashes::{Hash, HashEngine};
 use bitcoin::secp256k1::{All, Secp256k1, SecretKey};
 use bitcoin::util::bip32::{ChildNumber, ExtendedPrivKey};
 use bitcoin::{Address, Network};
-use lightning::chain::keysinterface::InMemorySigner;
+use lightning::sign::InMemorySigner;
 use lightning_signer::{bitcoin, lightning};
 
 use crate::signer::keys::KeysManager;

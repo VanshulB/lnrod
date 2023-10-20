@@ -2,6 +2,7 @@ use lightning::util::config::{
 	ChannelConfig, ChannelHandshakeConfig, ChannelHandshakeLimits, UserConfig,
 };
 use lightning_signer::lightning;
+use lightning_signer::lightning::util::config::MaxDustHTLCExposure;
 use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize, Debug, Default, Clone)]
@@ -50,6 +51,7 @@ impl Into<UserConfig> for ConfigCoinChannel {
 			accept_inbound_channels: true,
 			manually_accept_inbound_channels: false,
 			accept_intercept_htlcs: false,
+			accept_mpp_keysend: false,
 		}
 	}
 }
@@ -74,6 +76,7 @@ impl Into<ChannelHandshakeConfig> for ConfigProposeCoinChannel {
 			announced_channel: self.announced_channel.unwrap_or(false),
 			commit_upfront_shutdown_pubkey: self.commit_upfront_shutdown_pubkey.unwrap_or(true),
 			their_channel_reserve_proportional_millionths: 0,
+			negotiate_anchors_zero_fee_htlc_tx: true,
 			our_max_accepted_htlcs: 100,
 		}
 	}
@@ -124,8 +127,9 @@ impl Into<ChannelConfig> for DefaultCoinChannelConfig {
 			forwarding_fee_proportional_millionths: self.fee_proportional_millionths.unwrap_or(0),
 			forwarding_fee_base_msat: 0,
 			cltv_expiry_delta: self.cltv_expiry_delta.unwrap_or(10),
-			max_dust_htlc_exposure_msat: 1000000,            // FIXME
-			force_close_avoidance_max_fee_satoshis: 1000000, // FIXME
+			max_dust_htlc_exposure: MaxDustHTLCExposure::FixedLimitMsat(1000000), // FIXME
+			force_close_avoidance_max_fee_satoshis: 1000000,                      // FIXME
+			accept_underpaying_htlcs: false,
 		}
 	}
 }

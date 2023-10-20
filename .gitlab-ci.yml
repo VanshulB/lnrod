@@ -42,7 +42,7 @@ compile:
     key: lnrod-compile
     paths:
       - .cache/cargo
-  image: rust:1.60.0
+  image: rust:1.67.0
   timeout: 30m
   script:
     - apt-get update
@@ -67,7 +67,7 @@ compile-vls:
     key: lnrod-vls
     paths:
       - .cache/cargo
-  image: rust:1.60.0
+  image: rust:1.67.0
   timeout: 30m
   script:
     - apt-get update

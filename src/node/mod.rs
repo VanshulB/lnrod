@@ -14,7 +14,6 @@ use bitcoin::secp256k1::PublicKey;
 use bitcoin::{BlockHash, Network};
 use lightning::chain;
 use lightning::chain::chainmonitor::ChainMonitor;
-use lightning::chain::keysinterface::EntropySource;
 use lightning::chain::BestBlock;
 use lightning::chain::ChannelMonitorUpdateStatus;
 use lightning::chain::Watch;
@@ -27,15 +26,17 @@ use lightning::ln::{PaymentHash, PaymentPreimage};
 use lightning::routing::gossip::P2PGossipSync;
 use lightning::routing::router::DefaultRouter;
 use lightning::routing::router::{PaymentParameters, RouteParameters};
-use lightning::routing::scoring::{ProbabilisticScorer, ProbabilisticScoringParameters};
+use lightning::routing::scoring::ProbabilisticScoringFeeParameters;
+use lightning::routing::scoring::{ProbabilisticScorer, ProbabilisticScoringDecayParameters};
+use lightning::sign::EntropySource;
 use lightning::util::ser::ReadableArgs;
 use lightning_background_processor::{BackgroundProcessor, GossipSync as LdkGossipSync};
 use lightning_block_sync::{init, poll, SpvClient, UnboundedCache};
 use lightning_invoice::payment::pay_invoice;
 use lightning_invoice::payment::PaymentError;
 use lightning_invoice::utils::create_invoice_from_channelmanager;
+use lightning_invoice::Bolt11Invoice;
 use lightning_invoice::Currency;
-use lightning_invoice::Invoice;
 use lightning_persister::FilesystemPersister;
 use lightning_rapid_gossip_sync::RapidGossipSync;
 use lightning_signer::{bitcoin, lightning, lightning_invoice};
@@ -263,7 +264,7 @@ async fn build_with_signer(
 		logadapter.clone(),
 	));
 
-	let params = ProbabilisticScoringParameters::default();
+	let params = ProbabilisticScoringDecayParameters::default();
 	let scorer = Arc::new(Mutex::new(ProbabilisticScorer::new(
 		params,
 		network_graph.clone(),
@@ -272,11 +273,14 @@ async fn build_with_signer(
 
 	let entropy_source = Arc::new(MyEntropySource::new());
 
+	let scoring_fee_params = ProbabilisticScoringFeeParameters::default();
+
 	let router = Arc::new(DefaultRouter::new(
 		network_graph.clone(),
 		logadapter.clone(),
 		entropy_source.get_secure_random_bytes(),
 		scorer.clone(),
+		scoring_fee_params,
 	));
 
 	let mut restarting_node = true;
@@ -306,6 +310,8 @@ async fn build_with_signer(
 			let best_block =
 				BestBlock::new(getinfo_resp.latest_blockhash, getinfo_resp.latest_height as u32);
 			let chain_params = ChainParameters { network: args.network, best_block };
+			let cur = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap();
+
 			let fresh_channel_manager = ChannelManager::new(
 				fee_estimator.clone(),
 				chain_monitor.clone(),
@@ -317,6 +323,7 @@ async fn build_with_signer(
 				keys_manager.clone(),
 				user_config,
 				chain_params,
+				cur.as_secs() as u32,
 			);
 			(getinfo_resp.latest_blockhash, fresh_channel_manager)
 		}
@@ -377,6 +384,7 @@ async fn build_with_signer(
 		chan_handler: channel_manager.clone(),
 		route_handler: network_gossip.clone(),
 		onion_message_handler: Arc::new(IgnoringMessageHandler {}),
+		custom_message_handler: IgnoringMessageHandler {},
 	};
 	let current_time = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs() as u32;
 	let peer_manager: Arc<PeerManager> = Arc::new(PeerManager::new(
@@ -384,7 +392,6 @@ async fn build_with_signer(
 		current_time,
 		&ephemeral_bytes,
 		logadapter.clone(),
-		IgnoringMessageHandler {},
 		keys_manager.clone(),
 	));
 
@@ -601,7 +608,7 @@ async fn setup_tor(
 }
 
 impl Node {
-	pub fn new_invoice(&self, amount_msat: u64) -> Result<Invoice, String> {
+	pub fn new_invoice(&self, amount_msat: u64) -> Result<Bolt11Invoice, String> {
 		let currency = match self.network {
 			Network::Bitcoin => Currency::Bitcoin,
 			Network::Testnet => Currency::BitcoinTestnet,
@@ -639,7 +646,7 @@ impl Node {
 		Ok(invoice)
 	}
 
-	pub fn send_payment(&self, invoice: Invoice) -> Result<(), String> {
+	pub fn send_payment(&self, invoice: Bolt11Invoice) -> Result<(), String> {
 		let status = match pay_invoice(
 			&invoice,
 			Retry::Timeout(Duration::from_secs(1)),
@@ -676,7 +683,7 @@ impl Node {
 		thread_rng().fill_bytes(&mut payment_preimage.0);
 		let payment_hash = PaymentHash(Sha256::hash(&payment_preimage.0).into_inner());
 		let route_params = RouteParameters {
-			payment_params: PaymentParameters::for_keysend(payee_pubkey, 40),
+			payment_params: PaymentParameters::for_keysend(payee_pubkey, 40, false),
 			final_value_msat: value_msat,
 		};
 		let status = match self.channel_manager.send_spontaneous_payment_with_retry(

@@ -4,19 +4,16 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use bech32::u5;
-use bitcoin::psbt::PartiallySignedTransaction;
+use bitcoin::secp256k1::ecdsa::Signature;
 use bitcoin::secp256k1::{
 	ecdh::SharedSecret, ecdsa::RecoverableSignature, All, PublicKey, Scalar, Secp256k1,
 };
 use bitcoin::{Address, Network, Script, Transaction, TxOut};
-use lightning::chain::keysinterface::{KeyMaterial, Recipient, SpendableOutputDescriptor};
 use lightning::ln::msgs::DecodeError;
+use lightning::ln::msgs::UnsignedGossipMessage;
 use lightning::ln::script::ShutdownScript;
-use lightning_signer::bitcoin::secp256k1::ecdsa::Signature;
-use lightning_signer::lightning::chain::keysinterface::{
-	EntropySource, NodeSigner, SignerProvider,
-};
-use lightning_signer::lightning::ln::msgs::UnsignedGossipMessage;
+use lightning::sign::{EntropySource, NodeSigner, SignerProvider};
+use lightning::sign::{KeyMaterial, Recipient, SpendableOutputDescriptor};
 use lightning_signer::node::NodeServices;
 use lightning_signer::persist::DummyPersister;
 use lightning_signer::policy::simple_validator::{make_simple_policy, SimpleValidatorFactory};
@@ -33,7 +30,7 @@ use url::Url;
 use vls_frontend::Frontend;
 use vls_protocol::model::PubKey;
 use vls_protocol::msgs::{self, DeBolt, SerBolt};
-use vls_protocol::serde_bolt::WireString;
+use vls_protocol::serde_bolt::{Array, WireString};
 use vls_protocol_client::SignerPort;
 use vls_protocol_client::{ClientResult, Error, KeysManagerClient, Transport};
 use vls_protocol_signer::handler::{Handler, RootHandler, RootHandlerBuilder};
@@ -142,11 +139,11 @@ impl SignerProvider for KeysManager {
 		Ok(DynSigner::new(signer))
 	}
 
-	fn get_destination_script(&self) -> Script {
+	fn get_destination_script(&self) -> Result<Script, ()> {
 		self.client.get_destination_script()
 	}
 
-	fn get_shutdown_scriptpubkey(&self) -> ShutdownScript {
+	fn get_shutdown_scriptpubkey(&self) -> Result<ShutdownScript, ()> {
 		self.client.get_shutdown_scriptpubkey()
 	}
 }
@@ -207,12 +204,6 @@ impl SpendableKeysInterface for KeysManager {
 	fn get_sweep_address(&self) -> Address {
 		self.sweep_address.clone()
 	}
-
-	fn sign_from_wallet(
-		&self, _psbt: &PartiallySignedTransaction, _derivations: Vec<u32>,
-	) -> PartiallySignedTransaction {
-		unimplemented!("TODO")
-	}
 }
 
 pub(crate) async fn make_null_signer(
@@ -257,7 +248,7 @@ impl GrpcTransport {
 			derivation_style: 0,
 			network_name: WireString(network.to_string().into_bytes()),
 			dev_seed: None,
-			dev_allowlist: vec![WireString(sweep_address.to_string().into_bytes())],
+			dev_allowlist: Array(vec![WireString(sweep_address.to_string().into_bytes())]),
 		};
 		let init_reply_vec = Self::do_call_async(sender.clone(), init.as_vec(), None).await?;
 		let init_reply = msgs::HsmdInit2Reply::from_vec(init_reply_vec)?;

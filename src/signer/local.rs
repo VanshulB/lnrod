@@ -2,19 +2,15 @@
 
 use crate::{hex_utils, DynSigner, SpendableKeysInterface};
 use bech32::u5;
-use bitcoin::psbt::PartiallySignedTransaction;
 use bitcoin::secp256k1::ecdsa::RecoverableSignature;
+use bitcoin::secp256k1::ecdsa::Signature;
 use bitcoin::secp256k1::{ecdh::SharedSecret, All, PublicKey, Scalar, Secp256k1};
 use bitcoin::{Address, Network, Script, Transaction, TxOut};
-use lightning::chain::keysinterface::SpendableOutputDescriptor;
-use lightning::chain::keysinterface::{KeyMaterial, Recipient};
 use lightning::ln::msgs::DecodeError;
+use lightning::ln::msgs::UnsignedGossipMessage;
 use lightning::ln::script::ShutdownScript;
-use lightning_signer::bitcoin::secp256k1::ecdsa::Signature;
-use lightning_signer::lightning::chain::keysinterface::{
-	EntropySource, NodeSigner, SignerProvider,
-};
-use lightning_signer::lightning::ln::msgs::UnsignedGossipMessage;
+use lightning::sign::{EntropySource, NodeSigner, SignerProvider};
+use lightning::sign::{KeyMaterial, Recipient, SpendableOutputDescriptor};
 use lightning_signer::node::NodeConfig as SignerNodeConfig;
 use lightning_signer::node::NodeServices;
 use lightning_signer::persist::fs::FileSeedPersister;
@@ -31,7 +27,7 @@ use std::str::FromStr;
 use std::sync::Arc;
 use url::Url;
 use vls_frontend::Frontend;
-use vls_persist::kv_json::KVJsonPersister;
+use vls_persist::kvv::redb::RedbKVVStore;
 use vls_proxy::nodefront::SignerFront;
 use vls_proxy::vls_frontend;
 use vls_proxy::vls_frontend::frontend::SourceFactory;
@@ -63,11 +59,11 @@ impl SignerProvider for Adapter {
 		Ok(DynSigner::new(inner))
 	}
 
-	fn get_destination_script(&self) -> Script {
+	fn get_destination_script(&self) -> Result<Script, ()> {
 		self.inner.get_destination_script()
 	}
 
-	fn get_shutdown_scriptpubkey(&self) -> ShutdownScript {
+	fn get_shutdown_scriptpubkey(&self) -> Result<ShutdownScript, ()> {
 		self.inner.get_shutdown_scriptpubkey()
 	}
 }
@@ -112,7 +108,7 @@ impl SpendableKeysInterface for Adapter {
 	fn spend_spendable_outputs(
 		&self, descriptors: &[&SpendableOutputDescriptor], outputs: Vec<TxOut>,
 		change_destination_script: Script, feerate_sat_per_1000_weight: u32,
-		secp_ctx: &Secp256k1<All>,
+		_secp_ctx: &Secp256k1<All>,
 	) -> anyhow::Result<Transaction> {
 		let tx = self
 			.inner
@@ -121,7 +117,6 @@ impl SpendableKeysInterface for Adapter {
 				outputs,
 				change_destination_script,
 				feerate_sat_per_1000_weight,
-				secp_ctx,
 			)
 			.map_err(|()| anyhow::anyhow!("failed in spend_spendable_outputs"))?;
 		info!("spend spendable {}", bitcoin::consensus::encode::serialize_hex(&tx));
@@ -131,12 +126,6 @@ impl SpendableKeysInterface for Adapter {
 	fn get_sweep_address(&self) -> Address {
 		self.sweep_address.clone()
 	}
-
-	fn sign_from_wallet(
-		&self, _psbt: &PartiallySignedTransaction, _derivations: Vec<u32>,
-	) -> PartiallySignedTransaction {
-		unimplemented!("TODO")
-	}
 }
 
 pub(crate) fn make_signer(
@@ -144,7 +133,7 @@ pub(crate) fn make_signer(
 ) -> Box<dyn SpendableKeysInterface<Signer = DynSigner>> {
 	let node_id_path = format!("{}/node_id", ldk_data_dir);
 	let signer_path = format!("{}/signer", ldk_data_dir);
-	let persister = Arc::new(KVJsonPersister::new(&signer_path));
+	let persister = Arc::new(RedbKVVStore::new(&signer_path));
 	let seed_persister = Arc::new(FileSeedPersister::new(&signer_path));
 	let validator_factory = Arc::new(SimpleValidatorFactory::new());
 	let starting_time_factory = ClockStartingTimeFactory::new();
@@ -179,7 +168,7 @@ pub(crate) fn make_signer(
 
 		let manager = LoopbackSignerKeysInterface { node_id, signer };
 
-		let shutdown_scriptpubkey = manager.get_shutdown_scriptpubkey().into();
+		let shutdown_scriptpubkey = manager.get_shutdown_scriptpubkey().unwrap().into();
 		let shutdown_address = Address::from_script(&shutdown_scriptpubkey, network)
 			.expect("shutdown script must be convertible to address");
 		info!(
